@@ -12,6 +12,8 @@ export interface User {
   username?: string;
   email?: string;
   password?: string;
+  gender?: 'Hombre' | 'Mujer' | 'Otro';
+  birthDate?: string;
   position: string;
   department: string;
   jobCategory?: string;
@@ -26,6 +28,15 @@ export interface User {
   followers: number;
   following: number;
   badges?: Badge[];
+  joinedDate?: string;
+}
+
+export interface Comment {
+  id: string;
+  authorName: string;
+  authorAvatar: string;
+  text: string;
+  timestamp: string;
 }
 
 export type PostType = 'post' | 'news';
@@ -37,12 +48,17 @@ export interface Post {
   authorPosition: string;
   authorAvatar: string;
   content: string;
+  imageUrl?: string;
+  docUrl?: string;
+  docName?: string;
   timestamp: string;
   type: PostType;
   tags: string[];
   likes: number;
   comments: number;
+  commentsList: Comment[];
   userLiked: boolean;
+  userDownvoted?: boolean;
 }
 
 export interface Message {
@@ -50,15 +66,20 @@ export interface Message {
   senderId: string;
   text: string;
   timestamp: Date;
+  isPostShare?: boolean;
+  postId?: string;
+  isForwarded?: boolean;
 }
 
 export interface Chat {
   id: string;
-  participant: User;
+  participant: Partial<User>;
+  messages: Message[];
   lastMessage: string;
   timestamp: Date;
 }
 
+// Added missing Tender interface used for public procurement features
 export interface Tender {
   id: string;
   title: string;
@@ -73,6 +94,7 @@ export interface Tender {
   organism?: string;
 }
 
+// Added missing ProjectDraft interface used for the PDF generation tool
 export interface ProjectDraft {
   tenderId: string;
   introduction: string;
