@@ -1,30 +1,23 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-let ai: GoogleGenAI | null = null;
-
-// Initialize AI safely using a named parameter for the API key from environment variables
-try {
-    if (process.env.API_KEY) {
-        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    }
-} catch (e) {
-    console.warn("GoogleGenAI client could not be initialized (missing key?)", e);
-}
-
 // Simple in-memory cache to prevent re-generating summaries for the same items during a session
 const summaryCache = new Map<string, string>();
 
+/**
+ * Generates an enhanced summary for a public tender using Gemini AI.
+ * Follows the latest SDK guidelines for direct initialization and content generation.
+ */
 export const generateTenderSummary = async (id: string, title: string, originalText: string): Promise<string | null> => {
-  // If AI is not initialized (e.g. no key), return null silently so the UI uses the default text
-  if (!ai) return null;
-
-  // Return cached result if available
+  // Return cached result if available to save tokens and improve performance
   if (summaryCache.has(id)) {
     return summaryCache.get(id)!;
   }
 
   try {
+    // Initializing the GenAI client with the API key from environment variables as required
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const prompt = `Actúa como un experto en contratación pública. Analiza la siguiente licitación y genera un resumen EXTREMADAMENTE BREVE (máximo 2 líneas) explicando únicamente QUÉ producto, servicio u obra se busca contratar. 
     
     Instrucciones:
@@ -44,7 +37,7 @@ export const generateTenderSummary = async (id: string, title: string, originalT
       contents: prompt,
     });
 
-    // Directly access the text property as per the latest SDK guidelines
+    // Access the text property directly on the response object
     const text = response.text;
     if (text) {
         const cleanText = text.trim();
@@ -52,6 +45,7 @@ export const generateTenderSummary = async (id: string, title: string, originalT
         return cleanText;
     }
   } catch (error) {
+    // Log warning instead of throwing to allow the UI to fallback to the original summary
     console.warn(`Error generating summary for tender ${id}:`, error);
   }
 

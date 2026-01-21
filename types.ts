@@ -57,7 +57,9 @@ export interface Post {
   timestamp: string;
   type: PostType;
   tags: string[];
-  likes: number;
+  likes: number; // En posts normales son 'me gusta', en news es el Net Score
+  upvotes?: number; // Específico para news
+  downvotes?: number; // Específico para news
   comments: number;
   commentsList: Comment[];
   userLiked: boolean;

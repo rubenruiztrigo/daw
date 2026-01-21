@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { Tender } from '../types';
-import { Calendar, Bookmark, FileText, Building2, Euro, Sparkles } from 'lucide-react';
+import { Calendar, Bookmark, FileText, Building2, Euro, Sparkles, ArrowUpRight } from 'lucide-react';
 import { ProjectModal } from './ProjectModal';
 import { generateTenderSummary } from '../services/geminiService';
 
@@ -16,137 +17,124 @@ export const TenderCard: React.FC<TenderCardProps> = ({ tender, isFavorite, onTo
   const [summary, setSummary] = useState(tender.summary);
   const [isAiGenerated, setIsAiGenerated] = useState(false);
 
-  const hasLink = tender.link && tender.link !== '#' && tender.link.trim() !== '';
-
-  // AI Summary Generation Effect
   useEffect(() => {
-    // If AI is disabled, revert to original summary and stop
     if (!isAIEnabled) {
         setSummary(tender.summary);
         setIsAiGenerated(false);
         return;
     }
-
     let isMounted = true;
-
     const fetchSummary = async () => {
-        // Only fetch if enabled
         const enhancedText = await generateTenderSummary(tender.id, tender.title, tender.summary);
-        
         if (isMounted && enhancedText) {
             setSummary(enhancedText);
             setIsAiGenerated(true);
         }
     };
-
     fetchSummary();
-
-    return () => {
-        isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [tender.id, tender.title, tender.summary, isAIEnabled]);
 
-
   return (
-    <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-xl shadow-sm hover:shadow-md transition-all p-5">
+    <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-8 transition-all hover:shadow-xl hover:shadow-gray-200/50 group relative">
       <div className="flex justify-between items-start gap-4">
         <div className="flex-1 min-w-0">
-            {/* Tags Row */}
-            <div className="flex flex-wrap gap-2 mb-3">
-                {tender.sourceType && (
-                     <span className={`px-2 py-0.5 text-xs rounded-full font-medium whitespace-nowrap border ${
-                         tender.sourceType === 'Contratos Menores' 
-                            ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800'
-                            : 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800/50'
-                     }`}>
-                        {tender.sourceType}
-                    </span>
-                )}
+            {/* Context Header */}
+            <div className="flex flex-wrap gap-2 mb-4">
+                <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border ${
+                    tender.sourceType === 'Contratos Menores' 
+                    ? 'bg-orange-50 text-orange-600 border-orange-100'
+                    : 'bg-purple-50 text-purple-600 border-purple-100'
+                }`}>
+                    {tender.sourceType}
+                </span>
                 {tender.contractType && (
-                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-400 text-xs rounded-full transition-colors border border-gray-200 dark:border-slate-700">
+                    <span className="px-3 py-1 bg-slate-50 text-slate-500 border border-slate-100 text-[10px] font-black uppercase tracking-widest rounded-lg">
                         {tender.contractType}
                     </span>
                 )}
-                {tender.keywordsFound.map(k => (
-                    <span key={k} className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs rounded-full font-medium transition-colors">
-                        {k}
-                    </span>
-                ))}
             </div>
           
-            {/* Organism (if available) */}
+            {/* Organism */}
             {tender.organism && (
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 dark:text-gray-400 mb-1">
-                    <Building2 size={14} />
-                    <span className="uppercase tracking-tight">{tender.organism}</span>
+                <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    <Building2 size={12} />
+                    <span className="truncate max-w-[400px]">{tender.organism}</span>
                 </div>
             )}
 
             {/* Title */}
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 leading-snug transition-colors">
-                {hasLink ? (
-                    <a 
-                        href={tender.link} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="hover:text-blue-700 dark:hover:text-blue-400 hover:underline decoration-2 underline-offset-2"
-                    >
-                        {tender.title}
-                    </a>
-                ) : (
-                    <span>{tender.title}</span>
-                )}
+            <h3 className="text-xl font-black text-slate-900 mb-4 leading-tight group-hover:text-blue-600 transition-colors">
+                <a href={tender.link} target="_blank" rel="noopener noreferrer" className="flex items-start">
+                    <span className="line-clamp-2">{tender.title}</span>
+                    <ArrowUpRight size={18} className="ml-2 mt-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+                </a>
             </h3>
 
-            {/* Summary */}
-            <div className="relative mb-4">
-                <p className={`text-sm leading-relaxed transition-colors ${isAiGenerated ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400 line-clamp-3'}`}>
-                    {isAiGenerated && (
-                        <span className="inline-flex items-center justify-center bg-gradient-to-r from-blue-500 to-purple-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded mr-2 align-middle" title="Resumen generado por IA">
-                           <Sparkles size={10} className="mr-1" /> IA
-                        </span>
-                    )}
+            {/* Summary Box */}
+            <div className={`relative p-5 rounded-2xl border mb-6 transition-all ${isAiGenerated ? 'bg-blue-50/50 border-blue-100 shadow-inner' : 'bg-slate-50 border-slate-100'}`}>
+                {isAiGenerated && (
+                    <div className="absolute -top-3 left-4 flex items-center space-x-1 bg-blue-600 text-white text-[9px] font-black px-2 py-1 rounded-md shadow-sm uppercase tracking-tighter">
+                        <Sparkles size={10} /> <span>Smart Summary</span>
+                    </div>
+                )}
+                <p className={`text-sm leading-relaxed font-medium ${isAiGenerated ? 'text-blue-900 italic' : 'text-slate-600'}`}>
                     {summary}
                 </p>
             </div>
           
-            {/* Meta Footer */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500 dark:text-gray-400 mb-4 border-t dark:border-slate-800 pt-3">
-                <span className="flex items-center gap-1.5">
-                    <Calendar size={15} />
-                    {new Date(tender.updated).toLocaleDateString()}
-                </span>
+            {/* Info Badges */}
+            <div className="flex flex-wrap items-center gap-6 mb-8 pt-4 border-t border-slate-50">
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Publicado el</span>
+                  <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-600">
+                    <Calendar size={14} className="text-slate-300" />
+                    <span>{new Date(tender.updated).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                  </div>
+                </div>
                 
                 {tender.amount && (
-                    <span className="flex items-center gap-1.5 font-bold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md">
-                        <Euro size={15} />
-                        {tender.amount}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Presupuesto Estimado</span>
+                      <div className="flex items-center space-x-1.5 text-sm font-black text-green-600 bg-green-50 px-3 py-1 rounded-xl border border-green-100">
+                        <Euro size={14} />
+                        <span>{tender.amount}</span>
+                      </div>
+                    </div>
+                )}
+
+                {tender.keywordsFound.length > 0 && (
+                   <div className="flex flex-col">
+                      <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Relevancia</span>
+                      <div className="flex gap-1">
+                        {tender.keywordsFound.map(k => (
+                          <span key={k} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-black rounded-md uppercase">#{k}</span>
+                        ))}
+                      </div>
+                   </div>
                 )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-2">
+            {/* Actions */}
+            <div className="flex items-center space-x-4">
                 <button 
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
+                    className="flex-1 sm:flex-none flex items-center justify-center space-x-2 px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all transform active:scale-95"
                 >
                     <FileText size={16} />
-                    Crear Proyecto
+                    <span>Preparar Proyecto</span>
                 </button>
             </div>
         </div>
         
-        {/* Favorite Button */}
-        <div className="flex-shrink-0">
-            <button 
-                onClick={onToggleFavorite}
-                className={`p-2 rounded-full transition-colors ${isFavorite ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20' : 'text-gray-300 dark:text-slate-600 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
-                title="Guardar en favoritos"
-            >
-                <Bookmark fill={isFavorite ? "currentColor" : "none"} size={20} />
-            </button>
-        </div>
+        {/* Favorite */}
+        <button 
+            onClick={onToggleFavorite}
+            className={`p-3 rounded-2xl transition-all ${isFavorite ? 'text-yellow-500 bg-yellow-50 border-yellow-200 border shadow-sm scale-110' : 'text-slate-300 bg-white border border-slate-100 hover:border-yellow-200 hover:text-yellow-400'}`}
+            title="Guardar Licitación"
+        >
+            <Bookmark fill={isFavorite ? "currentColor" : "none"} size={22} />
+        </button>
       </div>
 
       {isModalOpen && (

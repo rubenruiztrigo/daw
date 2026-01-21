@@ -1,13 +1,6 @@
 
 import { Tender } from '../types';
-
-// Helper to remove accents and lowercase text for flexible matching
-const normalizeString = (str: string): string => {
-  return str
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-};
+import { normalizeString } from '../utils/stringUtils';
 
 // Helper to check keywords in real data (Accent and Case Insensitive)
 const findKeywords = (text: string, keywordsList: string[]): string[] => {
@@ -37,8 +30,6 @@ const formatCurrency = (value: number): string => {
 
 // Advanced Amount Extraction
 const extractAmount = (text: string): string | undefined => {
-    // 1. Try explicit labels "Importe: ...", "Valor estimado: ...", "Presupuesto base: ..."
-    // Captures: 600000.00 (dot decimal), 100.000,00 (comma decimal), 100000
     const labelRegex = /(?:Importe|Valor estimado|Presupuesto base|Importe total)(?:.*?):\s*([\d\.,]+)/i;
     const labelMatch = text.match(labelRegex);
     
@@ -46,7 +37,6 @@ const extractAmount = (text: string): string | undefined => {
         return normalizeAndFormatAmount(labelMatch[1]);
     }
 
-    // 2. Fallback: Try patterns with currency symbol like "100.000,00 euros" or "EUR"
     const currencyRegex = /([\d\.,]+)\s?(?:€|EUR|euros)/i;
     const currencyMatch = text.match(currencyRegex);
 
@@ -57,24 +47,16 @@ const extractAmount = (text: string): string | undefined => {
     return undefined;
 };
 
-// Helper to normalize number strings (handle 1.000,00 vs 1000.00)
 const normalizeAndFormatAmount = (raw: string): string | undefined => {
     let clean = raw.trim();
     
-    // Check if it looks like "600000.00" (Anglo style/Raw DB style)
     if (clean.includes('.') && !clean.includes(',')) {
-        // If it has only one dot and it's near the end (2 decimals), treat as decimal separator
         if (clean.indexOf('.') === clean.length - 3) {
              const num = parseFloat(clean);
              if (!isNaN(num)) return formatCurrency(num);
         }
     }
 
-    // Standard European cleanup: remove dots (thousands), replace comma with dot (decimal)
-    // Be careful with "1.234" which could be 1234 or 1.234. Assume money is rarely < 10 with 3 decimals.
-    // Usually tenders are > 1000.
-    
-    // Remove thousands separators (dots) if comma exists later
     if (clean.includes('.') && clean.includes(',')) {
         clean = clean.replace(/\./g, '').replace(',', '.');
     } else if (clean.includes(',')) {
@@ -89,30 +71,16 @@ const normalizeAndFormatAmount = (raw: string): string | undefined => {
 };
 
 const extractOrganism = (text: string): string | undefined => {
-    // Look for "Órgano de Contratación: XXXXXX," or end of line
     const regex = /Órgano de Contratación:\s*(.*?)(?:;|,|\. |$)/i;
     const match = text.match(regex);
     return match ? match[1].trim() : undefined;
 };
 
 const cleanSummary = (text: string): string => {
-    // If the summary is just a dump of fields, it's not very readable. 
-    // We try to strip the administrative prefixes if they dominate the text.
-    
-    // Common pattern: "Id licitación: ...; Órgano: ...; Importe: ...; Estado: ..."
-    // If it starts with Id licitación, it's likely a structured dump.
     if (text.trim().toLowerCase().startsWith("id licitación") || text.trim().toLowerCase().startsWith("expediente")) {
-        // It's a structured dump. The user probably sees the title as the description of "what".
-        // We can just return a shortened version or an empty string if we extracted everything else.
-        // However, sometimes there is extra info.
-        
-        // Let's remove the specific extracted fields to reduce noise? 
-        // Or just leave it as is but rely on the UI to show the important bits (Amount/Organism) separately.
-        // Let's clean up HTML tags first.
         let clean = text.replace(/<[^>]*>?/gm, '');
         return clean;
     }
-
     return text.replace(/<[^>]*>?/gm, '');
 };
 
@@ -131,9 +99,7 @@ const FEED_CONFIG = [
     }
 ];
 
-// Helper to fetch text with fallback proxies
 const fetchFeedContent = async (targetUrl: string): Promise<string | null> => {
-    // Strategy 1: CorsProxy.io
     try {
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
         const response = await fetch(proxyUrl);
@@ -142,7 +108,6 @@ const fetchFeedContent = async (targetUrl: string): Promise<string | null> => {
         console.warn(`Strategy 1 failed for ${targetUrl}`, e);
     }
 
-    // Strategy 2: AllOrigins Raw
     try {
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
         const response = await fetch(proxyUrl);
@@ -151,7 +116,6 @@ const fetchFeedContent = async (targetUrl: string): Promise<string | null> => {
         console.warn(`Strategy 2 failed for ${targetUrl}`, e);
     }
 
-    // Strategy 3: CodeTabs
     try {
         const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
         const response = await fetch(proxyUrl);
@@ -198,13 +162,10 @@ export const parseAtomFeed = (xmlString: string, sourceType: string, keywordsLis
     const entry = entries[i];
     
     const title = entry.getElementsByTagName("title")[0]?.textContent || "Sin título";
-    
     const summaryNode = entry.getElementsByTagName("summary")[0];
     const contentNode = entry.getElementsByTagName("content")[0];
-    // Prefer content if available as it might have more details, or summary if not.
     const rawDescription = contentNode?.textContent || summaryNode?.textContent || "";
     
-    // Extract Metadata from description
     const amount = extractAmount(rawDescription);
     const organism = extractOrganism(rawDescription);
     const summary = cleanSummary(rawDescription);
