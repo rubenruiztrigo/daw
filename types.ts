@@ -33,10 +33,13 @@ export interface User {
 
 export interface Comment {
   id: string;
+  authorId?: string;
   authorName: string;
   authorAvatar: string;
   text: string;
   timestamp: string;
+  likes?: number;
+  userLiked?: boolean;
 }
 
 export type PostType = 'post' | 'news';
@@ -68,7 +71,6 @@ export interface Message {
   timestamp: Date;
   isPostShare?: boolean;
   postId?: string;
-  isForwarded?: boolean;
 }
 
 export interface Chat {
@@ -79,7 +81,17 @@ export interface Chat {
   timestamp: Date;
 }
 
-// Added missing Tender interface used for public procurement features
+export interface Notification {
+  id: string;
+  type: 'follow' | 'like' | 'comment' | 'mention';
+  senderName: string;
+  senderAvatar: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+  postId?: string;
+}
+
 export interface Tender {
   id: string;
   title: string;
@@ -94,7 +106,6 @@ export interface Tender {
   organism?: string;
 }
 
-// Added missing ProjectDraft interface used for the PDF generation tool
 export interface ProjectDraft {
   tenderId: string;
   introduction: string;

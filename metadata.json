@@ -1,5 +1,6 @@
+
 {
-  "name": "NovaSocial",
+  "name": "Red Social",
   "description": "Red social exclusiva para la administración pública enfocada en la innovación y el intercambio de conocimiento.",
   "requestFramePermissions": [
     "camera"
