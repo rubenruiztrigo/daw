@@ -1,17 +1,72 @@
 
-import React from 'react';
-import { X, Users, ArrowRight } from 'lucide-react';
-import { MOCK_USERS_LIST } from '../constants';
+import React, { useEffect, useState } from 'react';
+import { X, Users, ArrowRight, Loader2 } from 'lucide-react';
+import { supabase } from '../supabaseClient';
+import { User } from '../types';
 
 interface UsersListModalProps {
   type: 'followers' | 'following';
+  userId: string;
   onClose: () => void;
   onNavigate: (userId: string) => void;
 }
 
-export const UsersListModal: React.FC<UsersListModalProps> = ({ type, onClose, onNavigate }) => {
-  // Para el mock, mostraremos una lista aleatoria de los usuarios existentes
-  const displayUsers = MOCK_USERS_LIST.filter((_, i) => i !== 0); // No mostrar al usuario actual
+export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, onClose, onNavigate }) => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [type, userId]);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      let query;
+      if (type === 'followers') {
+        // Personas que siguen al usuario actual (userId)
+        query = supabase
+          .from('follows')
+          .select('follower:profiles!follower_id(*)')
+          .eq('following_id', userId);
+      } else {
+        // Personas a las que el usuario actual (userId) sigue
+        query = supabase
+          .from('follows')
+          .select('following:profiles!following_id(*)')
+          .eq('follower_id', userId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const mappedUsers = data.map((item: any) => {
+        const profile = type === 'followers' ? item.follower : item.following;
+        return {
+          id: profile.id,
+          name: profile.name,
+          lastName: profile.last_name,
+          position: profile.position || 'Personal Público',
+          department: profile.department || 'Administración',
+          avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+          bio: profile.bio || '',
+          interests: profile.interests || [],
+          followers: profile.followers_count || 0,
+          following: profile.following_count || 0,
+          joinedDate: profile.created_at,
+          country: profile.country,
+          region: profile.region
+        };
+      });
+
+      setUsers(mappedUsers);
+    } catch (err) {
+      console.error('Error fetching users for list:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div 
@@ -42,32 +97,48 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, onClose, o
 
         {/* List Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide">
-          {displayUsers.map((person) => (
-            <div 
-              key={person.id} 
-              className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all group cursor-pointer"
-              onClick={() => onNavigate(person.id)}
-            >
-              <div className="flex items-center space-x-3">
-                <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
-                <div>
-                  <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{person.name}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
-                </div>
-              </div>
-              <button 
-                className="p-2 bg-white border border-slate-100 text-slate-400 rounded-xl group-hover:text-blue-600 group-hover:border-blue-100 transition-all"
-              >
-                <ArrowRight size={18} />
-              </button>
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+              <Loader2 className="animate-spin text-blue-600" size={32} />
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Cargando comunidad...</p>
             </div>
-          ))}
-
-          {displayUsers.length === 0 && (
+          ) : users.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-slate-300 italic font-bold">No hay usuarios en esta lista.</p>
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="text-slate-200" size={32} />
+              </div>
+              <p className="text-slate-300 italic font-bold">No hay usuarios en esta lista aún.</p>
             </div>
+          ) : (
+            users.map((person) => (
+              <div 
+                key={person.id} 
+                className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all group cursor-pointer"
+                onClick={() => {
+                  onNavigate(person.id);
+                  onClose();
+                }}
+              >
+                <div className="flex items-center space-x-3">
+                  <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
+                  </div>
+                </div>
+                <button 
+                  className="p-2 bg-white border border-slate-100 text-slate-400 rounded-xl group-hover:text-blue-600 group-hover:border-blue-100 transition-all"
+                >
+                  <ArrowRight size={18} />
+                </button>
+              </div>
+            ))
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-center">
+            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Conectando el Sector Público</span>
         </div>
       </div>
     </div>

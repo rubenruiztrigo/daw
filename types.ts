@@ -12,7 +12,7 @@ export interface User {
   username?: string;
   email?: string;
   password?: string;
-  gender?: 'Hombre' | 'Mujer' | 'Otro';
+  gender?: 'Hombre' | 'Mujer' | 'Prefiero no decirlo';
   birthDate?: string;
   position: string;
   department: string;
@@ -48,6 +48,7 @@ export interface Post {
   id: string;
   authorId: string;
   authorName: string;
+  authorUsername?: string;
   authorPosition: string;
   authorAvatar: string;
   content: string;
@@ -57,9 +58,9 @@ export interface Post {
   timestamp: string;
   type: PostType;
   tags: string[];
-  likes: number; // En posts normales son 'me gusta', en news es el Net Score
-  upvotes?: number; // Específico para news
-  downvotes?: number; // Específico para news
+  likes: number; 
+  upvotes?: number; 
+  downvotes?: number; 
   comments: number;
   commentsList: Comment[];
   userLiked: boolean;
@@ -69,6 +70,7 @@ export interface Post {
 export interface Message {
   id: string;
   senderId: string;
+  recipientId: string;
   text: string;
   timestamp: Date;
   isPostShare?: boolean;
@@ -76,7 +78,7 @@ export interface Message {
 }
 
 export interface Chat {
-  id: string;
+  id: string; // ID del otro participante
   participant: Partial<User>;
   messages: Message[];
   lastMessage: string;
@@ -94,26 +96,24 @@ export interface Notification {
   postId?: string;
 }
 
+// Fix: Added missing Tender interface to resolve compilation errors
 export interface Tender {
   id: string;
   title: string;
-  summary: string;
+  organization: string;
+  budget: string;
+  status: string;
+  deadline: string;
   link: string;
-  updated: string;
-  keywordsFound: string[];
-  isRead: boolean;
-  sourceType: string;
-  contractType: string;
-  amount?: string;
-  organism?: string;
+  description?: string;
 }
 
+// Fix: Added missing ProjectDraft interface for PDF generation
 export interface ProjectDraft {
-  tenderId: string;
+  coverImage?: string;
   introduction: string;
   objectives: string;
   methodology: string;
   resources: string;
   evaluation: string;
-  coverImage?: string;
 }

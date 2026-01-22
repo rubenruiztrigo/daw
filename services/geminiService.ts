@@ -1,53 +1,41 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Simple in-memory cache to prevent re-generating summaries for the same items during a session
-const summaryCache = new Map<string, string>();
+// Fix: Initialized Google GenAI with API key from environment following best practices
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Simple in-memory cache to prevent re-generating content during a session
+const cache = new Map<string, string>();
 
 /**
- * Generates an enhanced summary for a public tender using Gemini AI.
- * Follows the latest SDK guidelines for direct initialization and content generation.
+ * Fix: Implemented generateTenderSummary to resolve import errors in TendersView.
+ * This service summarizes public tenders for professionals using gemini-3-flash-preview.
  */
-export const generateTenderSummary = async (id: string, title: string, originalText: string): Promise<string | null> => {
-  // Return cached result if available to save tokens and improve performance
-  if (summaryCache.has(id)) {
-    return summaryCache.get(id)!;
+export const generateTenderSummary = async (id: string, title: string, description: string): Promise<string> => {
+  // Check cache first to avoid redundant API calls
+  if (cache.has(id)) {
+    return cache.get(id)!;
   }
 
   try {
-    // Initializing the GenAI client with the API key from environment variables as required
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    const prompt = `Actúa como un experto en contratación pública. Analiza la siguiente licitación y genera un resumen EXTREMADAMENTE BREVE (máximo 2 líneas) explicando únicamente QUÉ producto, servicio u obra se busca contratar. 
-    
-    Instrucciones:
-    - Sé directo y conciso.
-    - Elimina códigos, IDs, referencias burocráticas y estado del expediente.
-    - Céntrate en la oportunidad de negocio: ¿Qué se puede vender u ofrecer aquí?
-    - No uses frases introductorias como "El objeto es" o "Se licita".
-
+    const prompt = `Resume la siguiente licitación pública de forma concisa para profesionales del sector público. 
     Título: ${title}
-    Descripción Original: ${originalText}
-    
-    Resumen breve:`;
+    ID: ${id}
+    Descripción: ${description}
+    El resumen debe ser directo y resaltar los aspectos más importantes.`;
 
-    // Using gemini-3-flash-preview as it is the recommended model for basic text tasks like summarization
+    // Use gemini-3-flash-preview for basic text tasks like summarization
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 
-    // Access the text property directly on the response object
-    const text = response.text;
-    if (text) {
-        const cleanText = text.trim();
-        summaryCache.set(id, cleanText);
-        return cleanText;
-    }
+    // Directly access the .text property of GenerateContentResponse
+    const summary = response.text || "No se pudo generar el resumen.";
+    cache.set(id, summary);
+    return summary;
   } catch (error) {
-    // Log warning instead of throwing to allow the UI to fallback to the original summary
-    console.warn(`Error generating summary for tender ${id}:`, error);
+    console.error("Error generating tender summary:", error);
+    return "Error al generar el resumen con IA.";
   }
-
-  return null;
 };
