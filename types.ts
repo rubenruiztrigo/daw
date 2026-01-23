@@ -96,7 +96,25 @@ export interface Notification {
   postId?: string;
 }
 
-// Fix: Added missing Tender interface to resolve compilation errors
+export interface ProjectDraft {
+  coverImage?: string;
+  introduction: string;
+  objectives: string;
+  methodology: string;
+  resources: string;
+  evaluation: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  type: 'innovation' | 'training' | 'meeting' | 'congress';
+  date: Date;
+  location: string;
+  description: string;
+}
+
+// Added Tender interface to resolve missing exported member error
 export interface Tender {
   id: string;
   title: string;
@@ -106,14 +124,4 @@ export interface Tender {
   deadline: string;
   link: string;
   description?: string;
-}
-
-// Fix: Added missing ProjectDraft interface for PDF generation
-export interface ProjectDraft {
-  coverImage?: string;
-  introduction: string;
-  objectives: string;
-  methodology: string;
-  resources: string;
-  evaluation: string;
 }

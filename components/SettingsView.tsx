@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, AlertCircle, Sun, Moon, Check, UserCircle, Save, Calendar, Mail } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail } from 'lucide-react';
 import { User } from '../types';
 
 interface SettingsViewProps {
@@ -131,7 +131,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div 
-            className="bg-white dark:bg-[#0a0a0a] w-full max-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
+            className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-8 text-center space-y-6">
@@ -146,14 +146,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
               <div className="flex flex-col gap-3">
                 <button 
-                  onClick={onLogout}
-                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-red-100 hover:bg-red-700 transition-all transform active:scale-95"
+                  onClick={() => { onLogout(); setShowLogoutConfirm(false); }}
+                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm shadow-xl hover:bg-red-700 transition-all transform active:scale-95"
                 >
-                  Cerrar sesión
+                  Sí, cerrar sesión
                 </button>
                 <button 
                   onClick={() => setShowLogoutConfirm(false)}
-                  className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-zinc-800 transition-all"
+                  className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
                 >
                   Cancelar
                 </button>

@@ -35,17 +35,35 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const handleAuthorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (post.authorId === currentUser.id) {
-      onNavigateToProfile?.(post.authorId);
-    } else {
-      setShowUserInfo(!showUserInfo);
-    }
+    onNavigateToProfile?.(post.authorId);
+  };
+
+  const renderContentWithHashtags = (content: string) => {
+    if (!content) return null;
+    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('#')) {
+        return (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSearchHashtag?.(part.slice(1));
+            }}
+            className="text-blue-600 dark:text-blue-400 font-black hover:underline transition-all"
+          >
+            {part}
+          </button>
+        );
+      }
+      return part;
+    });
   };
 
   return (
     <>
       <div 
-        className={`bg-white dark:bg-[#111] p-5 rounded-2xl border transition-all cursor-pointer group flex space-x-3 shadow-sm ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'}`}
+        className={`bg-white dark:bg-[#111] p-5 rounded-2xl border transition-all cursor-pointer group flex space-x-3 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'}`}
         onClick={() => setIsDetailsOpen(true)}
       >
         <div className="relative flex-shrink-0">
@@ -55,17 +73,6 @@ export const PostCard: React.FC<PostCardProps> = ({
             onClick={handleAuthorClick}
             alt="" 
           />
-          {showUserInfo && (
-            <UserInfoDropdown 
-              userId={post.authorId} 
-              onClose={() => setShowUserInfo(false)} 
-              onNavigate={(id) => onNavigateToProfile?.(id)} 
-              isFollowed={followedUserIds.has(post.authorId)}
-              isFollower={followerUserIds.has(post.authorId)}
-              onToggleFollow={onToggleFollow}
-              users={users}
-            />
-          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
@@ -85,7 +92,9 @@ export const PostCard: React.FC<PostCardProps> = ({
           
           <p className={`text-[11px] font-bold mb-1 uppercase tracking-tight ${isNews ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
           
-          <div className="text-gray-900 dark:text-gray-200 text-[15px] leading-relaxed py-2 whitespace-pre-wrap">{post.content}</div>
+          <div className="text-gray-900 dark:text-gray-200 text-[15px] leading-relaxed py-2 whitespace-pre-wrap font-medium">
+            {renderContentWithHashtags(post.content)}
+          </div>
 
           {post.imageUrl && (
             <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
@@ -119,7 +128,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         </div>
       </div>
-      {isDetailsOpen && <PostDetailsModal post={post} onClose={() => setIsDetailsOpen(false)} onAddComment={onAddComment} onLike={onLike} onVote={onVote} onSearchHashtag={onSearchHashtag} />}
+      {isDetailsOpen && <PostDetailsModal post={post} onClose={() => setIsDetailsOpen(false)} onAddComment={onAddComment} onLike={onLike} onVote={onVote} onSearchHashtag={onSearchHashtag} onNavigateToProfile={onNavigateToProfile} />}
     </>
   );
 };

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical } from 'lucide-react';
+import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar } from 'lucide-react';
 import { User as UserType, Notification } from '../types';
 
 interface LayoutProps {
@@ -9,11 +9,9 @@ interface LayoutProps {
   onViewChange: (view: any) => void;
   user: UserType;
   notifications?: Notification[];
-  onMarkNotificationsRead?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchSubmit?: (query: string) => void;
-  onUpdateUser?: (user: UserType) => void;
   isViewingOwnProfile?: boolean;
   onLogout?: () => void;
 }
@@ -41,7 +39,6 @@ export const Layout: React.FC<LayoutProps> = ({
   onLogout
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const NavItem = ({ view, icon: Icon, label, badge }: { view: string, icon: any, label: string, badge?: number }) => {
@@ -54,7 +51,7 @@ export const Layout: React.FC<LayoutProps> = ({
         onClick={() => onViewChange(view)}
         className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
           isActive 
-            ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
+            ? 'bg-blue-600 text-white' 
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-900 hover:text-blue-600'
         }`}
       >
@@ -76,18 +73,18 @@ export const Layout: React.FC<LayoutProps> = ({
     if (searchQuery.trim() && onSearchSubmit) onSearchSubmit(searchQuery);
   };
 
-  const showSearchBar = currentView !== 'search' && currentView !== 'messages' && currentView !== 'settings';
-
   return (
     <div className="min-h-screen bg-[#F3F4F6] dark:bg-black flex transition-colors duration-200 font-sans">
+      {/* Sidebar Izquierdo */}
       <aside className="w-64 fixed inset-y-0 left-0 bg-white dark:bg-[#0a0a0a] border-r border-gray-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
         <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => onViewChange('feed')}>
           <Logo />
-          <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">NovaSocial</span>
+          <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Red Social</span>
         </div>
         <nav className="flex-1 space-y-1">
           <NavItem view="feed" icon={Home} label="Inicio" />
           <NavItem view="news" icon={Newspaper} label="Noticias" />
+          <NavItem view="calendar" icon={Calendar} label="Calendario" />
           <NavItem view="messages" icon={MessageCircle} label="Mensajes" />
           <NavItem view="notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
           <NavItem view="profile" icon={User} label="Mi Perfil" />
@@ -96,13 +93,13 @@ export const Layout: React.FC<LayoutProps> = ({
         
         <div className="mt-auto pt-6 border-t border-gray-100 dark:border-zinc-900 relative">
           {isProfileMenuOpen && (
-            <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl shadow-xl p-2 animate-in slide-in-from-bottom-2 duration-200 z-50">
+            <div className="absolute bottom-full left-0 mb-4 w-full bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
               <button 
-                onClick={() => { setShowLogoutConfirm(true); setIsProfileMenuOpen(false); }}
-                className="w-full flex items-center space-x-3 p-3 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 rounded-xl transition-all"
+                onClick={() => { onLogout?.(); setIsProfileMenuOpen(false); }}
+                className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-xl"
               >
-                <LogOut size={18} />
-                <span className="font-bold text-sm">Cerrar sesión</span>
+                <LogOut size={16} />
+                <span>Cerrar sesión</span>
               </button>
             </div>
           )}
@@ -124,47 +121,58 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       </aside>
       
-      <div className="flex-1 md:ml-64">
-        <header className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-zinc-900 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center"><div className="md:hidden flex items-center space-x-2 cursor-pointer" onClick={() => onViewChange('feed')}><Logo /></div></div>
-          <div className="flex-1 max-w-xl mx-4">
-            {showSearchBar && (
-              <form onSubmit={handleSearchFormSubmit} className="relative w-full hidden sm:block">
-                <button type="submit" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"><Search size={18} /></button>
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  placeholder="Buscar colegas, proyectos..." 
-                  className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all focus:bg-white dark:focus:bg-[#111] focus:shadow-sm"
-                />
-              </form>
-            )}
+      {/* Contenido Principal */}
+      <div className="flex-1 md:ml-64 lg:mr-80 min-h-screen">
+        <header className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-zinc-900 px-6 py-4 flex items-center justify-between sticky top-0 z-20 h-16 md:hidden">
+          <div className="flex items-center space-x-3" onClick={() => onViewChange('feed')}>
+            <Logo />
+            <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Red Social</span>
           </div>
         </header>
+        
         <main className="p-4 md:p-8">{children}</main>
       </div>
-      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-zinc-900 flex justify-around p-3 z-30 shadow-up">
-        <button onClick={() => onViewChange('feed')} className={currentView === 'feed' ? 'text-blue-600' : 'text-gray-400'}><Home size={20}/></button>
-        <button onClick={() => onViewChange('news')} className={currentView === 'news' ? 'text-blue-600' : 'text-gray-400'}><Newspaper size={20}/></button>
-        <button onClick={() => onViewChange('messages')} className={currentView === 'messages' ? 'text-blue-600' : 'text-gray-400'}><MessageCircle size={20}/></button>
-        <button onClick={() => onViewChange('profile')} className={currentView === 'profile' && isViewingOwnProfile ? 'text-blue-600' : 'text-gray-400'}><User size={20}/></button>
-      </nav>
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowLogoutConfirm(false)}>
-          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
-            <div className="p-8 text-center space-y-6">
-              <div className="mx-auto w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center"><LogOut size={32} /></div>
-              <div className="space-y-2"><h3 className="text-xl font-black text-slate-900 dark:text-white">¿Cerrar sesión?</h3><p className="text-sm text-slate-500 dark:text-gray-400 font-medium">¿Confirmas que deseas salir?</p></div>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => { onLogout?.(); setShowLogoutConfirm(false); }} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm shadow-xl hover:bg-red-700 transition-all transform active:scale-95">Sí, cerrar sesión</button>
-                <button onClick={() => setShowLogoutConfirm(false)} className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">Cancelar</button>
+      {/* Sidebar Derecho (Barra de Búsqueda) */}
+      <aside className="w-80 fixed inset-y-0 right-0 bg-white dark:bg-[#0a0a0a] border-l border-gray-100 dark:border-zinc-900 hidden lg:flex flex-col p-6 z-30">
+        <div className="sticky top-6">
+          <form onSubmit={handleSearchFormSubmit} className="relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text" 
+              value={searchQuery}
+              onChange={(e) => onSearchChange?.(e.target.value)}
+              placeholder="Buscar en la red..." 
+              className="w-full pl-12 pr-4 py-3 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            />
+          </form>
+
+          <div className="mt-8 p-6 bg-gray-50 dark:bg-zinc-900/50 rounded-3xl border border-gray-100 dark:border-zinc-800">
+            <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest mb-4">¿Qué está pasando?</h3>
+            <div className="space-y-4">
+              <div className="cursor-pointer group">
+                <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en Innovación</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#IAAdministrativa</p>
+                <p className="text-[10px] text-gray-400">1.240 posts</p>
+              </div>
+              <div className="cursor-pointer group">
+                <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en España</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#ContrataciónPublica</p>
+                <p className="text-[10px] text-gray-400">856 posts</p>
               </div>
             </div>
+            <button className="mt-6 text-xs font-bold text-blue-600 hover:underline">Mostrar más</button>
           </div>
         </div>
-      )}
+      </aside>
+      
+      {/* Navegación Móvil */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-zinc-900 flex justify-around p-3 z-30">
+        <button onClick={() => onViewChange('feed')} className={currentView === 'feed' ? 'text-blue-600' : 'text-gray-400'}><Home size={20}/></button>
+        <button onClick={() => onViewChange('news')} className={currentView === 'news' ? 'text-blue-600' : 'text-gray-400'}><Newspaper size={20}/></button>
+        <button onClick={() => onViewChange('calendar')} className={currentView === 'calendar' ? 'text-blue-600' : 'text-gray-400'}><Calendar size={20}/></button>
+        <button onClick={() => onViewChange('profile')} className={currentView === 'profile' && isViewingOwnProfile ? 'text-blue-600' : 'text-gray-400'}><User size={20}/></button>
+      </nav>
     </div>
   );
 };

@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout } from './components/Layout';
 import { SocialFeed } from './components/SocialFeed';
 import { ProfileView } from './components/ProfileView';
 import { MessagesView } from './components/MessagesView';
 import { NewsHubView } from './components/NewsHubView';
+import { CalendarView } from './components/CalendarView';
 import { SearchResultsView } from './components/SearchResultsView';
 import { SettingsView } from './components/SettingsView';
 import { Onboarding } from './components/Onboarding';
@@ -13,8 +14,9 @@ import { NotificationsView } from './components/NotificationsView';
 import { User, Post, Chat, Message, Notification, Comment } from './types';
 import { supabase } from './supabaseClient';
 import { Loader2 } from 'lucide-react';
+import { PostDetailsModal } from './components/PostDetailsModal';
 
-type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications';
+type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar';
 type Theme = 'light' | 'dark';
 
 const App: React.FC = () => {
@@ -31,7 +33,8 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'light');
-  
+  const [selectedPostFromNotify, setSelectedPostFromNotify] = useState<Post | null>(null);
+
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const [followerUserIds, setFollowerUserIds] = useState<Set<string>>(new Set());
 
@@ -67,17 +70,17 @@ const App: React.FC = () => {
       fetchNotifications();
 
       const channel = supabase
-        .channel('app_realtime_v14')
+        .channel('app_realtime_sync')
         .on('postgres_changes', { event: '*', table: 'posts' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'post_likes' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'post_comments' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'notifications' }, () => fetchNotifications())
+        .on('postgres_changes', { event: '*', table: 'news' }, () => fetchFeed())
         .on('postgres_changes', { event: '*', table: 'profiles' }, () => {
            if (session?.user) fetchUserProfile(session.user.id);
            fetchUsers();
         })
-        .on('postgres_changes', { event: '*', table: 'follows' }, () => fetchFollows())
-        .on('postgres_changes', { event: '*', table: 'messages' }, () => fetchChats())
+        .on('postgres_changes', { event: '*', table: 'follows' }, () => {
+           fetchFollows();
+           fetchUsers();
+        })
         .subscribe();
 
       return () => {
@@ -97,8 +100,6 @@ const App: React.FC = () => {
         email: data.email,
         position: data.position || 'Personal Público',
         department: data.department || 'Administración',
-        jobCategory: data.job_category,
-        administrationType: data.administration_type,
         avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
         bio: data.bio || '',
         interests: data.interests || [],
@@ -106,8 +107,6 @@ const App: React.FC = () => {
         following: data.following_count || 0,
         country: data.country,
         region: data.region,
-        gender: data.gender,
-        birthDate: data.birth_date,
         joinedDate: data.created_at
       });
     }
@@ -131,8 +130,6 @@ const App: React.FC = () => {
         following: u.following_count || 0,
         country: u.country,
         region: u.region,
-        gender: u.gender,
-        birthDate: u.birth_date,
         joinedDate: u.created_at
       })));
     }
@@ -145,6 +142,30 @@ const App: React.FC = () => {
     setFollowedUserIds(new Set(following?.map(f => f.followed_id) || []));
     setFollowerUserIds(new Set(followers?.map(f => f.follower_id) || []));
   };
+
+  const handleToggleFollow = useCallback(async (userId: string) => {
+    if (!session?.user || userId === session.user.id) return;
+    const isCurrentlyFollowing = followedUserIds.has(userId);
+    const newFollowedSet = new Set(followedUserIds);
+    if (isCurrentlyFollowing) {
+      newFollowedSet.delete(userId);
+    } else {
+      newFollowedSet.add(userId);
+    }
+    setFollowedUserIds(newFollowedSet);
+    try {
+      if (isCurrentlyFollowing) {
+        await supabase.from('follows').delete().eq('follower_id', session.user.id).eq('followed_id', userId);
+      } else {
+        await supabase.from('follows').insert({ follower_id: session.user.id, followed_id: userId });
+        await supabase.from('notifications').insert({ user_id: userId, sender_id: session.user.id, type: 'follow', content: `ha comenzado a seguirte` });
+      }
+      await Promise.all([fetchFollows(), fetchUsers()]);
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      fetchFollows();
+    }
+  }, [session, followedUserIds]);
 
   const fetchChats = async () => {
     if (!session?.user) return;
@@ -217,30 +238,47 @@ const App: React.FC = () => {
     if (!session?.user) return;
     const [
       { data: postsData },
+      { data: newsData },
       { data: postComments },
-      { data: myPostLikes }
+      { data: newsComments },
+      { data: myPostLikes },
+      { data: myNewsVotes }
     ] = await Promise.all([
       supabase.from('posts').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
-      supabase.from('post_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: true }),
-      supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id)
+      supabase.from('news').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
+      supabase.from('post_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
+      supabase.from('news_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
+      supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id),
+      supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id)
     ]);
     
     const commentsMap = new Map<string, Comment[]>();
-    postComments?.forEach((c: any) => {
-      const list = commentsMap.get(c.post_id) || [];
-      list.push({
-        id: c.id,
-        authorId: c.author_id,
-        authorName: `${c.author?.name} ${c.author?.last_name || ''}`,
-        authorAvatar: c.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.author_id}`,
-        text: c.text,
-        timestamp: c.created_at
+    const processComments = (data: any[], idField: string) => {
+      data?.forEach((c: any) => {
+        const targetId = c[idField];
+        const list = commentsMap.get(targetId) || [];
+        list.push({
+          id: c.id,
+          authorId: c.author_id,
+          authorName: `${c.author?.name} ${c.author?.last_name || ''}`,
+          authorAvatar: c.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.author_id}`,
+          text: c.text,
+          timestamp: c.created_at
+        });
+        commentsMap.set(targetId, list);
       });
-      commentsMap.set(c.post_id, list);
-    });
+    };
+    processComments(postComments || [], 'post_id');
+    processComments(newsComments || [], 'news_id');
 
-    const upvotedPosts = new Set(myPostLikes?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []);
-    const downvotedPosts = new Set(myPostLikes?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []);
+    const upvotedIds = new Set([
+      ...(myPostLikes?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []),
+      ...(myNewsVotes?.filter(l => l.vote_type === 'up').map(l => l.news_id) || [])
+    ]);
+    const downvotedIds = new Set([
+      ...(myPostLikes?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []),
+      ...(myNewsVotes?.filter(l => l.vote_type === 'down').map(l => l.news_id) || [])
+    ]);
 
     const formattedPosts: Post[] = (postsData || []).map((p: any) => ({
       id: p.id,
@@ -254,90 +292,116 @@ const App: React.FC = () => {
       docUrl: p.doc_url,
       docName: p.doc_name,
       timestamp: p.created_at,
-      type: p.type as 'post' | 'news',
+      type: 'post',
       tags: p.tags || [],
       likes: p.likes_count || 0,
       comments: p.comments_count || 0,
       commentsList: commentsMap.get(p.id) || [],
-      userLiked: upvotedPosts.has(p.id),
-      userDownvoted: downvotedPosts.has(p.id)
+      userLiked: upvotedIds.has(p.id),
+      userDownvoted: downvotedIds.has(p.id)
     }));
-    setPosts(formattedPosts);
+
+    const formattedNews: Post[] = (newsData || []).map((n: any) => ({
+      id: n.id,
+      authorId: n.author_id,
+      authorName: `${n.author?.name} ${n.author?.last_name || ''}`,
+      authorUsername: n.author?.username || n.author?.name.toLowerCase().replace(/\s/g, ''),
+      authorPosition: n.author?.position,
+      authorAvatar: n.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.author_id}`,
+      content: n.content,
+      imageUrl: n.image_url,
+      timestamp: n.created_at,
+      type: 'news',
+      tags: n.tags || [],
+      likes: n.likes_count || 0,
+      comments: n.comments_count || 0,
+      commentsList: commentsMap.get(n.id) || [],
+      userLiked: upvotedIds.has(n.id),
+      userDownvoted: downvotedIds.has(n.id)
+    }));
+
+    setPosts([...formattedPosts, ...formattedNews].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
 
   const handleAddPost = async (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string) => {
     if (!session?.user) return;
+    const isNews = type === 'news';
+    const table = isNews ? 'news' : 'posts';
+    
     const payload: any = { 
       author_id: session.user.id, 
       content, 
-      type,
-      tags, 
-      image_url: imageUrl,
-      doc_url: docUrl,
-      doc_name: docName,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      tags: tags || [], 
+      image_url: imageUrl || null 
     };
-    const { error } = await supabase.from('posts').insert(payload);
-    if (!error) fetchFeed();
+    
+    if (!isNews) { 
+      payload.doc_url = docUrl || null; 
+      payload.doc_name = docName || null; 
+    }
+    
+    const { error } = await supabase.from(table).insert(payload);
+    
+    if (!error) {
+      await fetchFeed();
+    } else {
+      console.error(`Error al publicar en la tabla ${table}:`, error.message);
+    }
   };
 
   const handleAddComment = async (postId: string, text: string) => {
     if (!session?.user) return;
-    const { error } = await supabase.from('post_comments').insert({
-      post_id: postId,
-      author_id: session.user.id,
-      text,
-      created_at: new Date().toISOString()
-    });
-    if (!error) fetchFeed();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const table = post.type === 'news' ? 'news_comments' : 'post_comments';
+    const idField = post.type === 'news' ? 'news_id' : 'post_id';
+    const { error } = await supabase.from(table).insert({ [idField]: postId, author_id: session.user.id, text });
+    if (!error) {
+      if (post.authorId !== session.user.id) {
+        await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `ha hecho un comentario en tu ${post.type === 'news' ? 'noticia' : 'post'}`, post_id: postId });
+      }
+      fetchFeed();
+    }
   };
 
   const handleVote = async (id: string, dir: 'up' | 'down') => {
     if (!session?.user) return;
-    const { data: existingVote } = await supabase
-      .from('post_likes')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('post_id', id)
-      .maybeSingle();
-
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+    const isNews = post.type === 'news';
+    const table = isNews ? 'news_votes' : 'post_likes';
+    const idField = isNews ? 'news_id' : 'post_id';
+    const { data: existingVote } = await supabase.from(table).select('*').eq('user_id', session.user.id).eq(idField, id).maybeSingle();
     if (existingVote) {
-      if (existingVote.vote_type === dir) {
-        await supabase.from('post_likes').delete().eq('user_id', session.user.id).eq('post_id', id);
-      } else {
-        await supabase.from('post_likes').update({ vote_type: dir }).eq('user_id', session.user.id).eq('post_id', id);
-      }
-    } else {
-      await supabase.from('post_likes').insert({ user_id: session.user.id, post_id: id, vote_type: dir });
-    }
+      if (existingVote.vote_type === dir) { await supabase.from(table).delete().eq('user_id', session.user.id).eq(idField, id); }
+      else { await supabase.from(table).update({ vote_type: dir }).eq('user_id', session.user.id).eq(idField, id); }
+    } else { await supabase.from(table).insert({ user_id: session.user.id, [idField]: id, vote_type: dir }); }
     fetchFeed();
+  };
+
+  const handleSearchHashtag = (tag: string) => {
+    setSearchQuery(tag);
+    setCurrentView('search');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNotificationClick = (postId?: string) => {
+    if (!postId) return;
+    const post = posts.find(p => p.id === postId);
+    if (post) setSelectedPostFromNotify(post);
   };
 
   const handleDeletePost = async (postId: string) => {
     if (!session?.user) return;
-    const { error } = await supabase.from('posts').delete().eq('id', postId).eq('author_id', session.user.id);
+    const post = posts.find(p => p.id === postId);
+    const table = post?.type === 'news' ? 'news' : 'posts';
+    const { error } = await supabase.from(table).delete().eq('id', postId).eq('author_id', session.user.id);
     if (!error) fetchFeed();
-  };
-
-  const handleToggleFollow = async (userId: string) => {
-    if (!session?.user || userId === session.user.id) return;
-    if (followedUserIds.has(userId)) {
-      await supabase.from('follows').delete().eq('follower_id', session.user.id).eq('followed_id', userId);
-    } else {
-      await supabase.from('follows').insert({ follower_id: session.user.id, followed_id: userId });
-    }
-    fetchFollows();
   };
 
   const handleSendMessage = async (recipientId: string, text: string) => {
     if (!session?.user) return;
-    const { error } = await supabase.from('messages').insert({
-      sender_id: session.user.id,
-      recipient_id: recipientId,
-      text,
-      created_at: new Date().toISOString()
-    });
+    const { error } = await supabase.from('messages').insert({ sender_id: session.user.id, recipient_id: recipientId, text });
     if (!error) fetchChats();
   };
 
@@ -353,22 +417,7 @@ const App: React.FC = () => {
 
   const handleUpdateUser = async (updatedUser: User) => {
     const { error } = await supabase.from('profiles').update({
-        name: updatedUser.name,
-        last_name: updatedUser.lastName,
-        username: updatedUser.username,
-        email: updatedUser.email,
-        gender: updatedUser.gender,
-        birth_date: updatedUser.birthDate,
-        position: updatedUser.position,
-        department: updatedUser.department,
-        job_category: updatedUser.jobCategory,
-        administration_type: updatedUser.administrationType,
-        country: updatedUser.country,
-        region: updatedUser.region,
-        bio: updatedUser.bio,
-        interests: updatedUser.interests,
-        avatar: updatedUser.avatar,
-        updated_at: new Date().toISOString()
+        name: updatedUser.name, last_name: updatedUser.lastName, username: updatedUser.username, email: updatedUser.email, gender: updatedUser.gender, birth_date: updatedUser.birthDate, position: updatedUser.position, department: updatedUser.department, job_category: updatedUser.jobCategory, administration_type: updatedUser.administrationType, country: updatedUser.country, region: updatedUser.region, bio: updatedUser.bio, interests: updatedUser.interests, avatar: updatedUser.avatar, updated_at: new Date().toISOString()
       }).eq('id', updatedUser.id);
     if (!error) fetchUserProfile(updatedUser.id);
   };
@@ -391,7 +440,7 @@ const App: React.FC = () => {
     setCurrentView('profile');
   };
 
-  if (isLoadingAuth || (!currentUserData && session)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-blue-600" size={48} /></div>;
+  if (isLoadingAuth || (!currentUserData && session)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
 
   if (!session) {
     if (isRegistering) return <Onboarding onComplete={() => setIsRegistering(false)} onCancel={() => setIsRegistering(false)} />;
@@ -400,25 +449,17 @@ const App: React.FC = () => {
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
-    <Layout 
-      currentView={currentView} 
-      onViewChange={handleViewChange} 
-      user={currentUserData!} 
-      notifications={notifications}
-      searchQuery={searchQuery} 
-      onSearchChange={setSearchQuery}
-      onSearchSubmit={handleSearchSubmit}
-      isViewingOwnProfile={!viewingUserId || viewingUserId === currentUserData?.id}
-      onLogout={() => supabase.auth.signOut()}
-    >
-      {currentView === 'feed' && <SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} followedUserIds={followedUserIds} />}
-      {currentView === 'news' && <NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} followedUserIds={followedUserIds} />}
-      {currentView === 'profile' && <ProfileView user={users.find(u => u.id === viewingUserId) || currentUserData!} isCurrentUser={!viewingUserId || viewingUserId === currentUserData?.id} posts={posts} onUpdateUser={handleUpdateUser} onDeletePost={handleDeletePost} currentUser={currentUserData!} onAddComment={handleAddComment} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onNavigateToProfile={handleNavigateToProfile} onStartChat={handleStartChat} isFollowed={followedUserIds.has(viewingUserId || '')} isFollower={followerUserIds.has(viewingUserId || '')} onToggleFollow={handleToggleFollow} users={users} />}
+    <Layout currentView={currentView} onViewChange={handleViewChange} user={currentUserData!} notifications={notifications} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} isViewingOwnProfile={!viewingUserId || viewingUserId === currentUserData?.id} onLogout={() => supabase.auth.signOut()}>
+      {currentView === 'feed' && <SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} />}
+      {currentView === 'news' && <NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} />}
+      {currentView === 'calendar' && <CalendarView />}
+      {currentView === 'profile' && <ProfileView user={users.find(u => u.id === viewingUserId) || currentUserData!} isCurrentUser={!viewingUserId || viewingUserId === currentUserData?.id} posts={posts} onUpdateUser={handleUpdateUser} onDeletePost={handleDeletePost} currentUser={currentUserData!} onAddComment={handleAddComment} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onNavigateToProfile={handleNavigateToProfile} onStartChat={handleStartChat} isFollowed={followedUserIds.has(viewingUserId || '')} isFollower={followerUserIds.has(viewingUserId || '')} onToggleFollow={handleToggleFollow} users={users} onSearchHashtag={handleSearchHashtag} />}
       {currentView === 'messages' && <MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onNavigateToProfile={handleNavigateToProfile} externalActiveId={activeChatUserId} />}
-      {currentView === 'notifications' && <NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} />}
-      {currentView === 'search' && <SearchResultsView query={searchQuery} posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} />}
+      {currentView === 'notifications' && <NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} onNotificationClick={handleNotificationClick} />}
+      {currentView === 'search' && <SearchResultsView query={searchQuery} posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} />}
       {currentView === 'settings' && <SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} />}
     </Layout>
+    {selectedPostFromNotify && <PostDetailsModal post={selectedPostFromNotify} onClose={() => setSelectedPostFromNotify(null)} onAddComment={handleAddComment} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} />}
     </div>
   );
 };

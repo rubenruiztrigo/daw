@@ -6,24 +6,39 @@ import { Notification } from '../types';
 interface NotificationsViewProps {
   notifications: Notification[];
   onMarkAllRead: () => void;
+  onNotificationClick?: (postId?: string) => void;
 }
 
-export const NotificationsView: React.FC<NotificationsViewProps> = ({ notifications, onMarkAllRead }) => {
-  const getIcon = (type: string) => {
+export const NotificationsView: React.FC<NotificationsViewProps> = ({ 
+  notifications, 
+  onMarkAllRead,
+  onNotificationClick 
+}) => {
+  const getIcon = (type: string, content: string = "") => {
+    const isNews = content.includes('noticia');
     switch (type) {
-      case 'like': return <Heart size={18} className="text-pink-500" fill="currentColor" />;
-      case 'follow': return <UserPlus size={18} className="text-blue-500" />;
-      case 'comment': return <MessageSquare size={18} className="text-emerald-500" />;
-      default: return <Bell size={18} className="text-gray-400" />;
+      case 'like': 
+        return <Heart size={18} className={isNews ? "text-orange-500" : "text-pink-500"} fill="currentColor" />;
+      case 'follow': 
+        return <UserPlus size={18} className="text-blue-500" />;
+      case 'comment': 
+        return <MessageSquare size={18} className={isNews ? "text-orange-600" : "text-emerald-500"} />;
+      default: 
+        return <Bell size={18} className="text-gray-400" />;
     }
   };
 
-  const getBgColor = (type: string) => {
+  const getBgColor = (type: string, content: string = "") => {
+    const isNews = content.includes('noticia');
     switch (type) {
-      case 'like': return 'bg-pink-50 dark:bg-pink-900/20';
-      case 'follow': return 'bg-blue-50 dark:bg-blue-900/20';
-      case 'comment': return 'bg-emerald-50 dark:bg-emerald-900/20';
-      default: return 'bg-gray-50 dark:bg-zinc-800';
+      case 'like': 
+        return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-pink-50 dark:bg-pink-900/20';
+      case 'follow': 
+        return 'bg-blue-50 dark:bg-blue-900/20';
+      case 'comment': 
+        return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
+      default: 
+        return 'bg-gray-50 dark:bg-zinc-800';
     }
   };
 
@@ -36,7 +51,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ notificati
         </div>
         <button 
           onClick={onMarkAllRead}
-          className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+          className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all shadow-sm"
         >
           <CheckCircle size={16} />
           <span>Marcar todo como leído</span>
@@ -54,15 +69,16 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ notificati
             {notifications.map((n) => (
               <div 
                 key={n.id} 
+                onClick={() => onNotificationClick?.(n.postId)}
                 className={`px-8 py-6 flex space-x-4 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative ${!n.isRead ? 'bg-blue-50/20 dark:bg-blue-900/10' : ''}`}
               >
                 {!n.isRead && (
-                  <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 )}
                 <div className="relative flex-shrink-0">
                   <img src={n.senderAvatar} className="w-12 h-12 rounded-2xl object-cover shadow-sm border border-gray-100 dark:border-zinc-800" alt="" />
-                  <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full border-2 border-white dark:border-zinc-800 ${getBgColor(n.type)} shadow-sm`}>
-                    {getIcon(n.type)}
+                  <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full border-2 border-white dark:border-zinc-800 ${getBgColor(n.type, n.content)} shadow-sm`}>
+                    {getIcon(n.type, n.content)}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">

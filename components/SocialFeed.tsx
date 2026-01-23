@@ -20,6 +20,9 @@ interface SocialFeedProps {
   followerUserIds?: Set<string>;
   onToggleFollow?: (userId: string) => void;
   users?: User[];
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  onSearchSubmit?: (query: string) => void;
 }
 
 type FeedTab = 'for-you' | 'following';
@@ -38,7 +41,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
   followedUserIds = new Set(),
   followerUserIds = new Set(),
   onToggleFollow,
-  users = []
+  users = [],
 }) => {
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const [content, setContent] = useState('');
@@ -107,20 +110,20 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-20">
-      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex rounded-b-2xl shadow-sm mb-2">
+      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex items-center justify-center gap-x-16 px-4 rounded-b-2xl shadow-sm mb-2 h-14">
         <button 
           onClick={() => setActiveTab('for-you')} 
-          className="flex-1 py-4 text-sm font-bold relative group transition-all"
+          className="px-4 py-4 text-sm font-bold relative group transition-all"
         >
           <span className={activeTab === 'for-you' ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-zinc-600'}>Para ti</span>
-          {activeTab === 'for-you' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-1 bg-blue-600 rounded-full" />}
+          {activeTab === 'for-you' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-full" />}
         </button>
         <button 
           onClick={() => setActiveTab('following')} 
-          className="flex-1 py-4 text-sm font-bold relative group transition-all"
+          className="px-4 py-4 text-sm font-bold relative group transition-all"
         >
           <span className={activeTab === 'following' ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-zinc-600'}>Siguiendo</span>
-          {activeTab === 'following' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-1 bg-blue-600 rounded-full" />}
+          {activeTab === 'following' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-full" />}
         </button>
       </div>
 
