@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, AlertCircle, Sun, Moon, Check, Zap, Users, MessageSquare, Lightbulb } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, AlertCircle, Sun, Moon, Check, UserCircle, Save, Calendar, Mail } from 'lucide-react';
 import { User } from '../types';
 
 interface SettingsViewProps {
@@ -12,9 +12,10 @@ interface SettingsViewProps {
   onThemeChange: (theme: 'light' | 'dark') => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onViewChange, theme, onThemeChange }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, onLogout, onViewChange, theme, onThemeChange }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showAccessibility, setShowAccessibility] = useState(false);
+  const [showPersonalData, setShowPersonalData] = useState(false);
 
   const SettingItem = ({ icon: Icon, label, color = "text-slate-600 dark:text-gray-400", onClick }: { icon: any, label: string, color?: string, onClick?: () => void }) => (
     <button 
@@ -47,6 +48,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onVi
       </div>
 
       <div className="shadow-sm border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
+        <SettingItem icon={UserCircle} label="Datos Personales" onClick={() => setShowPersonalData(true)} />
         <SettingItem icon={Wand2} label="Accesibilidad" onClick={() => setShowAccessibility(true)} />
         <SettingItem icon={Bell} label="Notificaciones" />
         <SettingItem icon={Lock} label="Privacidad y seguridad" />
@@ -68,6 +70,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onVi
       <div className="text-center pt-8">
         <p className="text-[10px] text-slate-300 dark:text-zinc-700 font-black uppercase tracking-[0.3em]">v2.5.0 build-2024</p>
       </div>
+
+      {showPersonalData && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPersonalData(false)}>
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
+            <PersonalDataForm user={user} onSave={(updated) => { onUpdateUser(updated); setShowPersonalData(false); }} onClose={() => setShowPersonalData(false)} />
+          </div>
+        </div>
+      )}
 
       {showAccessibility && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowAccessibility(false)}>
@@ -152,6 +162,114 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onLogout, onVi
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => void, onClose: () => void }> = ({ user, onSave, onClose }) => {
+  const [formData, setFormData] = useState({
+    name: user.name || '',
+    lastName: user.lastName || '',
+    gender: user.gender || 'Prefiero no decirlo',
+    birthDate: user.birthDate || '',
+    email: user.email || ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ ...user, ...formData });
+  };
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-center mb-2">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-blue-50 dark:bg-zinc-900 rounded-xl text-blue-600">
+            <UserCircle size={24} />
+          </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">Datos Personales</h3>
+        </div>
+        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20}/></button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre</label>
+            <input 
+              type="text" 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Apellidos</label>
+            <input 
+              type="text" 
+              value={formData.lastName} 
+              onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Género</label>
+          <select 
+            value={formData.gender} 
+            onChange={(e) => setFormData({...formData, gender: e.target.value as any})}
+            className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all appearance-none"
+          >
+            <option value="Hombre">Hombre</option>
+            <option value="Mujer">Mujer</option>
+            <option value="Prefiero no decirlo">Prefiero no decirlo</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
+          <div className="relative">
+            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+            <input 
+              type="date" 
+              value={formData.birthDate} 
+              onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+              className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+            <input 
+              type="email" 
+              value={formData.email} 
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="pt-4 flex space-x-3">
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
+          >
+            Cancelar
+          </button>
+          <button 
+            type="submit"
+            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
+          >
+            <Save size={18} />
+            <span>Guardar cambios</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

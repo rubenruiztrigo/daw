@@ -67,7 +67,7 @@ const App: React.FC = () => {
       fetchNotifications();
 
       const channel = supabase
-        .channel('app_realtime_v13')
+        .channel('app_realtime_v14')
         .on('postgres_changes', { event: '*', table: 'posts' }, () => fetchFeed())
         .on('postgres_changes', { event: '*', table: 'post_likes' }, () => fetchFeed())
         .on('postgres_changes', { event: '*', table: 'post_comments' }, () => fetchFeed())
@@ -97,6 +97,8 @@ const App: React.FC = () => {
         email: data.email,
         position: data.position || 'Personal Público',
         department: data.department || 'Administración',
+        jobCategory: data.job_category,
+        administrationType: data.administration_type,
         avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
         bio: data.bio || '',
         interests: data.interests || [],
@@ -105,7 +107,8 @@ const App: React.FC = () => {
         country: data.country,
         region: data.region,
         gender: data.gender,
-        birthDate: data.birth_date
+        birthDate: data.birth_date,
+        joinedDate: data.created_at
       });
     }
   };
@@ -129,7 +132,8 @@ const App: React.FC = () => {
         country: u.country,
         region: u.region,
         gender: u.gender,
-        birthDate: u.birth_date
+        birthDate: u.birth_date,
+        joinedDate: u.created_at
       })));
     }
   };
@@ -352,8 +356,15 @@ const App: React.FC = () => {
         name: updatedUser.name,
         last_name: updatedUser.lastName,
         username: updatedUser.username,
+        email: updatedUser.email,
+        gender: updatedUser.gender,
+        birth_date: updatedUser.birthDate,
         position: updatedUser.position,
         department: updatedUser.department,
+        job_category: updatedUser.jobCategory,
+        administration_type: updatedUser.administrationType,
+        country: updatedUser.country,
+        region: updatedUser.region,
         bio: updatedUser.bio,
         interests: updatedUser.interests,
         avatar: updatedUser.avatar,
@@ -406,7 +417,7 @@ const App: React.FC = () => {
       {currentView === 'messages' && <MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onNavigateToProfile={handleNavigateToProfile} externalActiveId={activeChatUserId} />}
       {currentView === 'notifications' && <NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} />}
       {currentView === 'search' && <SearchResultsView query={searchQuery} posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} />}
-      {currentView === 'settings' && <SettingsView user={currentUserData!} onUpdateUser={() => {}} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} />}
+      {currentView === 'settings' && <SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} />}
     </Layout>
     </div>
   );

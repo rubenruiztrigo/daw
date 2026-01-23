@@ -44,27 +44,38 @@ export const NewsCard: React.FC<NewsCardProps> = ({
               </div>
             )}
 
-            <div className="flex items-center space-x-6 text-slate-500" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center space-x-1 bg-slate-50 dark:bg-zinc-900 rounded-xl p-1 border border-slate-100 dark:border-zinc-800">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} 
-                  className={`p-2 rounded-xl transition-all flex items-center space-x-2 ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}
-                >
-                  <ChevronUp size={20} strokeWidth={3} />
-                  <span className="font-black text-slate-900 dark:text-white">{post.likes}</span>
-                </button>
-                <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1"></div>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} 
-                  className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}
-                >
-                  <ChevronDown size={20} strokeWidth={3} />
-                </button>
-              </div>
-              <button className="flex items-center space-x-2 hover:text-blue-600" onClick={() => setIsDetailsOpen(true)}>
+            <div className="flex items-center justify-between text-slate-500" onClick={(e) => e.stopPropagation()}>
+              <button 
+                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2" 
+                onClick={() => setIsDetailsOpen(true)}
+              >
                 <MessageSquare size={18} />
                 <span className="text-sm font-black">{post.comments}</span>
               </button>
+
+              {/* Controles de votación alineados a la derecha */}
+              <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-2xl p-1 border border-slate-100 dark:border-zinc-800 ml-auto">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} 
+                  className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}
+                  title="Votar positivo"
+                >
+                  <ChevronUp size={22} strokeWidth={3} />
+                </button>
+                
+                {/* El contador muestra la puntuación neta (likes_count en DB) */}
+                <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white'}`}>
+                  {post.likes}
+                </span>
+
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} 
+                  className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600 shadow-sm' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}
+                  title="Votar negativo"
+                >
+                  <ChevronDown size={22} strokeWidth={3} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
