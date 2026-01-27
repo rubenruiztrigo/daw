@@ -24,16 +24,16 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
     try {
       let query;
       if (type === 'followers') {
-        // Personas que siguen al usuario actual (userId)
+        // Personas que siguen al usuario (userId). Buscamos donde él es el "seguido".
         query = supabase
           .from('follows')
-          .select('follower:profiles!follower_id(*)')
-          .eq('following_id', userId);
+          .select('profile:profiles!follower_id(*)')
+          .eq('followed_id', userId);
       } else {
-        // Personas a las que el usuario actual (userId) sigue
+        // Personas a las que el usuario (userId) sigue. Buscamos donde él es el "seguidor".
         query = supabase
           .from('follows')
-          .select('following:profiles!following_id(*)')
+          .select('profile:profiles!followed_id(*)')
           .eq('follower_id', userId);
       }
 
@@ -42,7 +42,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
       if (error) throw error;
 
       const mappedUsers = data.map((item: any) => {
-        const profile = type === 'followers' ? item.follower : item.following;
+        const profile = item.profile;
         return {
           id: profile.id,
           name: profile.name,
@@ -74,22 +74,22 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
       onClick={onClose}
     >
       <div 
-        className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-300 border border-white"
+        className="bg-white dark:bg-[#0a0a0a] w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
+        <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+            <div className="p-2 bg-blue-50 dark:bg-zinc-900 rounded-xl text-blue-600">
               <Users size={20} />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">
               {type === 'followers' ? 'Seguidores' : 'Siguiendo'}
             </h3>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all"
+            className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"
           >
             <X size={20} />
           </button>
@@ -100,20 +100,20 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 space-y-3">
               <Loader2 className="animate-spin text-blue-600" size={32} />
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Cargando comunidad...</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sincronizando red...</p>
             </div>
           ) : users.length === 0 ? (
             <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="text-slate-200" size={32} />
+              <div className="w-16 h-16 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="text-slate-200 dark:text-zinc-800" size={32} />
               </div>
-              <p className="text-slate-300 italic font-bold">No hay usuarios en esta lista aún.</p>
+              <p className="text-slate-300 dark:text-zinc-600 italic font-bold">No hay usuarios en esta lista aún.</p>
             </div>
           ) : (
             users.map((person) => (
               <div 
                 key={person.id} 
-                className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all group cursor-pointer"
+                className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900 transition-all group cursor-pointer"
                 onClick={() => {
                   onNavigate(person.id);
                   onClose();
@@ -122,12 +122,12 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
                 <div className="flex items-center space-x-3">
                   <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
                   <div>
-                    <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
                   </div>
                 </div>
                 <button 
-                  className="p-2 bg-white border border-slate-100 text-slate-400 rounded-xl group-hover:text-blue-600 group-hover:border-blue-100 transition-all"
+                  className="p-2 bg-white dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 text-slate-400 rounded-xl group-hover:text-blue-600 group-hover:border-blue-100 transition-all"
                 >
                   <ArrowRight size={18} />
                 </button>
@@ -137,8 +137,8 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-center">
-            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Conectando el Sector Público</span>
+        <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-center">
+            <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional NovaGob</span>
         </div>
       </div>
     </div>

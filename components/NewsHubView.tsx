@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { Post, User } from '../types';
-import { ImageIcon, ChevronUp, Trophy, Sparkles } from 'lucide-react';
+import { ImageIcon, ChevronUp, Trophy, Clock, Sparkles } from 'lucide-react';
 import { NewsCard } from './NewsCard';
 
 interface NewsHubViewProps {
@@ -12,19 +12,17 @@ interface NewsHubViewProps {
   onAddComment: (postId: string, text: string) => void;
   onDeletePost?: (postId: string) => void;
   onNavigateToProfile?: (userId: string) => void;
+  onNavigateToPost?: (postId: string) => void;
   onSearchHashtag?: (tag: string) => void;
   currentUser: User;
   followedUserIds?: Set<string>;
   users?: User[];
-  searchQuery?: string;
-  onSearchChange?: (query: string) => void;
-  onSearchSubmit?: (query: string) => void;
 }
 
 type NewsTab = 'latest' | 'popular' | 'ranking';
 
 export const NewsHubView: React.FC<NewsHubViewProps> = ({ 
-  posts, user, onVote, onAddPost, onAddComment, onNavigateToProfile, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
+  posts, user, onVote, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
 }) => {
   const [activeTab, setActiveTab] = useState<NewsTab>('latest');
   const [newsContent, setNewsContent] = useState('');
@@ -33,8 +31,17 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
   const sortedNews = useMemo(() => {
     let filtered = [...posts];
+    
+    if (activeTab === 'latest') {
+      const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+      return filtered
+        .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    
     if (activeTab === 'ranking') return filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 10);
     if (activeTab === 'popular') return filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    
     return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [posts, activeTab]);
 
@@ -67,12 +74,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 setNewsContent('');
                 setSelectedImage(null);
               }} className="flex-1">
-                <textarea 
-                  value={newsContent}
-                  onChange={(e) => setNewsContent(e.target.value)}
-                  placeholder="Comparte una primicia institucional..."
-                  className="w-full bg-transparent border-none text-xl dark:text-white placeholder-gray-500 focus:ring-0 resize-none min-h-[60px]"
-                />
+                <textarea value={newsContent} onChange={(e) => setNewsContent(e.target.value)} placeholder="Comparte una primicia institucional..." className="w-full bg-transparent border-none text-xl dark:text-white placeholder-gray-500 focus:ring-0 resize-none min-h-[60px]" />
                 <div className="flex items-center justify-between mt-4">
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full"><ImageIcon size={20} /></button>
                   <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
@@ -89,19 +91,32 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             </div>
           </div>
           <div className="space-y-4">
-            {sortedNews.map(post => (
-              <NewsCard 
-                key={post.id} 
-                post={post} 
-                onVote={onVote} 
-                onAddComment={onAddComment} 
-                currentUser={currentUser} 
-                followedUserIds={followedUserIds} 
-                users={users} 
-                onNavigateToProfile={onNavigateToProfile} 
-                onSearchHashtag={onSearchHashtag} 
-              />
-            ))}
+            {sortedNews.length > 0 ? (
+              sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} />)
+            ) : (
+              <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
+                <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
+                  <Clock className="text-orange-500" size={32} />
+                </div>
+                <h4 className="text-slate-900 dark:text-white font-black mb-2">
+                  {activeTab === 'latest' ? "Sin noticias en las últimas 24h" : "No hay noticias populares"}
+                </h4>
+                <p className="text-slate-400 font-medium text-sm italic mb-6">
+                  {activeTab === 'latest' 
+                    ? "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!" 
+                    : "Participa con votos y comentarios para destacar las noticias más importantes."}
+                </p>
+                {activeTab === 'latest' && (
+                  <button 
+                    onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    className="inline-flex items-center space-x-2 px-6 py-3 bg-orange-600 text-white rounded-2xl font-black text-xs hover:bg-orange-700 transition-all shadow-lg shadow-orange-100 dark:shadow-none"
+                  >
+                    <Sparkles size={16} />
+                    <span>Publicar primicia</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -111,27 +126,10 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             <h3 className="text-xl font-black text-gray-900 dark:text-white">Líderes de opinión</h3>
           </div>
           {sortedNews.map((post, index) => (
-            <div 
-              key={post.id} 
-              className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center shadow-sm hover:shadow-md transition-all group"
-              onClick={() => onNavigateToProfile?.(post.authorId)}
-            >
-              <div className="w-16 flex-shrink-0">
-                <span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">
-                  {index + 1}
-                </span>
-              </div>
-              <div className="flex-1 flex items-center space-x-4 min-w-0">
-                <img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
-                <div className="flex-1 min-w-0 pr-4">
-                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span>
-                  <h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2">{post.content}</h4>
-                </div>
-              </div>
-              <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30">
-                <ChevronUp size={24} strokeWidth={4} />
-                <span className="text-lg font-black mt-1 leading-none">{post.likes}</span>
-              </div>
+            <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center shadow-sm hover:shadow-md transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
+              <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
+              <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
+              <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.likes}</span></div>
             </div>
           ))}
         </div>

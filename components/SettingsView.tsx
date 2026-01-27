@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign } from 'lucide-react';
 import { User } from '../types';
 
 interface SettingsViewProps {
@@ -170,7 +170,7 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
   const [formData, setFormData] = useState({
     name: user.name || '',
     lastName: user.lastName || '',
-    gender: user.gender || 'Prefiero no decirlo',
+    username: user.username || '',
     birthDate: user.birthDate || '',
     email: user.email || ''
   });
@@ -178,6 +178,11 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({ ...user, ...formData });
+  };
+
+  const handleUsernameChange = (val: string) => {
+    const clean = val.toLowerCase().replace(/\s/g, '').replace(/@/g, '');
+    setFormData({...formData, username: clean});
   };
 
   return (
@@ -215,41 +220,44 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Género</label>
-          <select 
-            value={formData.gender} 
-            onChange={(e) => setFormData({...formData, gender: e.target.value as any})}
-            className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all appearance-none"
-          >
-            <option value="Hombre">Hombre</option>
-            <option value="Mujer">Mujer</option>
-            <option value="Prefiero no decirlo">Prefiero no decirlo</option>
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
+          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre de usuario</label>
           <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+            <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input 
-              type="date" 
-              value={formData.birthDate} 
-              onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+              type="text" 
+              value={formData.username} 
+              onChange={(e) => handleUsernameChange(e.target.value)}
               className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+              placeholder="anagarcia"
             />
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
-          <div className="relative">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-            <input 
-              type="email" 
-              value={formData.email} 
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
+            <div className="relative">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                type="date" 
+                value={formData.birthDate} 
+                onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+                className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                type="email" 
+                value={formData.email} 
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+              />
+            </div>
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+
 import { ProjectDraft, Tender } from '../types';
 
 declare global {
@@ -71,5 +72,5 @@ export const generateProjectPDF = (tender: Tender, draft: ProjectDraft) => {
   addSection("4. Recursos Necesarios", draft.resources);
   addSection("5. Evaluación", draft.evaluation);
 
-  doc.save(`Proyecto_NovaHUB_${tender.id.substring(0, 8)}.pdf`);
+  doc.save(`Proyecto_RedSocial_${tender.id.substring(0, 8)}.pdf`);
 };

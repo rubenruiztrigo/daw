@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Save, Briefcase, Building, Globe, Pencil, AlignLeft } from 'lucide-react';
+import { X, Save, Briefcase, Building, Globe, Pencil, AlignLeft, AtSign } from 'lucide-react';
 import { User } from '../types';
 import { COUNTRIES, COUNTRIES_DATA } from '../constants';
 
@@ -21,13 +21,28 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
   ];
 
   const [formData, setFormData] = useState<User>({ ...user });
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (field: keyof User, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleUsernameChange = (val: string) => {
+    // Limpieza automática: minúsculas y sin espacios ni @
+    const cleanUsername = val.toLowerCase().replace(/\s/g, '').replace(/@/g, '');
+    handleChange('username', cleanUsername);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!formData.username || formData.username.length < 3) {
+      setError("El nombre de usuario debe tener al menos 3 caracteres.");
+      return;
+    }
+
+    // El objeto formData ya contiene la propiedad username gracias a handleUsernameChange y handleChange
     onSave(formData);
     onClose();
   };
@@ -55,13 +70,36 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide bg-slate-50/30 dark:bg-black/20">
-          {/* SECCIÓN 1: PERFIL PROFESIONAL */}
+          {error && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-2xl border border-red-100 dark:border-red-900/30 flex items-center space-x-2 animate-in slide-in-from-top-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* SECCIÓN 1: IDENTIDAD Y PERFIL */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2 mb-2">
-              <Briefcase size={14} className="text-blue-500" />
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Perfil Profesional</h4>
+              <AtSign size={14} className="text-blue-500" />
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Identidad en Red Social</h4>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Nombre de usuario</label>
+              <div className="relative">
+                <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="text" 
+                  value={formData.username || ''} 
+                  onChange={(e) => handleUsernameChange(e.target.value)} 
+                  placeholder="anagarcia" 
+                  className="w-full pl-12 pr-5 py-3 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all" 
+                />
+              </div>
+              <p className="text-[9px] text-slate-400 font-medium ml-1">Este identificador permite que otros colegas te encuentren fácilmente.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Perfil / Categoría</label>
                 <select value={formData.jobCategory} onChange={(e) => handleChange('jobCategory', e.target.value)} className="w-full px-5 py-3 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white appearance-none">

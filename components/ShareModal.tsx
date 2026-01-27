@@ -22,8 +22,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ post, user, onClose, onS
   const [sentTo, setSentTo] = useState<string[]>([]);
 
   const shareUrl = user 
-    ? `https://novasocial.app/u/${user.username || user.id}`
-    : `https://novasocial.app/p/${post?.id}`;
+    ? `https://redsocial.app/u/${user.username || user.id}`
+    : `https://redsocial.app/p/${post?.id}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);
@@ -145,7 +145,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ post, user, onClose, onS
 
         <div className="p-4 bg-slate-50/50 border-t border-slate-50 flex items-center justify-center space-x-2">
           <LinkIcon size={12} className="text-slate-300" />
-          <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">NovaSocial Secure Link</span>
+          <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">RedSocial Secure Link</span>
         </div>
       </div>
     </div>

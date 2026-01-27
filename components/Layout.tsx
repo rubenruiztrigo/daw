@@ -1,12 +1,12 @@
 
 import React, { useState } from 'react';
 import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar } from 'lucide-react';
-import { User as UserType, Notification } from '../types';
+import { User as UserType, Notification, AppView } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentView: string;
-  onViewChange: (view: any) => void;
+  currentView: AppView;
+  onViewChange: (view: AppView) => void;
   user: UserType;
   notifications?: Notification[];
   searchQuery: string;
@@ -41,7 +41,8 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const NavItem = ({ view, icon: Icon, label, badge }: { view: string, icon: any, label: string, badge?: number }) => {
+  const NavItem = ({ view, icon: Icon, label, badge }: { view: AppView, icon: any, label: string, badge?: number }) => {
+    // Corregido: Solo marcar activo si es la vista actual y, si es perfil, solo si es el propio
     const isActive = view === 'profile' 
       ? (currentView === 'profile' && isViewingOwnProfile)
       : currentView === view;
@@ -51,7 +52,7 @@ export const Layout: React.FC<LayoutProps> = ({
         onClick={() => onViewChange(view)}
         className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
           isActive 
-            ? 'bg-blue-600 text-white' 
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-900 hover:text-blue-600'
         }`}
       >
@@ -60,7 +61,7 @@ export const Layout: React.FC<LayoutProps> = ({
           <span className="font-semibold text-sm">{label}</span>
         </div>
         {badge !== undefined && badge > 0 && (
-          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isActive ? 'bg-white text-blue-600' : 'bg-red-50 text-white'}`}>
+          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isActive ? 'bg-white text-blue-600' : 'bg-red-500 text-white'}`}>
             {badge}
           </span>
         )}
@@ -75,7 +76,6 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] dark:bg-black flex transition-colors duration-200 font-sans">
-      {/* Sidebar Izquierdo */}
       <aside className="w-64 fixed inset-y-0 left-0 bg-white dark:bg-[#0a0a0a] border-r border-gray-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
         <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => onViewChange('feed')}>
           <Logo />
@@ -93,7 +93,7 @@ export const Layout: React.FC<LayoutProps> = ({
         
         <div className="mt-auto pt-6 border-t border-gray-100 dark:border-zinc-900 relative">
           {isProfileMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-4 w-full bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+            <div className="absolute bottom-full left-0 mb-4 w-full bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50 shadow-2xl">
               <button 
                 onClick={() => { onLogout?.(); setIsProfileMenuOpen(false); }}
                 className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-xl"
@@ -114,14 +114,13 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
             <div className="flex-1 text-left min-w-0">
               <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-none mb-1">{user.name}</p>
-              <p className="text-[10px] text-gray-400 font-bold uppercase truncate">{user.department}</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase truncate">{user.username ? `@${user.username}` : user.department}</p>
             </div>
             <MoreVertical size={16} className="text-gray-400" />
           </button>
         </div>
       </aside>
       
-      {/* Contenido Principal */}
       <div className="flex-1 md:ml-64 lg:mr-80 min-h-screen">
         <header className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-zinc-900 px-6 py-4 flex items-center justify-between sticky top-0 z-20 h-16 md:hidden">
           <div className="flex items-center space-x-3" onClick={() => onViewChange('feed')}>
@@ -129,11 +128,9 @@ export const Layout: React.FC<LayoutProps> = ({
             <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Red Social</span>
           </div>
         </header>
-        
         <main className="p-4 md:p-8">{children}</main>
       </div>
 
-      {/* Sidebar Derecho (Barra de Búsqueda) */}
       <aside className="w-80 fixed inset-y-0 right-0 bg-white dark:bg-[#0a0a0a] border-l border-gray-100 dark:border-zinc-900 hidden lg:flex flex-col p-6 z-30">
         <div className="sticky top-6">
           <form onSubmit={handleSearchFormSubmit} className="relative w-full">
@@ -146,31 +143,33 @@ export const Layout: React.FC<LayoutProps> = ({
               className="w-full pl-12 pr-4 py-3 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             />
           </form>
-
           <div className="mt-8 p-6 bg-gray-50 dark:bg-zinc-900/50 rounded-3xl border border-gray-100 dark:border-zinc-800">
-            <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest mb-4">¿Qué está pasando?</h3>
+            <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest mb-4">Tendencia</h3>
             <div className="space-y-4">
-              <div className="cursor-pointer group">
+              <button 
+                onClick={() => onSearchSubmit?.('IAAdministrativa')}
+                className="w-full text-left cursor-pointer group"
+              >
                 <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en Innovación</p>
                 <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#IAAdministrativa</p>
                 <p className="text-[10px] text-gray-400">1.240 posts</p>
-              </div>
-              <div className="cursor-pointer group">
+              </button>
+              <button 
+                onClick={() => onSearchSubmit?.('ContrataciónPublica')}
+                className="w-full text-left cursor-pointer group"
+              >
                 <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en España</p>
                 <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#ContrataciónPublica</p>
                 <p className="text-[10px] text-gray-400">856 posts</p>
-              </div>
+              </button>
             </div>
-            <button className="mt-6 text-xs font-bold text-blue-600 hover:underline">Mostrar más</button>
           </div>
         </div>
       </aside>
       
-      {/* Navegación Móvil */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-zinc-900 flex justify-around p-3 z-30">
         <button onClick={() => onViewChange('feed')} className={currentView === 'feed' ? 'text-blue-600' : 'text-gray-400'}><Home size={20}/></button>
         <button onClick={() => onViewChange('news')} className={currentView === 'news' ? 'text-blue-600' : 'text-gray-400'}><Newspaper size={20}/></button>
-        <button onClick={() => onViewChange('calendar')} className={currentView === 'calendar' ? 'text-blue-600' : 'text-gray-400'}><Calendar size={20}/></button>
         <button onClick={() => onViewChange('profile')} className={currentView === 'profile' && isViewingOwnProfile ? 'text-blue-600' : 'text-gray-400'}><User size={20}/></button>
       </nav>
     </div>

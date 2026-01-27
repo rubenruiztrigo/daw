@@ -15,7 +15,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   onNotificationClick 
 }) => {
   const getIcon = (type: string, content: string = "") => {
-    const isNews = content.includes('noticia');
+    const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
       case 'like': 
         return <Heart size={18} className={isNews ? "text-orange-500" : "text-pink-500"} fill="currentColor" />;
@@ -29,7 +29,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   };
 
   const getBgColor = (type: string, content: string = "") => {
-    const isNews = content.includes('noticia');
+    const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
       case 'like': 
         return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-pink-50 dark:bg-pink-900/20';

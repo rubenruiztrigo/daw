@@ -1,102 +1,40 @@
 
--- Extensiones necesarias
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Asegurar que la tabla profiles tenga los contadores inicializados
+UPDATE public.profiles SET followers_count = 0 WHERE followers_count IS NULL;
+UPDATE public.profiles SET following_count = 0 WHERE following_count IS NULL;
 
--- Tabla de perfiles
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id uuid NOT NULL PRIMARY KEY REFERENCES auth.users(id),
-  name text NOT NULL,
-  last_name text,
-  username text UNIQUE,
-  email text,
-  gender text,
-  birth_date date,
-  position text,
-  department text,
-  job_category text,
-  administration_type text,
-  country text DEFAULT 'España',
-  region text,
-  avatar text,
-  bio text,
-  interests text[] DEFAULT '{}',
-  followers_count integer DEFAULT 0,
-  following_count integer DEFAULT 0,
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now())
-);
+-- Función optimizada para sincronizar seguidores/seguidos
+CREATE OR REPLACE FUNCTION public.handle_follow_count_sync()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'INSERT') THEN
+    -- Incrementar seguidores del usuario seguido
+    UPDATE public.profiles 
+    SET followers_count = COALESCE(followers_count, 0) + 1 
+    WHERE id = NEW.followed_id;
+    
+    -- Incrementar seguidos del usuario que inicia la acción
+    UPDATE public.profiles 
+    SET following_count = COALESCE(following_count, 0) + 1 
+    WHERE id = NEW.follower_id;
+    
+  ELSIF (TG_OP = 'DELETE') THEN
+    -- Decrementar seguidores del usuario que deja de ser seguido
+    UPDATE public.profiles 
+    SET followers_count = GREATEST(0, COALESCE(followers_count, 0) - 1) 
+    WHERE id = OLD.followed_id;
+    
+    -- Decrementar seguidos del usuario que deja de seguir
+    UPDATE public.profiles 
+    SET following_count = GREATEST(0, COALESCE(following_count, 0) - 1) 
+    WHERE id = OLD.follower_id;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Tabla de Posts (Exclusiva para 'Inicio')
-CREATE TABLE IF NOT EXISTS public.posts (
-  id uuid NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-  author_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  content text NOT NULL,
-  image_url text,
-  doc_url text,
-  doc_name text,
-  tags text[] DEFAULT '{}',
-  likes_count integer DEFAULT 0,
-  comments_count integer DEFAULT 0,
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now())
-);
-
--- Tabla de News (Exclusiva para 'Noticias')
-CREATE TABLE IF NOT EXISTS public.news (
-  id uuid NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-  author_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  content text NOT NULL,
-  image_url text,
-  tags text[] DEFAULT '{}',
-  likes_count integer DEFAULT 0,
-  up_votes_count integer DEFAULT 0,
-  down_votes_count integer DEFAULT 0,
-  comments_count integer DEFAULT 0,
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now())
-);
-
--- Habilitar RLS (Row Level Security)
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.news ENABLE ROW LEVEL SECURITY;
-
--- Políticas para Profiles
-CREATE POLICY "Perfiles visibles para todos" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Usuarios pueden insertar su propio perfil" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Usuarios pueden actualizar su propio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
--- Políticas para Posts (Inicio)
-CREATE POLICY "Posts visibles para todos" ON public.posts FOR SELECT USING (true);
-CREATE POLICY "Usuarios autenticados pueden crear posts" ON public.posts FOR INSERT WITH CHECK (auth.uid() = author_id);
-CREATE POLICY "Usuarios pueden borrar sus propios posts" ON public.posts FOR DELETE USING (auth.uid() = author_id);
-
--- Políticas para News (Noticias)
-CREATE POLICY "Noticias visibles para todos" ON public.news FOR SELECT USING (true);
-CREATE POLICY "Usuarios autenticados pueden crear noticias" ON public.news FOR INSERT WITH CHECK (auth.uid() = author_id);
-
--- Tabla de Likes para Posts
-CREATE TABLE IF NOT EXISTS public.post_likes (
-  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  post_id uuid NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-  vote_type text DEFAULT 'up' CHECK (vote_type IN ('up', 'down')),
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  PRIMARY KEY (user_id, post_id)
-);
-
--- Tabla de Comentarios de Posts
-CREATE TABLE IF NOT EXISTS public.post_comments (
-  id uuid NOT NULL DEFAULT uuid_generate_v4() PRIMARY KEY,
-  post_id uuid NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-  author_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  text text NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now())
-);
-
--- Tabla de Seguimientos
-CREATE TABLE IF NOT EXISTS public.follows (
-  follower_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  followed_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
-  PRIMARY KEY (follower_id, followed_id)
-);
+-- Re-crear el trigger para asegurar limpieza
+DROP TRIGGER IF EXISTS on_follow_change ON public.follows;
+CREATE TRIGGER on_follow_change
+  AFTER INSERT OR DELETE ON public.follows
+  FOR EACH ROW EXECUTE FUNCTION public.handle_follow_count_sync();

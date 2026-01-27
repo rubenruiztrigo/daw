@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
-import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil } from 'lucide-react';
+import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
@@ -20,9 +20,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
   const [formData, setFormData] = useState<Partial<UserType>>({
     name: '',
     lastName: '',
+    username: '',
     email: '',
     password: '',
-    gender: 'Prefiero no decirlo',
     birthDate: '',
     jobCategory: '',
     administrationType: '',
@@ -48,6 +48,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     const finalJobCategory = formData.jobCategory === 'Otro/a' ? customJobInput : formData.jobCategory;
     const finalAdminType = formData.administrationType === 'Otra' ? customAdminInput : formData.administrationType;
 
+    // Validación extra de nombre de usuario
+    if (!formData.username || formData.username.includes('@') || formData.username.includes(' ')) {
+      setError("El nombre de usuario no puede contener espacios ni el símbolo @");
+      setLoading(false);
+      return;
+    }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: formData.email!,
       password: formData.password!,
@@ -55,6 +62,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
         data: {
           name: formData.name,
           last_name: formData.lastName,
+          username: formData.username,
           avatar_url: formData.avatar,
         }
       }
@@ -73,6 +81,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           id: data.user.id,
           name: formData.name,
           last_name: formData.lastName,
+          username: formData.username.toLowerCase(),
+          email: formData.email,
           position: formData.position,
           department: formData.department,
           job_category: finalJobCategory,
@@ -81,7 +91,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           region: formData.region,
           interests: formData.interests,
           birth_date: formData.birthDate,
-          gender: formData.gender,
           avatar: formData.avatar
         });
     }
@@ -92,7 +101,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
   const isStepValid = () => {
     switch (step) {
-      case 1: return !!(formData.name && formData.lastName && formData.email && formData.password && formData.gender && formData.birthDate);
+      case 1: return !!(formData.name && formData.lastName && formData.username && formData.email && formData.password && formData.birthDate);
       case 2: return formData.jobCategory === 'Otro/a' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
       case 4: return !!(formData.position && formData.department);
@@ -137,16 +146,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identidad de género</label>
-                  <select 
-                    value={formData.gender} 
-                    onChange={e => updateField('gender', e.target.value)} 
-                    className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
-                  >
-                    <option value="Hombre">Hombre</option>
-                    <option value="Mujer">Mujer</option>
-                    <option value="Prefiero no decirlo">Prefiero no decirlo</option>
-                  </select>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de usuario</label>
+                  <div className="relative">
+                    <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input type="text" value={formData.username} onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="anagarcia" />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de nacimiento</label>
@@ -286,7 +290,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">País</label>
+                  <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">País</label>
                   <select 
                     value={formData.country} 
                     onChange={e => { updateField('country', e.target.value); updateField('region', ''); }} 
@@ -296,7 +300,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Región / Comunidad</label>
+                  <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Región / Comunidad</label>
                   <select 
                     value={formData.region} 
                     onChange={e => updateField('region', e.target.value)} 

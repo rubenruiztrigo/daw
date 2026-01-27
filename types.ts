@@ -12,7 +12,6 @@ export interface User {
   username?: string;
   email?: string;
   password?: string;
-  gender?: 'Hombre' | 'Mujer' | 'Prefiero no decirlo';
   birthDate?: string;
   position: string;
   department: string;
@@ -23,6 +22,8 @@ export interface User {
   country?: string;
   region?: string;
   avatar: string;
+  banner?: string;
+  bannerColor?: string;
   bio: string;
   interests: string[];
   followers: number;
@@ -59,11 +60,13 @@ export interface Post {
   type: PostType;
   tags: string[];
   likes: number; 
+  reposts: number;
   upvotes?: number; 
   downvotes?: number; 
   comments: number;
   commentsList: Comment[];
   userLiked: boolean;
+  userReposted: boolean;
   userDownvoted?: boolean;
 }
 
@@ -78,7 +81,7 @@ export interface Message {
 }
 
 export interface Chat {
-  id: string; // ID del otro participante
+  id: string;
   participant: Partial<User>;
   messages: Message[];
   lastMessage: string;
@@ -87,7 +90,7 @@ export interface Chat {
 
 export interface Notification {
   id: string;
-  type: 'follow' | 'like' | 'comment' | 'mention';
+  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost';
   senderName: string;
   senderAvatar: string;
   content: string;
@@ -105,16 +108,7 @@ export interface ProjectDraft {
   evaluation: string;
 }
 
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  type: 'innovation' | 'training' | 'meeting' | 'congress';
-  date: Date;
-  location: string;
-  description: string;
-}
-
-// Added Tender interface to resolve missing exported member error
+// Fix: Added missing Tender interface used by tenderService.ts, pdfGenerator.ts, and TendersView.tsx
 export interface Tender {
   id: string;
   title: string;
@@ -125,3 +119,14 @@ export interface Tender {
   link: string;
   description?: string;
 }
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  type: 'innovation' | 'training' | 'meeting' | 'congress';
+  date: Date;
+  location: string;
+  description: string;
+}
+
+export type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar' | 'post-detail';
