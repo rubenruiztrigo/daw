@@ -1,57 +1,68 @@
 
 import { Tender } from '../types';
 
-export const fetchPublicTenders = async (query: string = ''): Promise<Tender[]> => {
-  // Simulación de respuesta de la Plataforma de Contratación
-  const mockTenders: Tender[] = [
+export const fetchPublicTenders = async (): Promise<Tender[]> => {
+  // Simulación de carga de datos de licitaciones públicas
+  return [
     {
-      id: 'EXP-2024-001',
-      title: 'Suministro e instalación de sistemas de IA para la gestión de tráfico urbano sostenible',
-      organization: 'Ayuntamiento de Madrid - Área de Medio Ambiente y Movilidad',
-      budget: '1.240.000,00 €',
-      status: 'Licitación',
-      deadline: '2024-06-15',
-      link: 'https://contrataciondelestado.es',
-      description: 'El objeto del contrato es la implantación de una plataforma basada en visión artificial para la optimización de flujos de tráfico en el nodo norte.'
+      id: 'LIC-2024-001',
+      title: 'Desarrollo de plataforma de Inteligencia Artificial para atención ciudadana',
+      organism: 'Ayuntamiento de Madrid - Área de Digitalización',
+      status: 'published',
+      budget: 120000.50,
+      type: 'service',
+      deadline: '2024-05-20',
+      description: 'Implementación de un sistema conversacional basado en LLMs para la resolución de dudas frecuentes y trámites administrativos básicos.',
+      link: '#',
+      region: 'Madrid'
     },
     {
-      id: 'EXP-2024-002',
-      title: 'Servicio de mantenimiento y soporte de la infraestructura de administración electrónica',
-      organization: 'Junta de Andalucía - Agencia Digital de Andalucía',
-      budget: '450.000,00 €',
-      status: 'Licitación',
-      deadline: '2024-05-30',
-      link: 'https://contrataciondelestado.es',
-      description: 'Soporte técnico 24x7 para los sistemas críticos de tramitación administrativa y sede electrónica de la Junta de Andalucía.'
+      id: 'LIC-2024-002',
+      title: 'Suministro de mobiliario ergonómico para oficinas sostenibles',
+      organism: 'Generalitat de Catalunya - Departamento de Infraestructuras',
+      status: 'evaluation',
+      budget: 45000.00,
+      type: 'supply',
+      deadline: '2024-04-15',
+      description: 'Adquisición de sillas y mesas regulables fabricadas con materiales reciclados para los nuevos centros administrativos.',
+      link: '#',
+      region: 'Cataluña'
     },
     {
-      id: 'EXP-2024-003',
-      title: 'Desarrollo de una plataforma de Big Data para la transparencia en el gasto público',
-      organization: 'Ministerio de Hacienda y Función Pública',
-      budget: '890.000,00 €',
-      status: 'Adjudicación',
-      deadline: '2024-04-10',
-      link: 'https://contrataciondelestado.es',
-      description: 'Creación de un lago de datos para la analítica avanzada de contratos menores y subvenciones estatales.'
+      id: 'LIC-2024-003',
+      title: 'Renovación de infraestructura de red fibra óptica en polígonos industriales',
+      organism: 'Diputación de Sevilla',
+      status: 'published',
+      budget: 850000.00,
+      type: 'works',
+      deadline: '2024-06-10',
+      description: 'Obra civil e instalación de cableado de alta velocidad para mejorar la competitividad de las PYMES en el entorno rural.',
+      link: '#',
+      region: 'Andalucía'
     },
     {
-      id: 'EXP-2024-004',
-      title: 'Obras de rehabilitación energética en edificios administrativos provinciales',
-      organization: 'Diputación de Barcelona',
-      budget: '2.100.000,00 €',
-      status: 'Licitación',
-      deadline: '2024-07-01',
-      link: 'https://contrataciondelestado.es',
-      description: 'Mejora de la envolvente térmica y sustitución de sistemas de climatización por aerotermia en 4 sedes administrativas.'
+      id: 'LIC-2024-004',
+      title: 'Mantenimiento preventivo de sistemas de climatización eficiente',
+      organism: 'Ministerio de Transición Ecológica',
+      status: 'awarded',
+      budget: 32000.00,
+      type: 'service',
+      deadline: '2024-03-01',
+      description: 'Contrato de mantenimiento para los edificios centrales enfocado en la reducción de la huella de carbono.',
+      link: '#',
+      region: 'Nacional'
+    },
+    {
+      id: 'LIC-2024-005',
+      title: 'Auditoría de ciberseguridad y protección de datos sensibles',
+      organism: 'Junta de Extremadura',
+      status: 'published',
+      budget: 58000.00,
+      type: 'service',
+      deadline: '2024-05-12',
+      description: 'Evaluación técnica de los sistemas críticos de la administración para asegurar el cumplimiento del Esquema Nacional de Seguridad.',
+      link: '#',
+      region: 'Extremadura'
     }
   ];
-
-  if (!query) return mockTenders;
-  
-  const normalizedQuery = query.toLowerCase();
-  return mockTenders.filter(t => 
-    t.title.toLowerCase().includes(normalizedQuery) || 
-    t.organization.toLowerCase().includes(normalizedQuery) ||
-    t.description?.toLowerCase().includes(normalizedQuery)
-  );
 };

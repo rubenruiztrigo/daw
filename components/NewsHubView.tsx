@@ -8,10 +8,12 @@ interface NewsHubViewProps {
   posts: Post[];
   user: User;
   onVote: (id: string, direction: 'up' | 'down') => void;
+  onRepost: (id: string) => void;
   onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string) => void;
   onAddComment: (postId: string, text: string) => void;
   onDeletePost?: (postId: string) => void;
   onNavigateToProfile?: (userId: string) => void;
+  // Fix: Removed duplicate onNavigateToPost identifiers
   onNavigateToPost?: (postId: string) => void;
   onSearchHashtag?: (tag: string) => void;
   currentUser: User;
@@ -22,7 +24,7 @@ interface NewsHubViewProps {
 type NewsTab = 'latest' | 'popular' | 'ranking';
 
 export const NewsHubView: React.FC<NewsHubViewProps> = ({ 
-  posts, user, onVote, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
+  posts, user, onVote, onRepost, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
 }) => {
   const [activeTab, setActiveTab] = useState<NewsTab>('latest');
   const [newsContent, setNewsContent] = useState('');
@@ -31,29 +33,35 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
   const sortedNews = useMemo(() => {
     let filtered = [...posts];
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
     
     if (activeTab === 'latest') {
-      const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
       return filtered
         .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
     
     if (activeTab === 'ranking') return filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 10);
-    if (activeTab === 'popular') return filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    
+    if (activeTab === 'popular') {
+      // Filtrar para mostrar solo noticias relevantes (por votos) publicadas en las últimas 24h
+      return filtered
+        .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
+        .sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    }
     
     return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [posts, activeTab]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-20">
-      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex items-center justify-center gap-x-10 px-4 rounded-b-2xl shadow-sm mb-2 h-14">
+      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex items-center justify-center gap-x-10 px-4 rounded-b-2xl mb-2 h-14">
         <button onClick={() => setActiveTab('latest')} className="px-4 py-4 text-sm font-bold relative group">
           <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Última hora</span>
           {activeTab === 'latest' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
         </button>
         <button onClick={() => setActiveTab('popular')} className="px-4 py-4 text-sm font-bold relative group">
-          <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Más relevante</span>
+          <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Más relevante (24h)</span>
           {activeTab === 'popular' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
         </button>
         <button onClick={() => setActiveTab('ranking')} className="px-4 py-4 text-sm font-bold relative group">
@@ -64,7 +72,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
       {activeTab !== 'ranking' ? (
         <>
-          <div className="bg-white dark:bg-[#111] p-5 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm">
+          <div className="bg-white dark:bg-[#111] p-5 rounded-2xl border border-gray-100 dark:border-zinc-800">
             <div className="flex space-x-4">
               <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
               <form onSubmit={(e) => {
@@ -85,32 +93,33 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                       reader.readAsDataURL(file);
                     }
                   }} />
-                  <button type="submit" className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm shadow-lg">Publicar</button>
+                  <button type="submit" className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm">Publicar</button>
                 </div>
               </form>
             </div>
           </div>
           <div className="space-y-4">
             {sortedNews.length > 0 ? (
-              sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} />)
+              sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} />)
             ) : (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
                 <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
                   <Clock className="text-orange-500" size={32} />
                 </div>
                 <h4 className="text-slate-900 dark:text-white font-black mb-2">
-                  {activeTab === 'latest' ? "Sin noticias en las últimas 24h" : "No hay noticias populares"}
+                  {activeTab === 'latest' ? "Sin noticias en las últimas 24h" : "No hay noticias relevantes hoy"}
                 </h4>
                 <p className="text-slate-400 font-medium text-sm italic mb-6">
                   {activeTab === 'latest' 
                     ? "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!" 
-                    : "Participa con votos y comentarios para destacar las noticias más importantes."}
+                    : "Parece que no hay noticias destacadas en las últimas 24 horas. ¡Sube tu aportación!"}
                 </p>
                 {activeTab === 'latest' && (
                   <button 
                     onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                    className="inline-flex items-center space-x-2 px-6 py-3 bg-orange-600 text-white rounded-2xl font-black text-xs hover:bg-orange-700 transition-all shadow-lg shadow-orange-100 dark:shadow-none"
+                    className="inline-flex items-center space-x-2 px-6 py-3 bg-orange-600 text-white rounded-2xl font-black text-xs hover:bg-orange-700 transition-all"
                   >
+                    {/* Fix: Changed invalid 'padding' tag to 'Sparkles' icon */}
                     <Sparkles size={16} />
                     <span>Publicar primicia</span>
                   </button>
@@ -126,7 +135,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             <h3 className="text-xl font-black text-gray-900 dark:text-white">Líderes de opinión</h3>
           </div>
           {sortedNews.map((post, index) => (
-            <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center shadow-sm hover:shadow-md transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
+            <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
               <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
               <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
               <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.likes}</span></div>

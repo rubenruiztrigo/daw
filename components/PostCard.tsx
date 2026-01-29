@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Post, User } from '../types';
-import { MessageSquare, Heart, Share2, MoreHorizontal, Trash2, Repeat } from 'lucide-react';
+import { MessageSquare, Heart, Share2, MoreHorizontal, Trash2, Repeat, Calendar, MapPin, ChevronRight, Clock, Link as LinkIcon } from 'lucide-react';
 import { UserInfoDropdown } from './UserInfoDropdown';
 import { timeAgo } from '../utils/stringUtils';
 
@@ -23,12 +23,14 @@ interface PostCardProps {
   onToggleFollow?: (userId: string) => void;
   users: User[];
   onPreviewImage?: (url: string) => void;
+  onViewCalendar?: () => void;
+  onNavigateToEvent?: (userId: string, eventId: string) => void;
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ 
   post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, 
   onSharePost, onNavigateToProfile, onNavigateToPost, onOpenShare, currentUser, 
-  followedUserIds, followerUserIds, onToggleFollow, users, onPreviewImage 
+  followedUserIds, followerUserIds, onToggleFollow, users, onPreviewImage, onViewCalendar, onNavigateToEvent
 }) => {
   const isNews = post.type === 'news';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -53,8 +55,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const renderContent = (content: string) => {
     if (!content) return null;
-    // Regex para hashtags (#...) y menciones (@...)
-    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+)/g);
+    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+|https?:\/\/[^\s]+)/g);
     return parts.map((part, i) => {
       if (part.startsWith('#')) {
         return (
@@ -80,6 +81,46 @@ export const PostCard: React.FC<PostCardProps> = ({
               if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
             }}
             className="text-blue-600 dark:text-blue-400 font-black hover:underline transition-all"
+          >
+            {part}
+          </button>
+        );
+      } else if (part.startsWith('http')) {
+        // Detección de enlace profundo a evento: .../u/[USER_ID]/e/[EVENT_ID]
+        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
+        
+        if (profileEventMatch && onNavigateToEvent) {
+          const [, userId, eventId] = profileEventMatch;
+          const eventOwner = users.find(u => u.id === userId);
+          const label = eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`;
+          
+          return (
+            <button
+              key={i}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateToEvent(userId, eventId);
+              }}
+              className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1"
+            >
+              <Calendar size={14} className="mr-1" />
+              <span>{label}</span>
+            </button>
+          );
+        }
+
+        return (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (part.includes('/event/')) {
+                onViewCalendar?.();
+              } else {
+                window.open(part, '_blank');
+              }
+            }}
+            className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-medium"
           >
             {part}
           </button>
@@ -124,6 +165,53 @@ export const PostCard: React.FC<PostCardProps> = ({
           {renderContent(post.content)}
         </div>
 
+        {post.linkedEvent && (
+          <div className="mt-2 mb-4 bg-gray-50 dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group/event">
+            <div className="p-4">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 bg-blue-600 text-white rounded-xl">
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 dark:text-white text-[15px] group-hover/event:text-blue-600 transition-colors">{post.linkedEvent.title}</h4>
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-zinc-800 px-2.5 py-1 rounded-full border border-gray-100 dark:border-zinc-700 flex items-center space-x-1.5">
+                  <Clock size={10} className="text-blue-500" />
+                  <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">{post.linkedEvent.event_time.substring(0, 5)}h</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="flex items-center text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                  <Calendar size={14} className="mr-2 text-slate-300" />
+                  <span>{new Date(post.linkedEvent.event_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</span>
+                </div>
+                <div className="flex items-center text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                  <MapPin size={14} className="mr-2 text-slate-300" />
+                  <span className="truncate">{post.linkedEvent.location}</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (onNavigateToEvent) {
+                    onNavigateToEvent(post.authorId, post.linkedEvent!.id);
+                  } else {
+                    onViewCalendar?.();
+                  }
+                }}
+                className="w-full flex items-center justify-center space-x-2 py-3 bg-white dark:bg-zinc-800 border-2 border-blue-50 dark:border-zinc-700 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all shadow-sm"
+              >
+                <span>Ver Detalles en Perfil</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {post.imageUrl && (
           <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
             <img src={post.imageUrl} alt="Content" className="w-full h-auto max-h-[500px] object-cover" />
@@ -147,17 +235,15 @@ export const PostCard: React.FC<PostCardProps> = ({
             <span className="text-sm font-medium">{post.comments}</span>
           </button>
 
-          {!isNews && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); onRepost(post.id); }}
-              className={`flex items-center space-x-2 transition-all group/btn ${post.userReposted ? 'text-emerald-500' : 'hover:text-emerald-500'}`}
-            >
-              <div className={`p-2 rounded-full transition-all ${post.userReposted ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'group-hover/btn:bg-emerald-50 dark:group-hover/btn:bg-emerald-900/20'}`}>
-                <Repeat size={18} className={post.userReposted ? 'scale-110' : ''} />
-              </div>
-              <span className={`text-sm font-medium ${post.userReposted ? 'font-black' : ''}`}>{post.reposts}</span>
-            </button>
-          )}
+          <button 
+            onClick={(e) => { e.stopPropagation(); onRepost(post.id); }}
+            className={`flex items-center space-x-2 transition-all group/btn ${post.userReposted ? 'text-emerald-500' : 'hover:text-emerald-500'}`}
+          >
+            <div className={`p-2 rounded-full transition-all ${post.userReposted ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'group-hover/btn:bg-emerald-50 dark:group-hover/btn:bg-emerald-900/20'}`}>
+              <Repeat size={18} className={post.userReposted ? 'scale-110' : ''} />
+            </div>
+            <span className={`text-sm font-medium ${post.userReposted ? 'font-black' : ''}`}>{post.reposts}</span>
+          </button>
           
           <button 
             onClick={(e) => { e.stopPropagation(); onOpenShare(post); }}

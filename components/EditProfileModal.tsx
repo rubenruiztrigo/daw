@@ -28,7 +28,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
   };
 
   const handleUsernameChange = (val: string) => {
-    // Limpieza automática: minúsculas y sin espacios ni @
     const cleanUsername = val.toLowerCase().replace(/\s/g, '').replace(/@/g, '');
     handleChange('username', cleanUsername);
   };
@@ -42,7 +41,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
       return;
     }
 
-    // El objeto formData ya contiene la propiedad username gracias a handleUsernameChange y handleChange
     onSave(formData);
     onClose();
   };
@@ -53,12 +51,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
       onClick={onClose}
     >
       <div 
-        className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
+        className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-lg">
+            <div className="p-2.5 bg-blue-600 text-white rounded-2xl">
               <Pencil size={20} />
             </div>
             <div>
@@ -77,7 +75,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
             </div>
           )}
 
-          {/* SECCIÓN 1: IDENTIDAD Y PERFIL */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2 mb-2">
               <AtSign size={14} className="text-blue-500" />
@@ -117,7 +114,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
             </div>
           </div>
 
-          {/* SECCIÓN 2: CARGO ACTUAL */}
           <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-zinc-900">
             <div className="flex items-center space-x-2 mb-2">
               <Building size={14} className="text-blue-500" />
@@ -135,7 +131,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
             </div>
           </div>
 
-          {/* SECCIÓN 3: UBICACIÓN */}
           <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-zinc-900">
             <div className="flex items-center space-x-2 mb-2">
               <Globe size={14} className="text-blue-500" />
@@ -158,7 +153,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
             </div>
           </div>
 
-          {/* SECCIÓN 4: BIOGRAFÍA */}
           <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-zinc-900">
             <div className="flex items-center space-x-2 mb-2">
               <AlignLeft size={14} className="text-blue-500" />
@@ -172,7 +166,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
 
           <div className="pt-4 flex space-x-4 sticky bottom-0 bg-transparent">
             <button type="button" onClick={onClose} className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">Cancelar</button>
-            <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"><Save size={18} /><span>Guardar Cambios</span></button>
+            <button type="submit" className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"><Save size={18} /><span>Guardar Cambios</span></button>
           </div>
         </form>
       </div>

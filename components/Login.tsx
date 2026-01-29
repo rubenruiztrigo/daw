@@ -9,36 +9,51 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
-  const [identifier, setIdentifier] = useState(''); // Puede ser email o username
+  const [identifier, setIdentifier] = useState(''); 
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   
-  // Estados para el flujo de "He olvidado mi contraseña"
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [isRecoverySent, setIsRecoverySent] = useState(false);
 
-  // Clave para el almacenamiento local
   const STORAGE_KEY = 'remembered_identifier';
 
   useEffect(() => {
-    // Cargar el identificador guardado al montar el componente
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (savedId) {
       setIdentifier(savedId);
       setRememberMe(true);
+      fetchDisplayName(savedId);
     }
   }, []);
+
+  const fetchDisplayName = async (id: string) => {
+    try {
+      const isEmail = id.includes('@');
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq(isEmail ? 'email' : 'username', id.toLowerCase())
+        .single();
+      
+      if (!profileError && data?.name) {
+        setDisplayName(data.name);
+      }
+    } catch (err) {
+      console.error("Error fetching display name:", err);
+    }
+  };
 
   const handleToggleRemember = () => {
     const nextValue = !rememberMe;
     setRememberMe(nextValue);
-    
-    // Si el usuario desactiva la opción, limpiamos el almacenamiento inmediatamente
     if (!nextValue) {
       localStorage.removeItem(STORAGE_KEY);
+      setDisplayName(null);
     }
   };
 
@@ -49,17 +64,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
     let emailToUse = identifier.trim();
 
-    // Lógica para permitir nombre de usuario:
-    // Si no contiene '@', asumimos que es un username y buscamos su email en la tabla profiles
+    // Login por username: buscar el email asociado
     if (!emailToUse.includes('@')) {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('email')
         .eq('username', emailToUse.toLowerCase())
-        .single();
+        .maybeSingle();
 
       if (profileError || !profile?.email) {
-        setError('No se encontró ningún usuario con ese nombre.');
+        setError('El nombre de usuario no existe o no tiene un email asociado.');
         setLoading(false);
         return;
       }
@@ -72,10 +86,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     });
 
     if (loginError) {
-      setError("Credenciales incorrectas. Por favor, revisa tus datos.");
+      setError("Credenciales incorrectas. Comprueba tu contraseña.");
       setLoading(false);
     } else {
-      // Si el login es exitoso y 'Recordar' está activo, guardamos el identificador
       if (rememberMe) {
         localStorage.setItem(STORAGE_KEY, identifier);
       } else {
@@ -103,6 +116,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     }
   };
 
+  const getWelcomeMessage = () => {
+    const savedId = localStorage.getItem(STORAGE_KEY);
+    if (savedId && rememberMe && identifier === savedId && displayName) {
+      return `Te damos la bienvenida ${displayName}`;
+    }
+    return "Te damos la bienvenida";
+  };
+
   if (isForgotPassword) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
@@ -122,7 +143,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                   <Lock size={32} />
                 </div>
                 <h2 className="text-3xl font-black text-gray-900 dark:text-white">Recuperar cuenta</h2>
-                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Introduce tu correo institucional para recibir un enlace de restablecimiento.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Introduce tu correo institucional.</p>
               </div>
 
               <form onSubmit={handleForgotPassword} className="space-y-6">
@@ -163,7 +184,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               </div>
               <div className="space-y-2">
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Correo enviado</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Hemos enviado las instrucciones a <span className="text-blue-600 font-black">{recoveryEmail}</span>. Por favor, revisa tu bandeja de entrada.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Instrucciones enviadas a <span className="text-blue-600 font-black">{recoveryEmail}</span>.</p>
               </div>
               <button 
                 onClick={() => setIsForgotPassword(false)}
@@ -185,8 +206,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
           <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
             <ShieldCheck size={32} />
           </div>
-          <h2 className="text-3xl font-black text-gray-900 dark:text-white">Te damos la bienvenida</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Acceso exclusivo para personal verificado de la administración pública.</p>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white leading-tight">
+            {getWelcomeMessage()}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Acceso para personal de la administración pública.</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -204,7 +227,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                 <input 
                   type="text" 
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setIdentifier(val);
+                    if (val !== localStorage.getItem(STORAGE_KEY)) {
+                      setDisplayName(null);
+                    }
+                  }}
                   placeholder="Ej. anagarcia o ana@gob.es"
                   required
                   className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
@@ -240,11 +269,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               </button>
               
               <button 
-                type="button"
+                type="button" 
                 onClick={() => setIsForgotPassword(true)}
                 className="text-xs font-bold text-blue-600 hover:underline"
               >
-                He olvidado mi contraseña
+                ¿Olvidaste tu contraseña?
               </button>
             </div>
           </div>

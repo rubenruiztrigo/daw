@@ -40,7 +40,6 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
     } else {
       setSuccess(true);
       setLoading(false);
-      // Pequeña pausa para mostrar el éxito antes de volver al login
       setTimeout(() => {
         onComplete();
       }, 2000);
@@ -49,7 +48,7 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] shadow-2xl p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
+      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
         
         <div className="text-center space-y-3">
           <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
@@ -113,7 +112,7 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
             <button
               type="submit"
               disabled={loading || !newPassword || !confirmPassword}
-              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
+              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={20} />

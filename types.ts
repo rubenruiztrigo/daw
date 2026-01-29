@@ -1,4 +1,25 @@
 
+export interface CalendarEvent {
+  id: string;
+  creator_id: string;
+  title: string;
+  type: 'physical' | 'online_course' | 'meeting';
+  event_date: string;
+  event_time: string;
+  location: string;
+  description: string;
+  attendees?: number;
+}
+
+export interface ProjectDraft {
+  introduction: string;
+  objectives: string;
+  methodology: string;
+  resources: string;
+  evaluation: string;
+  coverImage?: string;
+}
+
 export interface Badge {
   id: string;
   label: string;
@@ -32,15 +53,31 @@ export interface User {
   joinedDate?: string;
 }
 
+export interface CommentReply {
+  id: string;
+  commentId: string;
+  parentReplyId?: string;
+  authorId: string;
+  authorName: string;
+  authorUsername?: string;
+  authorAvatar: string;
+  text: string;
+  timestamp: string;
+  likes?: number;
+  replies?: CommentReply[];
+}
+
 export interface Comment {
   id: string;
   authorId?: string;
   authorName: string;
+  authorUsername?: string;
   authorAvatar: string;
   text: string;
   timestamp: string;
   likes?: number;
   userLiked?: boolean;
+  replies?: CommentReply[];
 }
 
 export type PostType = 'post' | 'news';
@@ -68,6 +105,8 @@ export interface Post {
   userLiked: boolean;
   userReposted: boolean;
   userDownvoted?: boolean;
+  linkedEventId?: string;
+  linkedEvent?: CalendarEvent;
 }
 
 export interface Message {
@@ -99,34 +138,18 @@ export interface Notification {
   postId?: string;
 }
 
-export interface ProjectDraft {
-  coverImage?: string;
-  introduction: string;
-  objectives: string;
-  methodology: string;
-  resources: string;
-  evaluation: string;
-}
-
-// Fix: Added missing Tender interface used by tenderService.ts, pdfGenerator.ts, and TendersView.tsx
+// Fix: Added missing Tender interface used by tenderService.ts, TendersView.tsx and TenderCard.tsx
 export interface Tender {
   id: string;
   title: string;
-  organization: string;
-  budget: string;
-  status: string;
+  organism: string;
+  status: 'published' | 'evaluation' | 'awarded' | 'closed';
+  budget: number;
+  type: 'service' | 'supply' | 'works';
   deadline: string;
-  link: string;
-  description?: string;
-}
-
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  type: 'innovation' | 'training' | 'meeting' | 'congress';
-  date: Date;
-  location: string;
   description: string;
+  link: string;
+  region: string;
 }
 
 export type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar' | 'post-detail';

@@ -37,10 +37,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
       onClick={onClose}
     >
       <div 
-        className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border border-white"
+        className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300 border border-white"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
@@ -59,7 +58,6 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
           </button>
         </div>
 
-        {/* Search */}
         <div className="px-8 pt-6">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
@@ -73,7 +71,6 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
           </div>
         </div>
 
-        {/* Interests Grid */}
         <div className="flex-1 overflow-y-auto p-8 pt-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filteredInterests.map(interest => {
@@ -84,7 +81,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
                   onClick={() => toggleInterest(interest)}
                   className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all group ${
                     isSelected 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100' 
+                      ? 'bg-blue-600 border-blue-600 text-white' 
                       : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'
                   }`}
                 >
@@ -102,7 +99,6 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
           </div>
         </div>
 
-        {/* Footer */}
         <div className="p-8 border-t border-slate-50 flex space-x-3 bg-white">
           <button 
             onClick={onClose}
@@ -112,7 +108,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
           </button>
           <button 
             onClick={handleSave}
-            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
+            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
           >
             <Save size={18} />
             <span>Guardar Preferencias</span>

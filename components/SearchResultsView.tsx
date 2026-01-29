@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { Post, User } from '../types';
-// Added MessageCircle to the imports from lucide-react
 import { Search, ArrowLeft, Users, Zap, Hash, MessageSquare, Heart, ChevronUp, ChevronDown, TrendingUp, Share2, Filter, Check, Newspaper, FileText, UserPlus, UserMinus, MoreHorizontal, Trash2, X, MessageCircle, Repeat } from 'lucide-react';
 import { ShareModal } from './ShareModal';
 import { UserInfoDropdown } from './UserInfoDropdown';
@@ -26,12 +25,13 @@ interface SearchResultsViewProps {
   followedUserIds?: Set<string>;
   followerUserIds?: Set<string>;
   onToggleFollow?: (userId: string) => void;
+  onNavigateToEvent?: (userId: string, eventId: string) => void;
 }
 
 type SearchTab = 'featured' | 'people' | 'hashtags';
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ 
-  query, posts, users, onLike, onVote, onRepost, onAddComment, onDeletePost, onViewChange, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow
+  query, posts, users, onLike, onVote, onRepost, onAddComment, onDeletePost, onViewChange, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent
 }) => {
   const [activeTab, setActiveTab] = useState<SearchTab>('featured');
   const [localQuery, setLocalQuery] = useState(query);
@@ -89,7 +89,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         {activeTab === 'featured' && (resultsPosts.length === 0 ? (
           <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800"><Zap className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} /><p className="text-gray-400 dark:text-zinc-600 font-bold italic">No hay publicaciones para esta búsqueda.</p></div>
         ) : (
-          resultsPosts.map(post => <SimpleResultCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onSharePost={onSharePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} currentUser={currentUser} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} />)
+          resultsPosts.map(post => <SimpleResultCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onSharePost={onSharePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} currentUser={currentUser} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} onNavigateToEvent={onNavigateToEvent} />)
         ))}
         {activeTab === 'people' && (peopleResults.length === 0 ? (
           <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800"><Users className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} /><p className="text-gray-400 dark:text-zinc-600 font-bold italic">No se han encontrado colegas.</p></div>
@@ -122,7 +122,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   );
 };
 
-const SimpleResultCard: React.FC<{ post: Post, onLike: (id: string) => void, onVote: (id: string, dir: 'up' | 'down') => void, onRepost: (id: string) => void, onAddComment: (postId: string, text: string) => void, onDeletePost?: (id: string) => void, onSearchHashtag?: (tag: string) => void, onSharePost?: (postId: string, participant: any) => void, onNavigateToProfile?: (userId: string) => void, onNavigateToPost?: (postId: string) => void, onPreviewImage?: (url: string) => void, currentUser: User, followedUserIds: Set<string>, followerUserIds: Set<string>, onToggleFollow?: (userId: string) => void, users: User[] }> = ({ post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds, followerUserIds, onToggleFollow, users }) => {
+const SimpleResultCard: React.FC<{ post: Post, onLike: (id: string) => void, onVote: (id: string, dir: 'up' | 'down') => void, onRepost: (id: string) => void, onAddComment: (postId: string, text: string) => void, onDeletePost?: (id: string) => void, onSearchHashtag?: (tag: string) => void, onSharePost?: (postId: string, participant: any) => void, onNavigateToProfile?: (userId: string) => void, onNavigateToPost?: (postId: string) => void, onPreviewImage?: (url: string) => void, currentUser: User, followedUserIds: Set<string>, followerUserIds: Set<string>, onToggleFollow?: (userId: string) => void, users: User[], onNavigateToEvent?: (userId: string, eventId: string) => void }> = ({ post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds, followerUserIds, onToggleFollow, users, onNavigateToEvent }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
-import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign } from 'lucide-react';
+import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
@@ -10,12 +10,137 @@ interface OnboardingProps {
   onCancel: () => void;
 }
 
+const PrivacyPolicyContent = () => (
+  <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
+    <div className="flex items-center space-x-2 text-slate-900 mb-4 border-b pb-4">
+      <FileText size={20} className="text-blue-600" />
+      <h4 className="font-black uppercase tracking-widest text-lg">POLÍTICA DE PRIVACIDAD</h4>
+    </div>
+    
+    <p className="font-bold text-slate-800">Red Social</p>
+
+    <p>
+      En cumplimiento de lo dispuesto en el Reglamento (UE) 2016/679 del Parlamento Europeo y del Consejo, de 27 de abril de 2016 (RGPD), así como en la normativa nacional aplicable en materia de protección de datos personales, se informa a los usuarios de la red social privada Red Social sobre el tratamiento de sus datos personales.
+    </p>
+
+    <p>
+      La protección de la privacidad, la seguridad de la información y la confidencialidad de los datos son principios fundamentales de nuestra organización.
+    </p>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">1. Responsable del tratamiento</h5>
+      <p>El responsable del tratamiento de los datos personales es la empresa titular de Red Social, quien determina los fines y medios del tratamiento, y actúa conforme a los principios de licitud, lealtad, transparencia, minimización de datos y seguridad.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">2. Ámbito y naturaleza de la plataforma</h5>
+      <p>Red Social es una red social privada, corporativa y de acceso restringido, dirigida exclusivamente a profesionales, directivos y altos cargos vinculados al ámbito de la administración pública, la innovación y sectores afines. El acceso está sujeto a autorización expresa.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">3. Datos personales objeto de tratamiento</h5>
+      <p>De conformidad con el principio de minimización de datos (art. 5.1.c RGPD), únicamente se tratan los siguientes datos personales:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Dirección de correo electrónico profesional del usuario.</li>
+      </ul>
+      <p className="mt-2 text-xs italic">No se recaban datos especialmente protegidos ni información personal adicional.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">4. Base legal del tratamiento</h5>
+      <p>El tratamiento de los datos personales se fundamenta en:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>El consentimiento del interesado (art. 6.1.a RGPD), otorgado en el momento del registro.</li>
+        <li>La ejecución de un servicio solicitado por el usuario (art. 6.1.b RGPD).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">5. Finalidad del tratamiento</h5>
+      <p>Los datos personales serán tratados exclusivamente para las siguientes finalidades legítimas:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Gestión del alta, autenticación y acceso a la plataforma.</li>
+        <li>Garantizar la seguridad y el correcto funcionamiento de la red social.</li>
+        <li>Facilitar la interacción profesional dentro de la comunidad privada.</li>
+        <li>Prevención de accesos no autorizados y usos indebidos del sistema.</li>
+      </ul>
+      <p className="mt-2 font-bold text-slate-800">En ningún caso los datos serán utilizados con fines comerciales, publicitarios o de perfilado.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">6. Seguridad y confidencialidad de las credenciales</h5>
+      <p>Las contraseñas de los usuarios:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Se almacenan mediante sistemas de cifrado robustos y no reversibles.</li>
+        <li>No son accesibles ni visibles para el personal de la empresa.</li>
+        <li>Se aplican medidas técnicas y organizativas apropiadas conforme al artículo 32 del RGPD para garantizar un nivel de seguridad adecuado al riesgo.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">7. Conservación de los datos</h5>
+      <p>Los datos personales se conservarán:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Mientras la cuenta del usuario permanezca activa.</li>
+        <li>Durante el tiempo estrictamente necesario para cumplir con las finalidades del tratamiento.</li>
+      </ul>
+      <p className="mt-2">Una vez solicitada la baja, los datos serán eliminados de forma segura, salvo obligación legal de conservación.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">8. Destinatarios y cesión de datos</h5>
+      <p>No se cederán datos personales a terceros, salvo en los siguientes supuestos:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Cumplimiento de una obligación legal.</li>
+        <li>Requerimiento por parte de autoridades públicas o judiciales competentes.</li>
+      </ul>
+      <p className="mt-2 font-medium">No se realizan transferencias internacionales de datos.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">9. Derechos de los interesados</h5>
+      <p>Los usuarios podrán ejercer, en cualquier momento, los derechos reconocidos por el RGPD:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Derecho de acceso (art. 15 RGPD).</li>
+        <li>Derecho de rectificación (art. 16 RGPD).</li>
+        <li>Derecho de supresión (“derecho al olvido”) (art. 17 RGPD).</li>
+        <li>Derecho a la limitación del tratamiento (art. 18 RGPD).</li>
+        <li>Derecho de oposición (art. 21 RGPD).</li>
+        <li>Derecho a la portabilidad de los datos, cuando proceda (art. 20 RGPD).</li>
+      </ul>
+      <p className="mt-2">Las solicitudes podrán dirigirse al responsable del tratamiento a través de los canales habilitados por la empresa.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">10. Derecho a reclamar ante la autoridad de control</h5>
+      <p>El usuario tiene derecho a presentar una reclamación ante la autoridad de control competente en materia de protección de datos, si considera que el tratamiento de sus datos personales infringe la normativa vigente.</p>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">11. Obligaciones y responsabilidad del usuario</h5>
+      <p>El usuario se compromete a:</p>
+      <ul className="list-disc ml-5 mt-2">
+        <li>Utilizar la plataforma de forma profesional, ética y conforme a su finalidad.</li>
+        <li>Custodiar adecuadamente sus credenciales de acceso.</li>
+        <li>Respetar la confidencialidad de la información compartida dentro de la red.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h5 className="font-bold text-slate-900 mb-2">12. Modificaciones de la política de privacidad</h5>
+      <p>La presente Política de Privacidad podrá actualizarse para adaptarse a cambios normativos o mejoras en la plataforma. Las modificaciones serán comunicadas a los usuarios de forma adecuada.</p>
+    </section>
+  </div>
+);
+
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customJobInput, setCustomJobInput] = useState('');
   const [customAdminInput, setCustomAdminInput] = useState('');
+  const [privacyAccepted, setPrivacyAccepted] = useState(true);
+  const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
   
   const [formData, setFormData] = useState<Partial<UserType>>({
     name: '',
@@ -48,7 +173,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     const finalJobCategory = formData.jobCategory === 'Otro/a' ? customJobInput : formData.jobCategory;
     const finalAdminType = formData.administrationType === 'Otra' ? customAdminInput : formData.administrationType;
 
-    // Validación extra de nombre de usuario
     if (!formData.username || formData.username.includes('@') || formData.username.includes(' ')) {
       setError("El nombre de usuario no puede contener espacios ni el símbolo @");
       setLoading(false);
@@ -101,6 +225,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
   const isStepValid = () => {
     switch (step) {
+      case 0: return privacyAccepted;
       case 1: return !!(formData.name && formData.lastName && formData.username && formData.email && formData.password && formData.birthDate);
       case 2: return formData.jobCategory === 'Otro/a' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
@@ -113,9 +238,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-white rounded-[40px] shadow-2xl p-8 md:p-12 relative overflow-hidden border border-slate-100">
+      <div className="max-w-2xl w-full bg-white rounded-[40px] p-8 md:p-12 relative overflow-hidden border border-slate-100">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
-          <div className="h-full bg-blue-600 transition-all duration-700 ease-in-out" style={{ width: `${(step / 6) * 100}%` }} />
+          <div className="h-full bg-blue-600 transition-all duration-700 ease-in-out" style={{ width: `${((step - 1) / 5) * 100}%` }} />
         </div>
 
         {error && (
@@ -125,7 +250,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           </div>
         )}
 
-        <div className="mb-10 min-h-[480px] flex flex-col justify-center">
+        <div className="mb-10 min-h-[520px] flex flex-col justify-center">
           {step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center mb-8">
@@ -172,6 +297,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                   <input type="password" value={formData.password} onChange={e => updateField('password', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Mínimo 8 caracteres" />
                 </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <button 
+                  onClick={() => setShowPolicyOverlay(true)}
+                  className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors underline decoration-slate-200 underline-offset-4"
+                >
+                  Protección y políticas de privacidad
+                </button>
               </div>
             </div>
           )}
@@ -268,7 +402,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo / Puesto</label>
                   <div className="relative">
                     <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                    <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ej. Responsable de Contratación" />
+                    <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ej. Responsable de Innovación" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -332,7 +466,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                         const current = formData.interests || [];
                         updateField('interests', isSelected ? current.filter(i => i !== topic) : [...current, topic]);
                       }} 
-                      className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-500 hover:border-blue-100'}`}
+                      className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:border-blue-100'}`}
                     >
                       {topic}
                     </button>
@@ -346,7 +480,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
         <div className="flex gap-4">
           <button 
             onClick={step === 1 ? onCancel : prevStep} 
-            className="flex-1 py-4 rounded-[1.5rem] bg-slate-50 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-100 transition-all"
+            className="flex-1 py-4 rounded-[1.5rem] bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
           >
             <ArrowLeft size={20} />
             <span>{step === 1 ? 'Cancelar' : 'Atrás'}</span>
@@ -354,7 +488,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           <button 
             onClick={() => step < 6 ? nextStep() : handleFinalize()} 
             disabled={!isStepValid() || loading} 
-            className="flex-[2] py-4 rounded-[1.5rem] bg-blue-600 text-white font-black shadow-2xl shadow-blue-200 flex items-center justify-center space-x-2 hover:bg-blue-700 transition-all disabled:opacity-30 transform active:scale-95"
+            className="flex-[2] py-4 rounded-[1.5rem] bg-blue-600 text-white font-black flex items-center justify-center space-x-2 hover:bg-blue-700 transition-all disabled:opacity-30 transform active:scale-95"
           >
             {loading ? (
               <Loader2 className="animate-spin" size={24} />
@@ -367,6 +501,44 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           </button>
         </div>
       </div>
+
+      {showPolicyOverlay && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+          onClick={() => setShowPolicyOverlay(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 border border-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                  <ShieldCheck size={20} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">Política de Privacidad</h3>
+              </div>
+              <button 
+                onClick={() => setShowPolicyOverlay(false)}
+                className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
+              <PrivacyPolicyContent />
+            </div>
+            <div className="p-6 bg-slate-50 flex justify-center">
+              <button 
+                onClick={() => setShowPolicyOverlay(false)}
+                className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
+              >
+                He leído y acepto los términos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

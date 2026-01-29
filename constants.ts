@@ -37,6 +37,58 @@ export const PUBLIC_INTERESTS = [
   'Laboratorios de Innovación'
 ];
 
+// Eventos dinámicos para que el filtro de "próximos 15 días" siempre tenga datos
+const now = new Date();
+const dayInMs = 24 * 60 * 60 * 1000;
+
+export const CALENDAR_EVENTS = [
+  { 
+    id: 'e1', 
+    title: 'Congreso Red Social de NovaGob 2024', 
+    type: 'congress' as const, 
+    date: new Date(now.getTime() + 2 * dayInMs), 
+    location: 'Sede Central / Online', 
+    attendees: 450, 
+    description: 'El mayor evento de innovación pública en iberoamérica.' 
+  },
+  { 
+    id: 'e2', 
+    title: 'Webinar: IA en Gobiernos Locales', 
+    type: 'training' as const, 
+    date: new Date(now.getTime() + 5 * dayInMs), 
+    location: 'Zoom', 
+    attendees: 120, 
+    description: 'Sesión práctica sobre implementación de LLMs en ayuntamientos.' 
+  },
+  { 
+    id: 'e3', 
+    title: 'Reunión de Laboratorios', 
+    type: 'innovation' as const, 
+    date: new Date(now.getTime() + 10 * dayInMs), 
+    location: 'Sala 3B', 
+    attendees: 15, 
+    description: 'Coordinación trimestral de laboratorios de innovación ciudadana.' 
+  },
+  { 
+    id: 'e4', 
+    title: 'Taller de Transparencia Activa', 
+    type: 'training' as const, 
+    date: new Date(now.getTime() + 14 * dayInMs), 
+    location: 'Aula Virtual', 
+    attendees: 85, 
+    description: 'Mejora de los portales de datos abiertos institucionales.' 
+  },
+  { 
+    id: 'e5', 
+    title: 'Hackathon Sector Público', 
+    type: 'innovation' as const, 
+    date: new Date(now.getTime() + 25 * dayInMs), 
+    location: 'Madrid Tech Lab', 
+    attendees: 200, 
+    description: 'Resolviendo retos reales con tecnología abierta.' 
+  }
+];
+
 export const MOCK_USER: any = {
   id: 'u1',
   name: 'Ana García',
@@ -49,132 +101,3 @@ export const MOCK_USER: any = {
   following: 84,
   joinedDate: '2018-06-15T10:00:00.000Z'
 };
-
-export const MOCK_USERS_LIST: any[] = [
-  MOCK_USER,
-  {
-    id: 'u2',
-    name: 'Carlos Ruiz',
-    position: 'Analista de Datos',
-    department: 'Ayuntamiento Central',
-    avatar: 'https://i.pravatar.cc/150?u=carlos',
-    bio: 'Experto en visualización de datos y Open Data. Trabajo para hacer la administración más transparente.',
-    interests: ['Datos Abiertos', 'Transparencia', 'Smart Cities'],
-    followers: 89,
-    following: 120,
-    country: 'España'
-  },
-  {
-    id: 'u3',
-    name: 'Elena Belmonte',
-    position: 'Gestora de Proyectos',
-    department: 'Agencia Digital',
-    avatar: 'https://i.pravatar.cc/150?u=elena',
-    bio: 'Especialista en metodologías ágiles aplicadas al sector público.',
-    interests: ['Innovación Pública', 'Transformación Digital', 'Liderazgo'],
-    followers: 215,
-    following: 180,
-    country: 'España'
-  },
-  {
-    id: 'u4',
-    name: 'Roberto Sánchez',
-    position: 'Recursos Humanos',
-    department: 'Ministerio de Trabajo',
-    avatar: 'https://i.pravatar.cc/150?u=roberto',
-    bio: 'Enfocado en la gestión del talento y el cambio cultural en las instituciones.',
-    interests: ['Gestión del Talento', 'Liderazgo', 'Innovación Pública'],
-    followers: 56,
-    following: 45,
-    country: 'España'
-  }
-];
-
-export const MOCK_POSTS: any[] = [
-  {
-    id: 'p1',
-    authorId: 'u2',
-    authorName: 'Carlos Ruiz',
-    authorPosition: 'Analista de Datos',
-    authorAvatar: 'https://i.pravatar.cc/150?u=carlos',
-    content: 'Acabamos de lanzar el nuevo portal de datos abiertos en nuestra comunidad. ¡Hacia una administración más transparente! 🚀 #DatosAbiertos #Transparencia',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    type: 'news',
-    tags: ['DatosAbiertos', 'Transparencia'],
-    likes: 45,
-    comments: 2,
-    commentsList: [
-      {
-        id: 'c1',
-        authorName: 'Elena Belmonte',
-        authorAvatar: 'https://i.pravatar.cc/150?u=elena',
-        text: '¡Excelente noticia! ¿Está disponible la API para desarrolladores?',
-        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString()
-      },
-      {
-        id: 'c2',
-        authorName: 'Roberto Sánchez',
-        authorAvatar: 'https://i.pravatar.cc/150?u=roberto',
-        text: 'Gran trabajo Carlos, esto facilita mucho la rendición de cuentas.',
-        timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString()
-      }
-    ],
-    userLiked: false
-  },
-  {
-    id: 'p2',
-    authorId: 'u3',
-    authorName: 'Elena Belmonte',
-    authorPosition: 'Gestora de Proyectos',
-    authorAvatar: 'https://i.pravatar.cc/150?u=elena',
-    content: '¿Alguien ha probado metodologías ágiles en procesos de contratación? Me gustaría conocer experiencias previas. #InnovaciónPública',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    type: 'post',
-    tags: ['InnovaciónPública'],
-    likes: 28,
-    comments: 1,
-    commentsList: [
-      {
-        id: 'c3',
-        authorName: 'Ana García',
-        authorAvatar: 'https://i.pravatar.cc/150?u=ana',
-        text: 'Estamos pilotando algo similar en mi departamento. ¡Hablemos!',
-        timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString()
-      }
-    ],
-    userLiked: false
-  }
-];
-
-export const MOCK_CHATS_INITIAL = [
-  { 
-    id: 'c1', 
-    participant: { 
-      id: 'u2', 
-      name: 'Carlos Ruiz', 
-      avatar: 'https://i.pravatar.cc/150?u=carlos', 
-      position: 'Analista de Datos', 
-      department: 'Ayuntamiento Central' 
-    }, 
-    messages: [
-      { id: 'm1', senderId: 'u2', text: '¿Pudiste revisar el borrador del nuevo protocolo?', timestamp: new Date(Date.now() - 1000 * 60 * 60) }
-    ],
-    lastMessage: '¿Pudiste revisar el borrador del nuevo protocolo?', 
-    timestamp: new Date(Date.now() - 1000 * 60 * 60) 
-  },
-  { 
-    id: 'c2', 
-    participant: { 
-      id: 'u4', 
-      name: 'Roberto Sánchez', 
-      avatar: 'https://i.pravatar.cc/150?u=roberto', 
-      position: 'Recursos Humanos', 
-      department: 'Ministerio de Trabajo' 
-    }, 
-    messages: [
-      { id: 'm2', senderId: 'u4', text: 'Mañana reunión a las 10:00.', timestamp: new Date(Date.now() - 1000 * 60 * 120) }
-    ],
-    lastMessage: 'Mañana reunión a las 10:00.', 
-    timestamp: new Date(Date.now() - 1000 * 60 * 120) 
-  }
-];

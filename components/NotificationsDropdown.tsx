@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Heart, UserPlus, MessageSquare, Bell, X } from 'lucide-react';
+import { Heart, UserPlus, MessageSquare, Bell, X, ChevronUp } from 'lucide-react';
 import { Notification } from '../types';
 
 interface NotificationsDropdownProps {
@@ -9,18 +9,24 @@ interface NotificationsDropdownProps {
 }
 
 export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, onClose }) => {
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, content: string = "") => {
+    const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
-      case 'like': return <Heart size={14} className="text-pink-500" fill="currentColor" />;
+      case 'like': 
+        if (isNews) {
+          return <ChevronUp size={14} className="text-orange-500" strokeWidth={3} />;
+        }
+        return <Heart size={14} className="text-pink-500" fill="currentColor" />;
       case 'follow': return <UserPlus size={14} className="text-blue-500" />;
       case 'comment': return <MessageSquare size={14} className="text-green-500" />;
       default: return <Bell size={14} className="text-gray-400" />;
     }
   };
 
-  const getBgColor = (type: string) => {
+  const getBgColor = (type: string, content: string = "") => {
+    const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
-      case 'like': return 'bg-pink-50';
+      case 'like': return isNews ? 'bg-orange-50' : 'bg-pink-50';
       case 'follow': return 'bg-blue-50';
       case 'comment': return 'bg-green-50';
       default: return 'bg-gray-50';
@@ -55,8 +61,8 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
                 )}
                 <div className="relative flex-shrink-0">
                   <img src={n.senderAvatar} className="w-10 h-10 rounded-xl object-cover shadow-sm" alt="" />
-                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white ${getBgColor(n.type)} shadow-sm`}>
-                    {getIcon(n.type)}
+                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white ${getBgColor(n.type, n.content)} shadow-sm`}>
+                    {getIcon(n.type, n.content)}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">

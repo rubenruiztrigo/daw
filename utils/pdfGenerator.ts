@@ -1,5 +1,5 @@
 
-import { ProjectDraft, Tender } from '../types';
+import { ProjectDraft } from '../types';
 
 declare global {
   interface Window {
@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-export const generateProjectPDF = (tender: Tender, draft: ProjectDraft) => {
+export const generateProjectPDF = (title: string, id: string, draft: ProjectDraft) => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const margin = 20;
@@ -24,15 +24,14 @@ export const generateProjectPDF = (tender: Tender, draft: ProjectDraft) => {
 
   // Title
   doc.setFontSize(20);
-  doc.setTextColor(41, 128, 185); // NovaGob Blue-ish
-  const titleLines = doc.splitTextToSize(`Proyecto: ${tender.title}`, maxWidth);
+  doc.setTextColor(41, 128, 185);
+  const titleLines = doc.splitTextToSize(`Proyecto: ${title}`, maxWidth);
   doc.text(titleLines, margin, cursorY);
   cursorY += (titleLines.length * 10) + 10;
 
   // Cover Image if exists
   if (draft.coverImage) {
     checkPageBreak(100);
-    // Assuming image is roughly square/landscape, fit to width
     try {
         doc.addImage(draft.coverImage, 'PNG', margin, cursorY, 100, 100);
         cursorY += 110;
@@ -44,18 +43,18 @@ export const generateProjectPDF = (tender: Tender, draft: ProjectDraft) => {
   // Meta Info
   doc.setFontSize(10);
   doc.setTextColor(100);
-  doc.text(`Referencia Licitación: ${tender.id}`, margin, cursorY);
+  doc.text(`Referencia: ${id}`, margin, cursorY);
   cursorY += 6;
   doc.text(`Fecha: ${new Date().toLocaleDateString()}`, margin, cursorY);
   cursorY += 10;
 
   // Sections
-  const addSection = (title: string, content: string) => {
+  const addSection = (secTitle: string, content: string) => {
     checkPageBreak(30);
     doc.setFontSize(14);
     doc.setTextColor(0);
     doc.setFont("helvetica", "bold");
-    doc.text(title, margin, cursorY);
+    doc.text(secTitle, margin, cursorY);
     cursorY += 8;
 
     doc.setFontSize(11);
@@ -72,5 +71,5 @@ export const generateProjectPDF = (tender: Tender, draft: ProjectDraft) => {
   addSection("4. Recursos Necesarios", draft.resources);
   addSection("5. Evaluación", draft.evaluation);
 
-  doc.save(`Proyecto_RedSocial_${tender.id.substring(0, 8)}.pdf`);
+  doc.save(`Proyecto_RedSocial_${id.substring(0, 8)}.pdf`);
 };

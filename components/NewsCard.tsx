@@ -7,6 +7,7 @@ import { timeAgo } from '../utils/stringUtils';
 interface NewsCardProps {
   post: Post;
   onVote: (id: string, dir: 'up' | 'down') => void;
+  onRepost: (id: string) => void;
   onAddComment: (postId: string, text: string) => void;
   currentUser: User;
   followedUserIds: Set<string>;
@@ -18,7 +19,7 @@ interface NewsCardProps {
 }
 
 export const NewsCard: React.FC<NewsCardProps> = ({ 
-  post, onVote, onAddComment, currentUser, followedUserIds, users, onNavigateToProfile, onNavigateToPost, onSearchHashtag, onPreviewImage
+  post, onVote, onRepost, onAddComment, currentUser, followedUserIds, users, onNavigateToProfile, onNavigateToPost, onSearchHashtag, onPreviewImage
 }) => {
   const handleNewsClick = () => {
     onNavigateToPost?.(post.id);
@@ -96,13 +97,15 @@ export const NewsCard: React.FC<NewsCardProps> = ({
           )}
 
           <div className="flex items-center justify-between text-slate-500" onClick={(e) => e.stopPropagation()}>
-            <button 
-              className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2" 
-              onClick={handleNewsClick}
-            >
-              <MessageSquare size={18} />
-              <span className="text-sm font-black">{post.comments}</span>
-            </button>
+            <div className="flex items-center space-x-4">
+              <button 
+                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2" 
+                onClick={handleNewsClick}
+              >
+                <MessageSquare size={18} />
+                <span className="text-sm font-black">{post.comments}</span>
+              </button>
+            </div>
 
             <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-2xl p-1 border border-slate-100 dark:border-zinc-800 ml-auto">
               <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}>

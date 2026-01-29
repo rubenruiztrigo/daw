@@ -1,24 +1,129 @@
 
-import React, { useState } from 'react';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Share2, Repeat } from 'lucide-react';
-import { Post, Comment } from '../types';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Share2, Repeat, Reply, AtSign, ChevronRight, Link as LinkIcon, Calendar, Clock, MapPin } from 'lucide-react';
+import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 
 interface FullPostViewProps {
   post: Post;
   onAddComment: (postId: string, text: string) => void;
+  onAddReply?: (commentId: string, text: string, parentReplyId?: string) => void;
   onLike?: (id: string) => void;
   onVote?: (id: string, dir: 'up' | 'down') => void;
   onRepost: (id: string) => void;
   onSearchHashtag?: (tag: string) => void;
   onNavigateToProfile?: (id: string) => void;
   onBack: () => void;
+  users?: User[];
+  onNavigateToEvent?: (userId: string, eventId: string) => void;
 }
 
+const NestedReply: React.FC<{ 
+  reply: CommentReply, 
+  onReply: (r: CommentReply) => void,
+  onNavigateToProfile?: (id: string) => void,
+  renderContent: (c: string) => React.ReactNode,
+  level?: number
+}> = ({ reply, onReply, onNavigateToProfile, renderContent, level = 0 }) => {
+  return (
+    <div className={`group/reply animate-in fade-in slide-in-from-left-1 duration-300 ${level > 0 ? 'mt-3 border-l-2 border-slate-100 dark:border-zinc-800 pl-4' : 'mt-4'}`}>
+      <div className="flex space-x-3">
+        <img src={reply.authorAvatar} className="w-8 h-8 rounded-lg object-cover shadow-sm ring-1 ring-slate-100 dark:ring-zinc-800 cursor-pointer" alt="" onClick={() => onNavigateToProfile?.(reply.authorId)} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[12px] font-black text-slate-900 dark:text-white cursor-pointer hover:text-blue-600" onClick={() => onNavigateToProfile?.(reply.authorId)}>{reply.authorName}</span>
+            <span className="text-[9px] text-slate-400 font-bold">{timeAgo(reply.timestamp)}</span>
+          </div>
+          <div className="text-[13px] text-slate-600 dark:text-gray-400 font-medium bg-white dark:bg-zinc-900/50 p-3 rounded-xl rounded-tl-none border border-slate-50 dark:border-zinc-800/50 shadow-sm leading-snug">
+            {renderContent(reply.text)}
+          </div>
+          <button 
+            onClick={() => onReply(reply)}
+            className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:underline flex items-center space-x-1 mt-1"
+          >
+            <Reply size={10} />
+            <span>Responder</span>
+          </button>
+
+          {reply.replies && reply.replies.length > 0 && (
+            <div className="space-y-2">
+              {reply.replies.map(subReply => (
+                <NestedReply 
+                  key={subReply.id} 
+                  reply={subReply} 
+                  onReply={onReply} 
+                  onNavigateToProfile={onNavigateToProfile} 
+                  renderContent={renderContent}
+                  level={level + 1}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const FullPostView: React.FC<FullPostViewProps> = ({ 
-  post, onAddComment, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onBack 
+  post, onAddComment, onAddReply, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onBack, users = [], onNavigateToEvent 
 }) => {
   const [text, setText] = useState('');
+  const [replyingTo, setReplyingTo] = useState<{commentId: string, parentReplyId?: string} | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
+  const mainInputRef = useRef<HTMLInputElement>(null);
+  const replyInputRef = useRef<HTMLInputElement>(null);
+
+  const mentionSuggestions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const query = mentionQuery.toLowerCase();
+    return users.filter(u => 
+      u.name.toLowerCase().includes(query) || 
+      (u.lastName?.toLowerCase().includes(query)) ||
+      u.username?.toLowerCase().includes(query)
+    ).slice(0, 5);
+  }, [mentionQuery, users]);
+
+  const toggleReplies = (commentId: string) => {
+    setExpandedComments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(commentId)) newSet.delete(commentId);
+      else newSet.add(commentId);
+      return newSet;
+    });
+  };
+
+  const handleInputChange = (val: string, target: 'main' | 'reply') => {
+    if (target === 'main') setText(val); else setReplyText(val);
+
+    const lastAt = val.lastIndexOf('@');
+    if (lastAt !== -1 && (lastAt === 0 || /\s/.test(val[lastAt - 1]))) {
+      const query = val.slice(lastAt + 1);
+      if (!/\s/.test(query)) {
+        setMentionQuery(query);
+        setMentionTarget(target);
+        return;
+      }
+    }
+    setMentionQuery(null);
+  };
+
+  const selectMention = (selectedUser: User) => {
+    const isMain = mentionTarget === 'main';
+    const currentVal = isMain ? text : replyText;
+    const lastAt = currentVal.lastIndexOf('@');
+    const before = currentVal.slice(0, lastAt);
+    const newVal = `${before}@${selectedUser.username} `;
+    
+    if (isMain) setText(newVal); else setReplyText(newVal);
+    setMentionQuery(null);
+    setMentionTarget(null);
+    (isMain ? mainInputRef : replyInputRef).current?.focus();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,9 +132,39 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
     setText('');
   };
 
+  const handleReplySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim() || !onAddReply || !replyingTo) return;
+    onAddReply(replyingTo.commentId, replyText, replyingTo.parentReplyId);
+    setReplyText('');
+    setReplyingTo(null);
+    setExpandedComments(prev => {
+      const next = new Set(prev);
+      next.add(replyingTo.commentId);
+      return next;
+    });
+  };
+
+  const handleStartReplyToComment = (comment: Comment) => {
+    setReplyingTo({ commentId: comment.id, parentReplyId: undefined });
+    const mention = comment.authorUsername ? `@${comment.authorUsername} ` : '';
+    setReplyText(mention);
+    if (!expandedComments.has(comment.id)) {
+      toggleReplies(comment.id);
+    }
+    setTimeout(() => replyInputRef.current?.focus(), 100);
+  };
+
+  const handleStartReplyToReply = (commentId: string, reply: CommentReply) => {
+    setReplyingTo({ commentId: commentId, parentReplyId: reply.id });
+    const mention = reply.authorUsername ? `@${reply.authorUsername} ` : '';
+    setReplyText(mention);
+    setTimeout(() => replyInputRef.current?.focus(), 100);
+  };
+
   const renderContentWithHashtags = (content: string) => {
     if (!content) return null;
-    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+)/g);
+    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+|https?:\/\/[^\s]+)/g);
     return parts.map((part, i) => {
       if (part.startsWith('#')) {
         return (
@@ -38,9 +173,43 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               onSearchHashtag?.(part.slice(1));
+              onBack();
             }}
             className={`font-black hover:underline transition-all ${post.type === 'news' ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400'}`}
           >
+            {part}
+          </button>
+        );
+      } else if (part.startsWith('@')) {
+        const username = part.slice(1).toLowerCase();
+        const mentionedUser = users.find(u => u.username?.toLowerCase() === username);
+        return (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
+              onBack();
+            }}
+            className="text-blue-600 dark:text-blue-400 font-bold hover:underline transition-all"
+          >
+            {part}
+          </button>
+        );
+      } else if (part.startsWith('http')) {
+        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
+        if (profileEventMatch && onNavigateToEvent) {
+          const [, userId, eventId] = profileEventMatch;
+          const eventOwner = users.find(u => u.id === userId);
+          const label = eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`;
+          return (
+            <button key={i} onClick={(e) => { e.stopPropagation(); onNavigateToEvent(userId, eventId); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1">
+              <Calendar size={14} className="mr-1" /><span>{label}</span>
+            </button>
+          );
+        }
+        return (
+          <button key={i} onClick={(e) => { e.stopPropagation(); window.open(part, '_blank'); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-medium">
             {part}
           </button>
         );
@@ -82,16 +251,6 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
           </div>
         )}
 
-        {post.docUrl && (
-          <div className="mb-8 flex items-center justify-between p-6 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-3xl">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-indigo-600 text-white rounded-2xl"><FileText size={24} /></div>
-              <div><p className="text-sm font-bold text-indigo-900 dark:text-indigo-300">{post.docName || 'Documento adjunto'}</p><p className="text-[10px] text-indigo-400 font-black uppercase">Recurso institucional</p></div>
-            </div>
-            <a href={post.docUrl} download className="p-3 text-indigo-400 hover:text-indigo-600 transition-all"><Download size={20} /></a>
-          </div>
-        )}
-
         <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900 mb-8">
           <div className="flex items-center space-x-8">
             {post.type === 'post' ? (
@@ -119,28 +278,130 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
         </div>
 
         <div className="space-y-8">
-          <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Aportaciones técnicas ({post.commentsList.length})</h5>
-          <form onSubmit={handleSubmit} className="mb-10 flex items-center space-x-3 bg-slate-50 dark:bg-zinc-900 rounded-[1.5rem] p-3 border border-slate-100 dark:border-zinc-800 focus-within:ring-4 focus-within:ring-blue-50 transition-all">
-            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe un comentario o propuesta..." className="flex-1 bg-transparent border-none px-4 py-2 text-sm font-medium outline-none focus:ring-0 dark:text-white" />
-            <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 disabled:opacity-30 transform active:scale-90 shadow-md"><Send size={20} /></button>
-          </form>
+          <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest px-1">Comentarios ({post.commentsList.length})</h5>
+          
+          <div className="relative">
+            <form onSubmit={handleSubmit} className="mb-10 flex items-center space-x-3 bg-slate-50 dark:bg-zinc-900 rounded-[1.5rem] p-3 border border-slate-100 dark:border-zinc-800 focus-within:ring-4 focus-within:ring-blue-50 transition-all">
+              <input 
+                ref={mainInputRef}
+                type="text" 
+                value={text} 
+                onChange={(e) => handleInputChange(e.target.value, 'main')} 
+                placeholder="Escribe un comentario..." 
+                className="flex-1 bg-transparent border-none px-4 py-2 text-sm font-medium outline-none focus:ring-0 dark:text-white" 
+              />
+              <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 disabled:opacity-30 transform active:scale-90 shadow-md"><Send size={20} /></button>
+            </form>
+
+            {mentionTarget === 'main' && mentionSuggestions.length > 0 && (
+              <div className="absolute left-0 bottom-full mb-2 w-72 bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
+                {mentionSuggestions.map(u => (
+                  <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
+                    <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                      <p className="text-[10px] text-blue-600 font-bold">@{u.username}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {post.commentsList.length === 0 ? (
-            <p className="text-slate-300 italic font-bold text-center py-12">No hay comentarios aún. ¡Sé el primero en participar!</p>
+            <p className="text-slate-300 italic font-bold text-center py-12">No hay comentarios aún.</p>
           ) : (
             <div className="space-y-8 pb-10">
-              {post.commentsList.map((comment) => (
-                <div key={comment.id} className="flex space-x-4 animate-in fade-in slide-in-from-bottom-2">
-                  <img src={comment.authorAvatar} className="w-11 h-11 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(comment.authorId || '')} />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-black text-slate-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors" onClick={() => onNavigateToProfile?.(comment.authorId || '')}>{comment.authorName}</span>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{timeAgo(comment.timestamp)}</span>
+              {post.commentsList.map((comment) => {
+                const isExpanded = expandedComments.has(comment.id);
+                const hasReplies = comment.replies && comment.replies.length > 0;
+                
+                return (
+                  <div key={comment.id} className="group/comment animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex space-x-4">
+                      <div className="flex flex-col items-center shrink-0">
+                        <img src={comment.authorAvatar} className="w-11 h-11 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all shadow-sm" alt="" onClick={() => onNavigateToProfile?.(comment.authorId || '')} />
+                        {(hasReplies && isExpanded) || (replyingTo?.commentId === comment.id) ? (
+                          <div className="w-0.5 flex-1 bg-slate-100 dark:bg-zinc-800 mt-2 mb-1"></div>
+                        ) : null}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-black text-slate-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors" onClick={() => onNavigateToProfile?.(comment.authorId || '')}>{comment.authorName}</span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{timeAgo(comment.timestamp)}</span>
+                        </div>
+                        <div className="text-sm text-slate-700 dark:text-gray-300 font-medium bg-slate-50 dark:bg-zinc-900 p-5 rounded-[1.5rem] rounded-tl-none border border-slate-100 dark:border-zinc-800 shadow-sm leading-relaxed mb-2">
+                          {renderContentWithHashtags(comment.text)}
+                        </div>
+                        
+                        <div className="flex items-center space-x-6 px-1">
+                           <button 
+                              onClick={() => handleStartReplyToComment(comment)}
+                              className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:underline flex items-center space-x-1 transition-colors"
+                            >
+                             <Reply size={12} />
+                             <span>Responder</span>
+                           </button>
+
+                           {hasReplies && (
+                             <button 
+                                onClick={() => toggleReplies(comment.id)}
+                                className={`text-[10px] font-black uppercase flex items-center space-x-1 transition-all ${isExpanded ? 'text-slate-400' : 'text-blue-600 dark:text-blue-400 hover:underline'}`}
+                             >
+                               <ChevronRight size={12} className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                               <span>{isExpanded ? 'Ocultar respuestas' : `Ver respuestas (${comment.replies?.length})`}</span>
+                             </button>
+                           )}
+                        </div>
+
+                        {replyingTo?.commentId === comment.id && (
+                          <div className="relative mt-3 mb-4">
+                            <form onSubmit={handleReplySubmit} className="flex items-center space-x-2 animate-in slide-in-from-top-1 duration-200">
+                              <input 
+                                ref={replyInputRef}
+                                type="text" 
+                                value={replyText} 
+                                onChange={(e) => handleInputChange(e.target.value, 'reply')} 
+                                placeholder="Escribir respuesta..." 
+                                className="flex-1 px-4 py-2.5 bg-white dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none dark:text-white shadow-sm"
+                              />
+                              <button type="submit" disabled={!replyText.trim()} className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-30 shadow-md"><Send size={14} /></button>
+                            </form>
+
+                            {mentionTarget === 'reply' && mentionSuggestions.length > 0 && (
+                              <div className="absolute left-0 bottom-full mb-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
+                                {mentionSuggestions.map(u => (
+                                  <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
+                                    <img src={u.avatar} className="w-7 h-7 rounded-lg object-cover" alt="" />
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                                      <p className="text-[9px] text-blue-600 dark:text-blue-400 font-bold">@{u.username}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {hasReplies && isExpanded && (
+                          <div className="mt-3 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                            {comment.replies!.map(reply => (
+                              <NestedReply 
+                                key={reply.id} 
+                                reply={reply} 
+                                onReply={(r) => handleStartReplyToReply(comment.id, r)}
+                                onNavigateToProfile={onNavigateToProfile}
+                                renderContent={renderContentWithHashtags}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-700 dark:text-gray-300 font-medium bg-slate-50 dark:bg-zinc-900 p-5 rounded-[1.5rem] rounded-tl-none border border-slate-100 dark:border-zinc-800 shadow-sm leading-relaxed">{comment.text}</div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

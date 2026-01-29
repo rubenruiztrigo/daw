@@ -138,7 +138,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
 
         {/* Footer */}
         <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-center">
-            <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional NovaGob</span>
+            <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional Red Social de NovaGob</span>
         </div>
       </div>
     </div>
