@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Lock, Loader2, Check, ShieldCheck, Save, AlertCircle } from 'lucide-react';
+import { Lock, Loader2, Check, ShieldCheck, Save, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface UpdatePasswordProps {
@@ -24,7 +24,7 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Las contraseñas no coinciden.');
+      setError('Las nuevas contraseñas no coinciden.');
       return;
     }
 
@@ -42,30 +42,38 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
       setLoading(false);
       setTimeout(() => {
         onComplete();
-      }, 2000);
+      }, 2500);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
+      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300 shadow-2xl shadow-blue-500/5">
         
         <div className="text-center space-y-3">
-          <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
+          <div className="inline-flex p-5 bg-blue-50 dark:bg-zinc-900 rounded-[2rem] text-blue-600 mb-2">
             <ShieldCheck size={32} />
           </div>
-          <h2 className="text-3xl font-black text-gray-900 dark:text-white">Actualizar contraseña</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Por favor, elige una nueva contraseña segura para tu cuenta institucional.</p>
+          <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Nueva Contraseña</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium leading-relaxed px-4">
+            Has confirmado tu identidad. Por favor, elige una nueva clave de acceso segura.
+          </p>
         </div>
 
         {success ? (
-          <div className="text-center space-y-6 animate-in zoom-in-95 duration-500">
-            <div className="mx-auto w-20 h-20 bg-green-50 dark:bg-green-900/20 text-green-500 rounded-full flex items-center justify-center">
-              <Check size={40} strokeWidth={3} />
+          <div className="text-center space-y-8 animate-in zoom-in-95 duration-500 py-4">
+            <div className="relative inline-flex">
+              <div className="absolute inset-0 bg-green-200 blur-2xl opacity-20 rounded-full" />
+              <div className="relative p-6 bg-green-50 dark:bg-green-900/20 text-green-500 rounded-[2.5rem] flex items-center justify-center">
+                <CheckCircle2 size={48} strokeWidth={3} />
+              </div>
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl font-black text-gray-900 dark:text-white">¡Actualizada!</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Tu contraseña ha sido cambiada correctamente. Redirigiendo...</p>
+              <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">¡Actualizada!</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Tu contraseña ha sido cambiada con éxito. Estamos redirigiéndote al inicio...</p>
+            </div>
+            <div className="flex justify-center">
+              <Loader2 className="animate-spin text-green-500" size={32} />
             </div>
           </div>
         ) : (
@@ -77,52 +85,61 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
               </div>
             )}
             
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase ml-1">Nueva contraseña</label>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Escribe la nueva contraseña</label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                   <input 
                     type="password" 
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Mínimo 8 caracteres"
                     required
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    className="w-full pl-12 pr-5 py-4 bg-gray-50 dark:bg-zinc-900 border border-transparent rounded-[1.5rem] text-gray-900 dark:text-white font-bold placeholder-gray-400 focus:ring-4 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase ml-1">Repetir contraseña</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Repite la contraseña</label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                   <input 
                     type="password" 
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Confirmar contraseña"
                     required
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    className="w-full pl-12 pr-5 py-4 bg-gray-50 dark:bg-zinc-900 border border-transparent rounded-[1.5rem] text-gray-900 dark:text-white font-bold placeholder-gray-400 focus:ring-4 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
                   />
                 </div>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !newPassword || !confirmPassword}
-              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {loading ? (
-                <Loader2 className="animate-spin" size={20} />
-              ) : (
-                <>
-                  <Save size={20} />
-                  <span>Guardar cambios</span>
-                </>
-              )}
-            </button>
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading || !newPassword || !confirmPassword}
+                className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-3 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="animate-spin" size={24} />
+                ) : (
+                  <>
+                    <Save size={22} />
+                    <span>Guardar Nueva Contraseña</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-zinc-900/50 p-4 rounded-2xl border border-slate-100 dark:border-zinc-800 text-center">
+              <p className="text-[10px] text-gray-400 font-bold flex items-center justify-center space-x-2">
+                <Sparkles size={12} className="text-blue-500" />
+                <span>Usa una combinación de letras, números y símbolos.</span>
+              </p>
+            </div>
           </form>
         )}
       </div>

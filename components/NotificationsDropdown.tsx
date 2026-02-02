@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Heart, UserPlus, MessageSquare, Bell, X, ChevronUp } from 'lucide-react';
+import { Heart, UserPlus, MessageSquare, Bell, X, ChevronUp, Repeat } from 'lucide-react';
 import { Notification } from '../types';
 
 interface NotificationsDropdownProps {
@@ -19,6 +19,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
         return <Heart size={14} className="text-pink-500" fill="currentColor" />;
       case 'follow': return <UserPlus size={14} className="text-blue-500" />;
       case 'comment': return <MessageSquare size={14} className="text-green-500" />;
+      case 'repost': return <Repeat size={14} className="text-emerald-500" strokeWidth={3} />;
       default: return <Bell size={14} className="text-gray-400" />;
     }
   };
@@ -29,6 +30,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
       case 'like': return isNews ? 'bg-orange-50' : 'bg-pink-50';
       case 'follow': return 'bg-blue-50';
       case 'comment': return 'bg-green-50';
+      case 'repost': return 'bg-emerald-50';
       default: return 'bg-gray-50';
     }
   };

@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { User } from '../types';
+import { supabase } from '../supabaseClient';
 
 interface SettingsViewProps {
   user: User;
@@ -205,7 +206,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       {showPrivacyPolicy && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPrivacyPolicy(false)}>
-          {/* Tamaño aumentado a max-w-3xl */}
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
             <div className="px-8 py-6 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
               <div className="flex items-center space-x-3">
@@ -327,9 +327,52 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
     email: user.email || ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [passSuccess, setPassSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ ...user, ...formData });
+    setIsUpdating(true);
+    setError(null);
+    setPassSuccess(false);
+
+    try {
+      // 1. Si el usuario intenta cambiar la contraseña
+      if (newPassword || currentPassword || confirmPassword) {
+        if (!currentPassword) {
+          throw new Error("Debes introducir tu contraseña actual.");
+        }
+        if (newPassword !== confirmPassword) {
+          throw new Error("Las nuevas contraseñas no coinciden.");
+        }
+        if (newPassword.length < 8) {
+          throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
+        }
+
+        // En Supabase Auth, para cambiar la contraseña necesitamos una sesión activa.
+        // El campo currentPassword no es estrictamente requerido por el SDK básico pero se pide por seguridad UI.
+        const { error: passUpdateError } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+
+        if (passUpdateError) throw passUpdateError;
+        setPassSuccess(true);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+
+      // 2. Guardar el resto de datos del perfil
+      onSave({ ...user, ...formData });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleUsernameChange = (val: string) => {
@@ -338,8 +381,8 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
   };
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex justify-between items-center mb-2">
+    <div className="flex flex-col max-h-[90vh]">
+      <div className="p-8 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center shrink-0">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-blue-50 dark:bg-zinc-900 rounded-xl text-blue-600">
             <UserCircle size={24} />
@@ -349,71 +392,139 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20}/></button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre</label>
-            <input 
-              type="text" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
-            />
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+        {error && (
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-2xl border border-red-100 dark:border-red-900/30 flex items-center space-x-3 animate-in slide-in-from-top-2">
+            <AlertCircle size={18} />
+            <span>{error}</span>
           </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Apellidos</label>
-            <input 
-              type="text" 
-              value={formData.lastName} 
-              onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
-            />
-          </div>
-        </div>
+        )}
 
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre de usuario</label>
-          <div className="relative">
-            <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-            <input 
-              type="text" 
-              value={formData.username} 
-              onChange={(e) => handleUsernameChange(e.target.value)}
-              className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
-              placeholder="anagarcia"
-            />
+        {passSuccess && (
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-bold rounded-2xl border border-green-100 dark:border-green-900/30 flex items-center space-x-3 animate-in slide-in-from-top-2">
+            <CheckCircle2 size={18} />
+            <span>¡Contraseña actualizada correctamente!</span>
           </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
-            <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+        <div className="space-y-5">
+          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Información Básica</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre</label>
               <input 
-                type="date" 
-                value={formData.birthDate} 
-                onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
-                className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                type="text" 
+                value={formData.name} 
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Apellidos</label>
+              <input 
+                type="text" 
+                value={formData.lastName} 
+                onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre de usuario</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input 
-                type="email" 
-                value={formData.email} 
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                type="text" 
+                value={formData.username} 
+                onChange={(e) => handleUsernameChange(e.target.value)}
                 className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                placeholder="anagarcia"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="date" 
+                  value={formData.birthDate} 
+                  onChange={(e) => setFormData({...formData, birthDate: e.target.value})}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="email" 
+                  value={formData.email} 
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="pt-4 flex space-x-3">
+        <div className="space-y-5 pt-4 border-t border-slate-50 dark:border-zinc-900">
+          <div className="flex items-center space-x-2">
+            <Lock size={16} className="text-blue-500" />
+            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Seguridad y Acceso</h4>
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Contraseña Actual</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                type="password" 
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nueva Contraseña</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 caracteres"
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Confirmar Nueva Contraseña</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="password" 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repite la contraseña"
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-[9px] text-slate-400 italic font-medium ml-1">Rellena estos campos solo si deseas actualizar tu contraseña de acceso.</p>
+        </div>
+
+        <div className="pt-4 flex space-x-3 shrink-0">
           <button 
             type="button" 
             onClick={onClose}
@@ -423,10 +534,10 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
           </button>
           <button 
             type="submit"
-            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
+            disabled={isUpdating}
+            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
           >
-            <Save size={18} />
-            <span>Guardar cambios</span>
+            {isUpdating ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Guardar cambios</span></>}
           </button>
         </div>
       </form>

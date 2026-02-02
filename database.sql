@@ -1,76 +1,63 @@
 
 -- =====================================================
--- 1. LIMPIEZA DINÁMICA DE DISPARADORES EN 'follows'
+-- ESTRUCTURA DE LA TABLA DE RESPUESTAS
 -- =====================================================
 
-DO $$ 
-DECLARE 
-    trig_record RECORD;
-BEGIN
-    -- Buscamos todos los triggers asociados a la tabla follows
-    FOR trig_record IN 
-        SELECT trigger_name 
-        FROM information_schema.triggers 
-        WHERE event_object_schema = 'public' 
-        AND event_object_table = 'follows'
-    LOOP
-        EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(trig_record.trigger_name) || ' ON public.follows';
-    END LOOP;
-END $$;
+CREATE TABLE IF NOT EXISTS public.comment_replies (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    comment_id uuid NOT NULL, -- ID del comentario raíz (puede ser de post_comments o news_comments)
+    parent_reply_id uuid DEFAULT NULL, -- ID de la respuesta a la que se está contestando (para anidamiento)
+    author_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
+    content text NOT NULL,
+    created_at timestamptz DEFAULT now(),
+    likes integer DEFAULT 0
+);
 
--- Eliminación de funciones antiguas relacionadas con el conteo de seguidores
-DROP FUNCTION IF EXISTS public.handle_follow_counters() CASCADE;
-DROP FUNCTION IF EXISTS public.sync_follow_stats() CASCADE;
+-- Habilitar RLS
+ALTER TABLE public.comment_replies ENABLE ROW LEVEL SECURITY;
 
--- =====================================================
--- 2. ASEGURAR INTEGRIDAD DE DATOS (RESTRICCIÓN ÚNICA)
--- =====================================================
-
--- Eliminamos la restricción si existe para recrearla limpiamente
-ALTER TABLE IF EXISTS public.follows DROP CONSTRAINT IF EXISTS follows_follower_id_followed_id_key;
--- Esta restricción impide que exista más de una fila para el mismo par (seguidor, seguido)
-ALTER TABLE public.follows ADD CONSTRAINT follows_follower_id_followed_id_key UNIQUE (follower_id, followed_id);
+-- Políticas de acceso
+CREATE POLICY "Permitir lectura pública de respuestas" ON public.comment_replies FOR SELECT USING (true);
+CREATE POLICY "Permitir inserción a usuarios autenticados" ON public.comment_replies FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Permitir borrado a dueños" ON public.comment_replies FOR DELETE USING (auth.uid() = author_id);
 
 -- =====================================================
--- 3. FUNCIÓN DE CONTEO DEFINITIVA
+-- TRIGGERS DE CONTEO (ACTUALIZADOS)
 -- =====================================================
 
-CREATE OR REPLACE FUNCTION public.handle_follow_stats_v2()
+CREATE OR REPLACE FUNCTION public.handle_reply_count_sync_v2()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_post_id uuid;
+    v_news_id uuid;
+    v_target_user_id uuid;
 BEGIN
-    IF (TG_OP = 'INSERT') THEN
-        -- Incrementamos seguidores del usuario "seguido"
-        UPDATE public.profiles 
-        SET followers_count = COALESCE(followers_count, 0) + 1 
-        WHERE id = NEW.followed_id;
-        
-        -- Incrementamos seguidos del usuario "seguidor"
-        UPDATE public.profiles 
-        SET following_count = COALESCE(following_count, 0) + 1 
-        WHERE id = NEW.follower_id;
-        
-        RETURN NEW;
-    ELSIF (TG_OP = 'DELETE') THEN
-        -- Decrementamos seguidores del usuario "seguido" (mínimo 0)
-        UPDATE public.profiles 
-        SET followers_count = GREATEST(0, COALESCE(followers_count, 0) - 1) 
-        WHERE id = OLD.followed_id;
-        
-        -- Decrementamos seguidos del usuario "seguidor" (mínimo 0)
-        UPDATE public.profiles 
-        SET following_count = GREATEST(0, COALESCE(following_count, 0) - 1) 
-        WHERE id = OLD.follower_id;
-        
-        RETURN OLD;
+    -- 1. Intentar encontrar si el comentario es de un Post
+    SELECT post_id, author_id INTO v_post_id, v_target_user_id FROM public.post_comments WHERE id = COALESCE(NEW.comment_id, OLD.comment_id);
+    
+    IF v_post_id IS NOT NULL THEN
+        IF (TG_OP = 'INSERT') THEN
+            UPDATE public.posts SET comments_count = comments_count + 1 WHERE id = v_post_id;
+        ELSIF (TG_OP = 'DELETE') THEN
+            UPDATE public.posts SET comments_count = GREATEST(0, comments_count - 1) WHERE id = v_post_id;
+        END IF;
+    ELSE
+        -- 2. Si no, intentar en Noticias
+        SELECT news_id, author_id INTO v_news_id, v_target_user_id FROM public.news_comments WHERE id = COALESCE(NEW.comment_id, OLD.comment_id);
+        IF v_news_id IS NOT NULL THEN
+            IF (TG_OP = 'INSERT') THEN
+                UPDATE public.news SET comments_count = comments_count + 1 WHERE id = v_news_id;
+            ELSIF (TG_OP = 'DELETE') THEN
+                UPDATE public.news SET comments_count = GREATEST(0, comments_count - 1) WHERE id = v_news_id;
+            END IF;
+        END IF;
     END IF;
-    RETURN NULL;
+
+    IF (TG_OP = 'INSERT') THEN RETURN NEW; ELSE RETURN OLD; END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- =====================================================
--- 4. CREACIÓN DEL TRIGGER ÚNICO
--- =====================================================
-
-CREATE TRIGGER tr_follows_balance_v2
-AFTER INSERT OR DELETE ON public.follows
-FOR EACH ROW EXECUTE FUNCTION public.handle_follow_stats_v2();
+DROP TRIGGER IF EXISTS tr_replies_count_sync ON public.comment_replies;
+CREATE TRIGGER tr_replies_count_sync
+AFTER INSERT OR DELETE ON public.comment_replies
+FOR EACH ROW EXECUTE FUNCTION public.handle_reply_count_sync_v2();

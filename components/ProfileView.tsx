@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { User, Post, CalendarEvent } from '../types';
+import { User, Post, CalendarEvent, Chat } from '../types';
 import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap } from 'lucide-react';
 import { EditProfileModal } from './EditProfileModal';
 import { PreferencesModal } from './PreferencesModal';
@@ -38,6 +38,9 @@ interface ProfileViewProps {
   onClearFocusedEvent?: () => void;
   onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void;
   onPromoteEvent?: (event: CalendarEvent) => void;
+  chats?: Chat[];
+  followerUserIds?: Set<string>;
+  onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
 }
 
 const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ user, onClose }) => {
@@ -159,7 +162,7 @@ const CreateEventModal: React.FC<{
     }
   }, [formData.type]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, shouldPromote: boolean) => {
     e.preventDefault();
     setLoading(true);
     
@@ -178,7 +181,7 @@ const CreateEventModal: React.FC<{
       .single();
 
     if (!error && data) {
-      if (onAddPost) {
+      if (shouldPromote && onAddPost) {
         let typeTag = 'Presencial';
         if (formData.type === 'online_course') typeTag = 'CursoOnline';
         if (formData.type === 'meeting') typeTag = 'Reunion';
@@ -217,7 +220,7 @@ const CreateEventModal: React.FC<{
           <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"><X size={24} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+        <form onSubmit={(e) => e.preventDefault()} className="p-8 space-y-5">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Título del evento</label>
             <input 
@@ -303,11 +306,36 @@ const CreateEventModal: React.FC<{
             </div>
           </div>
 
-          <div className="pt-4 flex space-x-3">
-            <button type="button" onClick={onClose} className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">Cancelar</button>
-            <button type="submit" disabled={loading} className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50">
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <><Save size={18} /><span>Publicar Evento</span></>}
+          <div className="pt-4 space-y-3">
+            <div className="flex space-x-3">
+              <button 
+                type="button" 
+                onClick={onClose} 
+                className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={(e) => handleSubmit(e, false)}
+                disabled={loading || !formData.title || !formData.date || !formData.time}
+                className="flex-[1.5] py-4 border-2 border-blue-600 text-blue-600 dark:text-blue-400 rounded-2xl font-black text-sm hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
+              >
+                <Check size={18} />
+                <span>Publicar</span>
+              </button>
+            </div>
+            <button 
+              type="button"
+              onClick={(e) => handleSubmit(e, true)}
+              disabled={loading || !formData.title || !formData.date || !formData.time}
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50 shadow-lg shadow-blue-500/20"
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <><Megaphone size={18} /><span>Publicar y Promocionar</span></>}
             </button>
+            <p className="text-[10px] text-center text-slate-400 font-bold px-4">
+              "Publicar y Promocionar" creará el evento y generará automáticamente un post en el feed principal.
+            </p>
           </div>
         </form>
       </div>
@@ -317,7 +345,7 @@ const CreateEventModal: React.FC<{
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ 
   user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts, 
-  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent
+  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), onShareViaChat
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
@@ -393,6 +421,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handleSupportEvent = async (eventId: string) => {
     const isSupported = supportedEventIds.has(eventId);
+    const targetEvent = userEvents.find(ev => ev.id === eventId);
 
     if (isSupported) {
       const { error } = await supabase
@@ -420,6 +449,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         });
 
       if (!error) {
+        // Enviar notificación al creador del evento
+        if (targetEvent && targetEvent.creator_id !== currentUser.id) {
+          await supabase.from('notifications').insert({
+            user_id: targetEvent.creator_id,
+            sender_id: currentUser.id,
+            type: 'like', // Usamos el tipo 'like' para el icono de corazón
+            content: `ha apoyado tu evento`
+          });
+        }
+
         setSupportedEventIds(prev => {
           const next = new Set(prev);
           next.add(eventId);
@@ -692,7 +731,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <p className="text-slate-400 font-bold italic">No hay noticias registradas.</p>
               </div>
             ) : userNews.map(news => (
-              /* Fix: Added missing onRepost prop */
               <NewsCard key={news.id} post={news} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} />
             ))
           )}
@@ -762,16 +800,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             Evento Seleccionado
                           </div>
                         )}
-                        <div className="absolute top-6 right-6 flex items-center">
-                          <button 
-                            onClick={() => handlePromoteEventInternal(event)}
-                            className="flex items-center space-x-1.5 font-black text-[10px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 px-2 py-1.5 rounded-lg transition-all"
-                          >
-                            <Megaphone size={14} />
-                            <span>Promocionar</span>
-                          </button>
-                        </div>
-                        <div className="flex justify-between items-start mb-4 pr-32">
+                        <div className="flex justify-between items-start mb-4 pr-12">
                           <h4 className="text-gray-900 dark:text-white font-black text-lg leading-tight group-hover:text-blue-600 transition-colors">
                             {event.title}
                           </h4>
@@ -794,7 +823,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <MapPin size={14} className="mr-2 opacity-50" />
                             <span className="truncate">{event.location}</span>
                           </div>
-                          <div className="flex items-center text-xs text-blue-600 dark:text-blue-400 font-bold">
+                          <div className="flex items-center text-xs text-blue-600 font-bold">
                             <Users size={14} className="mr-2" />
                             <span>{event.attendees || 0} apoyos {(event.attendees || 0) < 2 && `(faltan ${2 - (event.attendees || 0)} para calendario)`}</span>
                           </div>
@@ -817,9 +846,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           </button>
                         </div>
 
-                        <button className="w-full py-3 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-gray-100 transition-all flex items-center justify-center space-x-2">
-                          <span>Ver detalles</span>
-                          <ChevronRight size={14} />
+                        <button 
+                          onClick={() => handlePromoteEventInternal(event)}
+                          className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
+                        >
+                          <Megaphone size={14} />
+                          <span>Promocionar evento</span>
                         </button>
                       </div>
                     );
@@ -857,7 +889,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {isEditModalOpen && <EditProfileModal user={user} onClose={() => setIsEditModalOpen(false)} onSave={onUpdateUser} />}
       {isPreferencesModalOpen && <PreferencesModal user={user} onClose={() => setIsPreferencesModalOpen(false)} onSave={onUpdateUser} />}
-      {isShareModalOpen && <ShareModal user={user} onClose={() => setIsShareModalOpen(false)} />}
+      {isShareModalOpen && (
+        <ShareModal 
+          user={user} 
+          onClose={() => setIsShareModalOpen(false)} 
+          onShare={onShareViaChat}
+          chats={chats}
+          users={users}
+          followerUserIds={followerUserIds}
+          currentUser={currentUser}
+        />
+      )}
       {viewingUsersList && <UsersListModal type={viewingUsersList} userId={user.id} onClose={() => setViewingUsersList(null)} onNavigate={(id) => onNavigateToProfile?.(id)} />}
       {isCreateEventModalOpen && <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} />}
       {isShowStatusModalOpen && <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} />}

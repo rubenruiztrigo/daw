@@ -14,6 +14,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   onMarkAllRead,
   onNotificationClick 
 }) => {
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
   const getIcon = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
@@ -56,16 +58,19 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           <h2 className="text-2xl font-black text-gray-900 dark:text-white">Notificaciones</h2>
           <p className="text-gray-500 dark:text-zinc-500 text-sm font-medium">Seguidores, reacciones y comentarios en tu red.</p>
         </div>
-        <button 
-          onClick={onMarkAllRead}
-          className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
-        >
-          <CheckCircle size={16} />
-          <span>Marcar todo como leído</span>
-        </button>
+        
+        {unreadCount > 0 && (
+          <button 
+            onClick={onMarkAllRead}
+            className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all animate-in fade-in slide-in-from-right-2"
+          >
+            <CheckCircle size={16} />
+            <span>Marcar todo como leído</span>
+          </button>
+        )}
       </div>
 
-      <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden">
+      <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm">
         {notifications.length === 0 ? (
           <div className="py-20 text-center">
             <Bell className="mx-auto text-gray-100 dark:text-zinc-900 mb-4" size={64} />

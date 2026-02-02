@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase } from 'lucide-react';
-import { User as UserType, Notification, AppView, CalendarEvent } from '../types';
+import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle } from 'lucide-react';
+import { User as UserType, Notification, AppView, CalendarEvent, Post } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,6 +10,7 @@ interface LayoutProps {
   user: UserType;
   notifications?: Notification[];
   globalEvents?: CalendarEvent[];
+  posts?: Post[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchSubmit?: (query: string) => void;
@@ -34,6 +35,7 @@ export const Layout: React.FC<LayoutProps> = ({
   user,
   notifications = [],
   globalEvents = [],
+  posts = [],
   searchQuery,
   onSearchChange,
   onSearchSubmit,
@@ -41,6 +43,7 @@ export const Layout: React.FC<LayoutProps> = ({
   onLogout
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const NavItem = ({ view, icon: Icon, label, badge }: { view: AppView, icon: any, label: string, badge?: number }) => {
@@ -81,6 +84,27 @@ export const Layout: React.FC<LayoutProps> = ({
       return eventDate >= now && eventDate <= fifteenDaysFromNow;
     }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
   }, [globalEvents]);
+
+  const trendingTags = useMemo(() => {
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    const relevantPosts = posts.filter(p => new Date(p.timestamp).getTime() > oneDayAgo);
+    const targetPosts = relevantPosts.length > 0 ? relevantPosts : posts;
+
+    const counts: Record<string, number> = {};
+    targetPosts.forEach(post => {
+      post.tags?.forEach(tag => {
+        const cleanTag = tag.trim();
+        if (cleanTag) {
+          counts[cleanTag] = (counts[cleanTag] || 0) + 1;
+        }
+      });
+    });
+
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([tag, count]) => ({ tag, count }));
+  }, [posts]);
 
   const getEventTimeLabel = (dateStr: string) => {
     const now = new Date();
@@ -130,7 +154,7 @@ export const Layout: React.FC<LayoutProps> = ({
           {isProfileMenuOpen && (
             <div className="absolute bottom-full left-0 mb-4 w-full bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
               <button 
-                onClick={() => { onLogout?.(); setIsProfileMenuOpen(false); }}
+                onClick={() => { setShowLogoutConfirm(true); setIsProfileMenuOpen(false); }}
                 className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-xl"
               >
                 <LogOut size={16} />
@@ -182,22 +206,24 @@ export const Layout: React.FC<LayoutProps> = ({
           <div className="p-6 bg-gray-50 dark:bg-zinc-900/50 rounded-3xl border border-gray-100 dark:border-zinc-800">
             <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest mb-4">Tendencia</h3>
             <div className="space-y-4">
-              <button 
-                onClick={() => onSearchSubmit?.('IAAdministrativa')}
-                className="w-full text-left cursor-pointer group"
-              >
-                <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en Innovación</p>
-                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#IAAdministrativa</p>
-                <p className="text-[10px] text-gray-400">1.240 posts</p>
-              </button>
-              <button 
-                onClick={() => onSearchSubmit?.('ContrataciónPublica')}
-                className="w-full text-left cursor-pointer group"
-              >
-                <p className="text-[10px] text-gray-400 font-bold uppercase">Tendencia en España</p>
-                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#ContrataciónPublica</p>
-                <p className="text-[10px] text-gray-400">856 posts</p>
-              </button>
+              {trendingTags.length > 0 ? trendingTags.map(({ tag, count }) => (
+                <button 
+                  key={tag}
+                  onClick={() => onSearchSubmit?.(tag)}
+                  className="w-full text-left cursor-pointer group"
+                >
+                  <div className="flex items-center space-x-2 text-[10px] text-gray-400 font-bold uppercase mb-0.5">
+                    <TrendingUp size={10} className="text-blue-500" />
+                    <span>Tendencia en Red Social</span>
+                  </div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">#{tag}</p>
+                  <p className="text-[10px] text-gray-400">{count} {count === 1 ? 'post' : 'posts'}</p>
+                </button>
+              )) : (
+                <div className="text-center py-4">
+                  <p className="text-xs text-gray-400 italic">No hay tendencias hoy</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -234,6 +260,47 @@ export const Layout: React.FC<LayoutProps> = ({
         <button onClick={() => onViewChange('calendar')} className={currentView === 'calendar' ? 'text-blue-600' : 'text-gray-400'}><Calendar size={20}/></button>
         <button onClick={() => onViewChange('profile')} className={currentView === 'profile' && isViewingOwnProfile ? 'text-blue-600' : 'text-gray-400'}><User size={20}/></button>
       </nav>
+
+      {/* Modal de Confirmación de Cierre de Sesión */}
+      {showLogoutConfirm && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div 
+            className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-8 text-center space-y-6">
+              <div className="mx-auto w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center">
+                <AlertCircle size={32} />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">¿Cerrar sesión ahora?</h3>
+                <p className="text-sm text-slate-500 dark:text-gray-400 font-medium leading-relaxed">
+                  Tendrás que volver a introducir tus credenciales para acceder a la red.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => { onLogout?.(); setShowLogoutConfirm(false); }}
+                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-red-500/20 hover:bg-red-700 transition-all transform active:scale-95"
+                >
+                  Sí, cerrar sesión
+                </button>
+                <button 
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

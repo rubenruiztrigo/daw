@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign } from 'lucide-react';
+import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LoginProps {
@@ -64,7 +64,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
     let emailToUse = identifier.trim();
 
-    // Login por username: buscar el email asociado
     if (!emailToUse.includes('@')) {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -127,43 +126,46 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
   if (isForgotPassword) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
+        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300 shadow-2xl shadow-blue-500/5">
           <button 
             onClick={() => { setIsForgotPassword(false); setIsRecoverySent(false); setError(null); }}
             className="flex items-center space-x-2 text-gray-400 hover:text-blue-600 transition-colors group"
           >
             <ArrowLeft size={20} />
-            <span className="text-xs font-black uppercase">Volver al inicio</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">Volver al inicio</span>
           </button>
 
           {!isRecoverySent ? (
             <>
               <div className="text-center space-y-3">
-                <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
+                <div className="inline-flex p-5 bg-blue-50 dark:bg-zinc-900 rounded-[2rem] text-blue-600 mb-2">
                   <Lock size={32} />
                 </div>
-                <h2 className="text-3xl font-black text-gray-900 dark:text-white">Recuperar cuenta</h2>
-                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Introduce tu correo institucional.</p>
+                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Recuperar cuenta</h2>
+                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium leading-relaxed px-4">
+                  Enviaremos un enlace de confirmación a tu correo institucional para que puedas cambiar tu contraseña.
+                </p>
               </div>
 
               <form onSubmit={handleForgotPassword} className="space-y-6">
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-xl border border-red-100 dark:border-red-800">
-                    {error}
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-2xl border border-red-100 dark:border-red-900/30 flex items-center space-x-3">
+                    <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                    <span>{error}</span>
                   </div>
                 )}
                 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 dark:text-zinc-600 uppercase ml-1">Correo Institucional</label>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Correo Institucional</label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input 
                       type="email" 
                       value={recoveryEmail}
                       onChange={(e) => setRecoveryEmail(e.target.value)}
                       placeholder="nombre@gob.es"
                       required
-                      className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      className="w-full pl-12 pr-5 py-4 bg-gray-50 dark:bg-zinc-900 border border-transparent rounded-[1.5rem] text-gray-900 dark:text-white font-bold placeholder-gray-400 focus:ring-4 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -171,27 +173,42 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                 <button
                   type="submit"
                   disabled={loading || !recoveryEmail}
-                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center disabled:opacity-50"
+                  className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={20} /> : 'Enviar instrucciones'}
+                  {loading ? <Loader2 className="animate-spin" size={24} /> : <span>Enviar Instrucciones</span>}
                 </button>
               </form>
             </>
           ) : (
-            <div className="text-center space-y-6 animate-in zoom-in-95 duration-500">
-              <div className="mx-auto w-20 h-20 bg-green-50 dark:bg-green-900/20 text-green-500 rounded-full flex items-center justify-center">
-                <Check size={40} strokeWidth={3} />
+            <div className="text-center space-y-8 animate-in zoom-in-95 duration-500 py-4">
+              <div className="relative inline-flex">
+                <div className="absolute inset-0 bg-green-200 blur-2xl opacity-20 rounded-full" />
+                <div className="relative p-6 bg-green-50 dark:bg-green-900/20 text-green-500 rounded-[2.5rem] flex items-center justify-center">
+                  <Check size={48} strokeWidth={3} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Correo enviado</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Instrucciones enviadas a <span className="text-blue-600 font-black">{recoveryEmail}</span>.</p>
+              
+              <div className="space-y-3">
+                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">¡Correo enviado!</h2>
+                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium leading-relaxed px-2">
+                  Hemos enviado un enlace a <span className="text-blue-600 font-black">{recoveryEmail}</span>.
+                </p>
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/20 mt-4">
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold">
+                    💡 Haz clic en "Confirmar" en el correo y esta ventana te llevará automáticamente al formulario de nueva contraseña.
+                  </p>
+                </div>
               </div>
-              <button 
-                onClick={() => setIsForgotPassword(false)}
-                className="w-full py-4 bg-gray-100 dark:bg-zinc-900 text-gray-600 dark:text-gray-300 rounded-2xl font-black text-sm hover:bg-gray-200 transition-all"
-              >
-                Cerrar
-              </button>
+
+              <div className="pt-4 flex flex-col space-y-3">
+                <button 
+                  onClick={() => setIsForgotPassword(false)}
+                  className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-gray-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Cerrar Ventana
+                </button>
+                <p className="text-[10px] text-gray-400 font-bold">¿No has recibido nada? Revisa tu carpeta de SPAM.</p>
+              </div>
             </div>
           )}
         </div>
