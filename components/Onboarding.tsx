@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
-import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X } from 'lucide-react';
+import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
@@ -10,13 +10,17 @@ interface OnboardingProps {
   onCancel: () => void;
 }
 
+
+
+
+
 const PrivacyPolicyContent = () => (
   <div className="space-y-6 text-sm text-slate-600 leading-relaxed">
     <div className="flex items-center space-x-2 text-slate-900 mb-4 border-b pb-4">
       <FileText size={20} className="text-blue-600" />
       <h4 className="font-black uppercase tracking-widest text-lg">POLÍTICA DE PRIVACIDAD</h4>
     </div>
-    
+
     <p className="font-bold text-slate-800">Red Social</p>
 
     <p>
@@ -141,7 +145,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
   const [customAdminInput, setCustomAdminInput] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(true);
   const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
-  
+
+
   const [formData, setFormData] = useState<Partial<UserType>>({
     name: '',
     lastName: '',
@@ -170,7 +175,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     setLoading(true);
     setError(null);
 
-    const finalJobCategory = formData.jobCategory === 'Otro/a' ? customJobInput : formData.jobCategory;
+    const finalJobCategory = formData.jobCategory === 'Otro' ? customJobInput : formData.jobCategory;
     const finalAdminType = formData.administrationType === 'Otra' ? customAdminInput : formData.administrationType;
 
     if (!formData.username || formData.username.includes('@') || formData.username.includes(' ')) {
@@ -179,55 +184,85 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       return;
     }
 
+    // Ensure all data is snake_case for the database
+    const profileData = {
+      name: formData.name,
+      last_name: formData.lastName,
+      username: formData.username,
+      avatar_url: formData.avatar,
+      position: formData.position,
+      department: formData.department,
+      job_category: finalJobCategory,
+      administration_type: finalAdminType,
+      country: formData.country,
+      region: formData.region,
+      interests: formData.interests,
+      interests: formData.interests,
+      birth_date: formData.birthDate || null, // Ensure empty string becomes null
+      // Extra fields if needed for future
+      bio: ''
+    };
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: formData.email!,
       password: formData.password!,
       options: {
-        data: {
-          name: formData.name,
-          last_name: formData.lastName,
-          username: formData.username,
-          avatar_url: formData.avatar,
-        }
+        data: profileData
       }
     });
 
     if (signUpError) {
-      setError(signUpError.message);
+      if (signUpError.message.toLowerCase().includes('rate limit') || signUpError.status === 429) {
+        setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada (y spam) para verificar tu cuenta o espera unos minutos antes de intentar de nuevo.");
+      } else {
+        setError(signUpError.message);
+      }
       setLoading(false);
       return;
     }
 
-    if (data.user) {
-      await supabase
+    // Check if session exists (Auto-login)
+    if (data.session) {
+      // User is logged in, try to write profile to DB
+      const { error: profileError } = await supabase
         .from('profiles')
         .upsert({
-          id: data.user.id,
-          name: formData.name,
-          last_name: formData.lastName,
-          username: formData.username.toLowerCase(),
+          id: data.user!.id,
+          ...profileData,
           email: formData.email,
-          position: formData.position,
-          department: formData.department,
-          job_category: finalJobCategory,
-          administration_type: finalAdminType,
-          country: formData.country,
-          region: formData.region,
-          interests: formData.interests,
-          birth_date: formData.birthDate,
-          avatar: formData.avatar
+          avatar: formData.avatar,
+          username: formData.username!.toLowerCase(),
         });
+
+      if (profileError) {
+        console.error("Error creating profile:", profileError);
+        // If it's not a critical error (like duplicate), we might still proceed or warn
+        setToast({ message: "Cuenta creada, pero hubo un error guardando el perfil. Por favor actualízalo tras entrar.", type: 'error' });
+      }
+    } else if (data.user) {
+      // User created but NOT logged in (Email confirmation likely required)
+      // We rely on metadata (already sent in options) and backend triggers if any.
+      // We cannot write to 'profiles' via RLS without a session usually.
+      console.warn("User created but no session (Email verification?)");
+      alert("Registro completado. Por favor, verifica tu correo electrónico para activar la cuenta.");
     }
 
     setLoading(false);
     onComplete();
   };
 
+  const setToast = (props: { message: string, type: 'success' | 'error' | 'info' }) => {
+    // Simple console fallback if no toast context available in this component
+    console.log(`[${props.type.toUpperCase()}] ${props.message}`);
+    if (props.type === 'error') setError(props.message);
+  };
+
+
   const isStepValid = () => {
     switch (step) {
       case 0: return privacyAccepted;
       case 1: return !!(formData.name && formData.lastName && formData.username && formData.email && formData.password && formData.birthDate);
-      case 2: return formData.jobCategory === 'Otro/a' ? !!customJobInput.trim() : !!formData.jobCategory;
+      case 2: return formData.jobCategory === 'Otro' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
       case 4: return !!(formData.position && formData.department);
       case 5: return !!(formData.country && formData.region);
@@ -245,8 +280,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
         {error && (
           <div className="mb-6 p-4 bg-red-50 text-red-600 text-sm font-bold rounded-2xl border border-red-100 flex items-center space-x-2 animate-in fade-in zoom-in-95">
-             <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-             <span>{error}</span>
+            <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+            <span>{error}</span>
           </div>
         )}
 
@@ -257,7 +292,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight">Crea tu cuenta</h2>
                 <p className="text-slate-500 font-medium mt-2">Introduce tus datos fundamentales para empezar</p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre</label>
@@ -300,7 +335,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
 
               <div className="text-center pt-2">
-                <button 
+                <button
                   onClick={() => setShowPolicyOverlay(true)}
                   className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors underline decoration-slate-200 underline-offset-4"
                 >
@@ -313,14 +348,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           {step === 2 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tu perfil profesional</h2>
-                <p className="text-slate-500 font-medium mt-2">Ayúdanos a conectarte con las personas adecuadas</p>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Cargo</h2>
+                <p className="text-slate-500 font-medium mt-2">Indica tu nivel de responsabilidad actual</p>
               </div>
               <div className="grid grid-cols-1 gap-3">
-                {['Personal directivo', 'Personal técnico', 'Personal administrativo', 'Consultoría', 'Otro/a'].map(cat => (
-                  <button 
-                    key={cat} 
-                    onClick={() => updateField('jobCategory', cat)} 
+                {['Presidente', 'Directivo', 'Técnico', 'Administrativo', 'Otro'].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => updateField('jobCategory', cat)}
                     className={`w-full text-left px-6 py-5 rounded-[2rem] border-2 transition-all flex items-center justify-between group ${formData.jobCategory === cat ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
                   >
                     <span className="font-black text-lg">{cat}</span>
@@ -329,13 +364,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 ))}
               </div>
 
-              {formData.jobCategory === 'Otro/a' && (
+              {formData.jobCategory === 'Otro' && (
                 <div className="animate-in slide-in-from-top-4 duration-300 space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Especifica tu perfil profesional</label>
                   <div className="relative">
                     <Pencil className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={customJobInput}
                       onChange={(e) => setCustomJobInput(e.target.value)}
                       placeholder="Escribe tu categoría aquí..."
@@ -362,9 +397,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   'Organismo autónomo',
                   'Otra'
                 ].map(type => (
-                  <button 
-                    key={type} 
-                    onClick={() => updateField('administrationType', type)} 
+                  <button
+                    key={type}
+                    onClick={() => updateField('administrationType', type)}
                     className={`w-full text-left px-6 py-5 rounded-[2rem] border-2 transition-all flex items-center justify-between group ${formData.administrationType === type ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
                   >
                     <span className="font-black text-lg">{type}</span>
@@ -378,8 +413,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Especifica el tipo de administración</label>
                   <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={customAdminInput}
                       onChange={(e) => setCustomAdminInput(e.target.value)}
                       placeholder="Escribe el tipo de entidad aquí..."
@@ -399,7 +434,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo / Puesto</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Especialización</label>
                   <div className="relative">
                     <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                     <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ej. Responsable de Innovación" />
@@ -425,9 +460,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">País</label>
-                  <select 
-                    value={formData.country} 
-                    onChange={e => { updateField('country', e.target.value); updateField('region', ''); }} 
+                  <select
+                    value={formData.country}
+                    onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                   >
                     {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -435,9 +470,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Región / Comunidad</label>
-                  <select 
-                    value={formData.region} 
-                    onChange={e => updateField('region', e.target.value)} 
+                  <select
+                    value={formData.region}
+                    onChange={e => updateField('region', e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                   >
                     <option value="">Selecciona una región...</option>
@@ -460,12 +495,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 {PUBLIC_INTERESTS.map(topic => {
                   const isSelected = formData.interests?.includes(topic);
                   return (
-                    <button 
-                      key={topic} 
+                    <button
+                      key={topic}
                       onClick={() => {
                         const current = formData.interests || [];
                         updateField('interests', isSelected ? current.filter(i => i !== topic) : [...current, topic]);
-                      }} 
+                      }}
                       className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:border-blue-100'}`}
                     >
                       {topic}
@@ -475,19 +510,21 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
             </div>
           )}
+
+
         </div>
 
         <div className="flex gap-4">
-          <button 
-            onClick={step === 1 ? onCancel : prevStep} 
+          <button
+            onClick={step === 1 ? onCancel : prevStep}
             className="flex-1 py-4 rounded-[1.5rem] bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
           >
             <ArrowLeft size={20} />
             <span>{step === 1 ? 'Cancelar' : 'Atrás'}</span>
           </button>
-          <button 
-            onClick={() => step < 6 ? nextStep() : handleFinalize()} 
-            disabled={!isStepValid() || loading} 
+          <button
+            onClick={() => step < 6 ? nextStep() : handleFinalize()}
+            disabled={!isStepValid() || loading}
             className="flex-[2] py-4 rounded-[1.5rem] bg-blue-600 text-white font-black flex items-center justify-center space-x-2 hover:bg-blue-700 transition-all disabled:opacity-30 transform active:scale-95"
           >
             {loading ? (
@@ -503,11 +540,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       </div>
 
       {showPolicyOverlay && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
           onClick={() => setShowPolicyOverlay(false)}
         >
-          <div 
+          <div
             className="bg-white w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 border border-white"
             onClick={(e) => e.stopPropagation()}
           >
@@ -518,7 +555,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">Política de Privacidad</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setShowPolicyOverlay(false)}
                 className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all"
               >
@@ -529,7 +566,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               <PrivacyPolicyContent />
             </div>
             <div className="p-6 bg-slate-50 flex justify-center">
-              <button 
+              <button
                 onClick={() => setShowPolicyOverlay(false)}
                 className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
               >

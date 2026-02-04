@@ -38,8 +38,6 @@ export interface User {
   department: string;
   jobCategory?: string;
   administrationType?: string;
-  roleDescription?: string;
-  organizationName?: string;
   country?: string;
   region?: string;
   avatar: string;
@@ -96,10 +94,10 @@ export interface Post {
   timestamp: string;
   type: PostType;
   tags: string[];
-  likes: number; 
+  likes: number;
   reposts: number;
-  upvotes?: number; 
-  downvotes?: number; 
+  upvotes?: number;
+  downvotes?: number;
   comments: number;
   commentsList: Comment[];
   userLiked: boolean;
@@ -117,6 +115,7 @@ export interface Message {
   timestamp: Date;
   isPostShare?: boolean;
   postId?: string;
+  isRead?: boolean;
 }
 
 export interface Chat {

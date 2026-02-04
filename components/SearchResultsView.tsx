@@ -17,7 +17,7 @@ interface SearchResultsViewProps {
   onDeletePost?: (id: string) => void;
   onViewChange: (view: any) => void;
   onSearchHashtag?: (tag: string) => void;
-  onSharePost?: (postId: string, participant: any) => void;
+  onShareViaChat?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void;
   onNavigateToProfile?: (userId: string) => void;
   onNavigateToPost?: (postId: string) => void;
   onPreviewImage?: (url: string) => void;
@@ -30,8 +30,8 @@ interface SearchResultsViewProps {
 
 type SearchTab = 'featured' | 'people' | 'hashtags';
 
-export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ 
-  query, posts, users, onLike, onVote, onRepost, onAddComment, onDeletePost, onViewChange, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent
+export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
+  query, posts, users, onLike, onVote, onRepost, onAddComment, onDeletePost, onViewChange, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent
 }) => {
   const [activeTab, setActiveTab] = useState<SearchTab>('featured');
   const [localQuery, setLocalQuery] = useState(query);
@@ -89,7 +89,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         {activeTab === 'featured' && (resultsPosts.length === 0 ? (
           <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800"><Zap className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} /><p className="text-gray-400 dark:text-zinc-600 font-bold italic">No hay publicaciones para esta búsqueda.</p></div>
         ) : (
-          resultsPosts.map(post => <SimpleResultCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onSharePost={onSharePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} currentUser={currentUser} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} onNavigateToEvent={onNavigateToEvent} />)
+          resultsPosts.map(post => <SimpleResultCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onShareViaChat={onShareViaChat} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} currentUser={currentUser} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} onNavigateToEvent={onNavigateToEvent} />)
         ))}
         {activeTab === 'people' && (peopleResults.length === 0 ? (
           <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800"><Users className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} /><p className="text-gray-400 dark:text-zinc-600 font-bold italic">No se han encontrado colegas.</p></div>
@@ -122,7 +122,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   );
 };
 
-const SimpleResultCard: React.FC<{ post: Post, onLike: (id: string) => void, onVote: (id: string, dir: 'up' | 'down') => void, onRepost: (id: string) => void, onAddComment: (postId: string, text: string) => void, onDeletePost?: (id: string) => void, onSearchHashtag?: (tag: string) => void, onSharePost?: (postId: string, participant: any) => void, onNavigateToProfile?: (userId: string) => void, onNavigateToPost?: (postId: string) => void, onPreviewImage?: (url: string) => void, currentUser: User, followedUserIds: Set<string>, followerUserIds: Set<string>, onToggleFollow?: (userId: string) => void, users: User[], onNavigateToEvent?: (userId: string, eventId: string) => void }> = ({ post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds, followerUserIds, onToggleFollow, users, onNavigateToEvent }) => {
+const SimpleResultCard: React.FC<{ post: Post, onLike: (id: string) => void, onVote: (id: string, dir: 'up' | 'down') => void, onRepost: (id: string) => void, onAddComment: (postId: string, text: string) => void, onDeletePost?: (id: string) => void, onSearchHashtag?: (tag: string) => void, onShareViaChat?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void, onNavigateToProfile?: (userId: string) => void, onNavigateToPost?: (postId: string) => void, onPreviewImage?: (url: string) => void, currentUser: User, followedUserIds: Set<string>, followerUserIds: Set<string>, onToggleFollow?: (userId: string) => void, users: User[], onNavigateToEvent?: (userId: string, eventId: string) => void }> = ({ post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds, followerUserIds, onToggleFollow, users, onNavigateToEvent }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showUserInfo, setShowUserInfo] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -152,27 +152,27 @@ const SimpleResultCard: React.FC<{ post: Post, onLike: (id: string) => void, onV
         <div className="flex items-center space-x-3"><img src={post.authorAvatar} className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:opacity-80 transition-opacity" alt="" onClick={handleAvatarClick} /><div className="pt-0.5"><h4 className={`text-sm font-black cursor-pointer transition-colors inline-block mr-2 ${isNews ? 'text-gray-900 dark:text-white hover:text-orange-600' : 'text-gray-900 dark:text-white hover:text-blue-600'}`} onClick={handleAuthorClick}>{post.authorName}</h4><p className={`text-[10px] font-bold uppercase tracking-tight inline-block ${isNews ? 'text-orange-500/80' : 'text-blue-500/80'}`}>{post.authorPosition}</p></div></div>
         {post.authorId === currentUser.id && (
           <div className="relative"><button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="p-1 rounded-full transition-all text-gray-300 hover:text-gray-500"><MoreHorizontal size={18} /></button>
-          {isMenuOpen && (<><div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}></div><div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#0a0a0a] border border-gray-100 dark:border-zinc-800 rounded-xl shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"><button onClick={(e) => { e.stopPropagation(); onDeletePost?.(post.id); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2 transition-colors"><Trash2 size={16} /><span>Eliminar</span></button></div></>)}</div>
+            {isMenuOpen && (<><div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}></div><div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#0a0a0a] border border-gray-100 dark:border-zinc-800 rounded-xl shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"><button onClick={(e) => { e.stopPropagation(); onDeletePost?.(post.id); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2 transition-colors"><Trash2 size={16} /><span>Eliminar</span></button></div></>)}</div>
         )}
       </div>
       <p className="text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed mb-4 line-clamp-4 font-medium">{post.content}</p>
       {post.imageUrl && <div className={`mb-4 rounded-xl overflow-hidden max-h-40 border ${isNews ? 'border-orange-50 dark:border-orange-900/20' : 'border-gray-50 dark:border-zinc-900'}`}><img src={post.imageUrl} className="w-full h-full object-cover" alt="" /></div>}
       <div className="flex items-center justify-between pt-4 border-t border-gray-50 dark:border-zinc-900 max-w-lg">
-          {!isNews ? (
-            <>
-              <button onClick={(e) => { e.stopPropagation(); onLike(post.id); }} className={`flex items-center space-x-2 text-[13px] font-black ${post.userLiked ? 'text-red-500' : 'text-gray-400'}`}><Heart size={18} fill={post.userLiked ? "currentColor" : "none"} /><span>{post.likes}</span></button>
-              <div className="flex items-center space-x-2 text-[13px] text-gray-400 font-black"><MessageCircle size={18} /><span>{post.comments}</span></div>
-              <button onClick={(e) => { e.stopPropagation(); onRepost(post.id); }} className={`flex items-center space-x-2 text-[13px] font-black ${post.userReposted ? 'text-emerald-500' : 'text-gray-400'}`}><Repeat size={18} /><span>{post.reposts}</span></button>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center space-x-2 bg-orange-50/50 dark:bg-orange-900/10 px-2 py-0.5 rounded-lg border border-orange-50 dark:border-orange-900/20" onClick={(e) => e.stopPropagation()}><button onClick={() => onVote(post.id, 'up')} className={post.userLiked ? 'text-green-600' : 'text-gray-400'}><ChevronUp size={18}/></button><span className="text-[13px] font-black text-orange-700 dark:text-orange-400">{post.likes}</span><button onClick={() => onVote(post.id, 'down')} className={post.userDownvoted ? 'text-orange-500' : 'text-gray-400'}><ChevronDown size={18}/></button></div>
-              <div className="flex items-center space-x-2 text-[13px] text-gray-400 font-black"><MessageCircle size={18} /><span>{post.comments}</span></div>
-            </>
-          )}
-          <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} className="text-gray-300 dark:text-zinc-700 hover:text-gray-500 p-1 rounded-lg transition-all"><Share2 size={18} /></button>
+        {!isNews ? (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); onLike(post.id); }} className={`flex items-center space-x-2 text-[13px] font-black ${post.userLiked ? 'text-red-500' : 'text-gray-400'}`}><Heart size={18} fill={post.userLiked ? "currentColor" : "none"} /><span>{post.likes}</span></button>
+            <div className="flex items-center space-x-2 text-[13px] text-gray-400 font-black"><MessageCircle size={18} /><span>{post.comments}</span></div>
+            <button onClick={(e) => { e.stopPropagation(); onRepost(post.id); }} className={`flex items-center space-x-2 text-[13px] font-black ${post.userReposted ? 'text-emerald-500' : 'text-gray-400'}`}><Repeat size={18} /><span>{post.reposts}</span></button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center space-x-2 bg-orange-50/50 dark:bg-orange-900/10 px-2 py-0.5 rounded-lg border border-orange-50 dark:border-orange-900/20" onClick={(e) => e.stopPropagation()}><button onClick={() => onVote(post.id, 'up')} className={post.userLiked ? 'text-green-600' : 'text-gray-400'}><ChevronUp size={18} /></button><span className="text-[13px] font-black text-orange-700 dark:text-orange-400">{post.likes}</span><button onClick={() => onVote(post.id, 'down')} className={post.userDownvoted ? 'text-orange-500' : 'text-gray-400'}><ChevronDown size={18} /></button></div>
+            <div className="flex items-center space-x-2 text-[13px] text-gray-400 font-black"><MessageCircle size={18} /><span>{post.comments}</span></div>
+          </>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); setIsShareModalOpen(true); }} className="text-gray-300 dark:text-zinc-700 hover:text-gray-500 p-1 rounded-lg transition-all"><Share2 size={18} /></button>
       </div>
-      {isShareModalOpen && <ShareModal post={post} onClose={() => setIsShareModalOpen(false)} onShare={onSharePost} />}
+      {isShareModalOpen && <ShareModal post={post} onClose={() => setIsShareModalOpen(false)} onShare={onShareViaChat} currentUser={currentUser} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
     </div>
   );
 };

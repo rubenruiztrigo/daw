@@ -40,50 +40,53 @@ interface ProfileViewProps {
   onPromoteEvent?: (event: CalendarEvent) => void;
   chats?: Chat[];
   followerUserIds?: Set<string>;
+  followedUserIds?: Set<string>;
   onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
 }
+// ... (skip down to ShareModal usage) -> Actually I need to split this into two chunks (Interface and Usage) or use multi_replace.
+// Since they are far apart, I'll use multi_replace.
 
 const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ user, onClose }) => {
   const badgeCount = user.badges?.length || 0;
-  
+
   const getStatusInfo = (count: number) => {
-    if (count === 0) return { 
-      rank: "Aspirante", 
-      color: "text-slate-400", 
-      bg: "bg-slate-50", 
-      icon: <Target size={40} />, 
+    if (count === 0) return {
+      rank: "Aspirante",
+      color: "text-slate-400",
+      bg: "bg-slate-50",
+      icon: <Target size={40} />,
       desc: "Estás comenzando tu viaje de innovación. ¡Participa para ganar tu primera insignia!",
       next: 1
     };
-    if (count <= 2) return { 
-      rank: "Novagober Bronce", 
-      color: "text-amber-700", 
-      bg: "bg-amber-50", 
-      icon: <Award size={40} />, 
+    if (count <= 2) return {
+      rank: "Novagober Bronce",
+      color: "text-amber-700",
+      bg: "bg-amber-50",
+      icon: <Award size={40} />,
       desc: "Eres un miembro activo. Tu contribución empieza a ser relevante para la comunidad.",
       next: 3
     };
-    if (count <= 5) return { 
-      rank: "Novagober Plata", 
-      color: "text-blue-500", 
-      bg: "bg-blue-50", 
-      icon: <Zap size={40} />, 
+    if (count <= 5) return {
+      rank: "Novagober Plata",
+      color: "text-blue-500",
+      bg: "bg-blue-50",
+      icon: <Zap size={40} />,
       desc: "Referente local. Tus aportaciones técnicas son valoradas por tus colegas.",
       next: 6
     };
-    if (count <= 8) return { 
-      rank: "Novagober Oro", 
-      color: "text-yellow-500", 
-      bg: "bg-yellow-50", 
-      icon: <Trophy size={40} />, 
+    if (count <= 8) return {
+      rank: "Novagober Oro",
+      color: "text-yellow-500",
+      bg: "bg-yellow-50",
+      icon: <Trophy size={40} />,
       desc: "Líder de Innovación. Eres una pieza clave en la transformación de la administración.",
       next: 9
     };
-    return { 
-      rank: "Novagober Diamante", 
-      color: "text-indigo-600", 
-      bg: "bg-indigo-50", 
-      icon: <Sparkles size={40} />, 
+    return {
+      rank: "Novagober Diamante",
+      color: "text-indigo-600",
+      bg: "bg-indigo-50",
+      icon: <Sparkles size={40} />,
       desc: "Maestro/a de la Red. Tu influencia trasciende fronteras institucionales.",
       next: 10
     };
@@ -99,7 +102,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
           <div className={`mx-auto w-24 h-24 ${status.bg} ${status.color} rounded-[2rem] flex items-center justify-center`}>
             {status.icon}
           </div>
-          
+
           <div>
             <h3 className={`text-3xl font-black ${status.color} tracking-tight`}>{status.rank}</h3>
             <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mt-2">Nivel de Influencia NovaGob</p>
@@ -111,7 +114,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
               <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{Math.round(progress)}%</span>
             </div>
             <div className="h-4 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden p-1 border border-slate-50 dark:border-zinc-900">
-              <div 
+              <div
                 className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-1000 ease-out"
                 style={{ width: `${progress}%` }}
               />
@@ -123,7 +126,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
           </p>
 
           <div className="pt-4">
-            <button 
+            <button
               onClick={onClose}
               className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all active:scale-95"
             >
@@ -136,9 +139,9 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
   );
 };
 
-const CreateEventModal: React.FC<{ 
-  userId: string, 
-  onClose: () => void, 
+const CreateEventModal: React.FC<{
+  userId: string,
+  onClose: () => void,
   onSave: () => void,
   onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void
 }> = ({ userId, onClose, onSave, onAddPost }) => {
@@ -165,7 +168,7 @@ const CreateEventModal: React.FC<{
   const handleSubmit = async (e: React.FormEvent, shouldPromote: boolean) => {
     e.preventDefault();
     setLoading(true);
-    
+
     const { data, error } = await supabase
       .from('user_events')
       .insert({
@@ -223,21 +226,21 @@ const CreateEventModal: React.FC<{
         <form onSubmit={(e) => e.preventDefault()} className="p-8 space-y-5">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Título del evento</label>
-            <input 
+            <input
               required
-              type="text" 
+              type="text"
               placeholder="Ej. Taller de Innovación Abierta"
               value={formData.title}
-              onChange={e => setFormData({...formData, title: e.target.value})}
-              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all" 
+              onChange={e => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tipo de Evento</label>
-            <select 
+            <select
               value={formData.type}
-              onChange={e => setFormData({...formData, type: e.target.value})}
+              onChange={e => setFormData({ ...formData, type: e.target.value })}
               className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all appearance-none"
             >
               <option value="physical">Evento Presencial</option>
@@ -251,12 +254,12 @@ const CreateEventModal: React.FC<{
               <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Fecha</label>
               <div className="relative">
                 <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input 
+                <input
                   required
-                  type="date" 
+                  type="date"
                   value={formData.date}
-                  onChange={e => setFormData({...formData, date: e.target.value})}
-                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all" 
+                  onChange={e => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
                 />
               </div>
             </div>
@@ -264,12 +267,12 @@ const CreateEventModal: React.FC<{
               <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Hora</label>
               <div className="relative">
                 <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input 
+                <input
                   required
-                  type="time" 
+                  type="time"
                   value={formData.time}
-                  onChange={e => setFormData({...formData, time: e.target.value})}
-                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all" 
+                  onChange={e => setFormData({ ...formData, time: e.target.value })}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
                 />
               </div>
             </div>
@@ -280,13 +283,13 @@ const CreateEventModal: React.FC<{
               <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ubicación</label>
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input 
+                <input
                   required
-                  type="text" 
+                  type="text"
                   placeholder="Ej. Sala de conferencias o Dirección"
                   value={formData.location}
-                  onChange={e => setFormData({...formData, location: e.target.value})}
-                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all" 
+                  onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
                 />
               </div>
             </div>
@@ -296,26 +299,26 @@ const CreateEventModal: React.FC<{
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descripción</label>
             <div className="relative">
               <AlignLeft className="absolute left-4 top-4 text-slate-300" size={16} />
-              <textarea 
+              <textarea
                 required
                 placeholder="Detalla de qué trata el evento..."
                 value={formData.description}
-                onChange={e => setFormData({...formData, description: e.target.value})}
-                className="w-full pl-12 pr-5 py-4 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all min-h-[100px] resize-none" 
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                className="w-full pl-12 pr-5 py-4 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all min-h-[100px] resize-none"
               />
             </div>
           </div>
 
           <div className="pt-4 space-y-3">
             <div className="flex space-x-3">
-              <button 
-                type="button" 
-                onClick={onClose} 
+              <button
+                type="button"
+                onClick={onClose}
                 className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={(e) => handleSubmit(e, false)}
                 disabled={loading || !formData.title || !formData.date || !formData.time}
@@ -325,11 +328,11 @@ const CreateEventModal: React.FC<{
                 <span>Publicar</span>
               </button>
             </div>
-            <button 
+            <button
               type="button"
               onClick={(e) => handleSubmit(e, true)}
               disabled={loading || !formData.title || !formData.date || !formData.time}
-              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50 shadow-lg shadow-blue-500/20"
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : <><Megaphone size={18} /><span>Publicar y Promocionar</span></>}
             </button>
@@ -343,9 +346,9 @@ const CreateEventModal: React.FC<{
   );
 };
 
-export const ProfileView: React.FC<ProfileViewProps> = ({ 
-  user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts, 
-  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), onShareViaChat
+export const ProfileView: React.FC<ProfileViewProps> = ({
+  user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts,
+  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
@@ -361,7 +364,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [userEvents, setUserEvents] = useState<CalendarEvent[]>([]);
   const [supportedEventIds, setSupportedEventIds] = useState<Set<string>>(new Set());
   const [loadingEvents, setLoadingEvents] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -380,7 +383,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .from('post_reposts')
         .select('post_id')
         .eq('user_id', user.id);
-      
+
       if (reposts) setRepostedPostIds(reposts.map(r => r.post_id));
 
       const { data: supports } = await supabase
@@ -436,7 +439,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           next.delete(eventId);
           return next;
         });
-        setUserEvents(prev => prev.map(ev => 
+        setUserEvents(prev => prev.map(ev =>
           ev.id === eventId ? { ...ev, attendees: Math.max(0, (ev.attendees || 0) - 1) } : ev
         ));
       }
@@ -464,7 +467,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           next.add(eventId);
           return next;
         });
-        setUserEvents(prev => prev.map(ev => 
+        setUserEvents(prev => prev.map(ev =>
           ev.id === eventId ? { ...ev, attendees: (ev.attendees || 0) + 1 } : ev
         ));
       }
@@ -491,7 +494,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const userPosts = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'post'), [posts, user.id]);
   const userNews = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'news'), [posts, user.id]);
   const userRepostsList = useMemo(() => posts.filter(p => repostedPostIds.includes(p.id)), [posts, user.id, repostedPostIds]);
-  
+
   const handlePhotoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowPhotoOptions(!showPhotoOptions);
@@ -518,31 +521,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handlePromoteEventInternal = (event: CalendarEvent) => {
     if (!currentUser) return;
-    
+
     let typeTag = 'Presencial';
     if (event.type === 'online_course') typeTag = 'CursoOnline';
     if (event.type === 'meeting') typeTag = 'Reunion';
 
     const content = `📢 ¡Os invito a participar en este evento que he organizado!\n\n${event.title}\n\nPuedes consultar todos los detalles e inscribirte aquí: https://redsocial.app/u/${event.creator_id}/e/${event.id} #Evento #${typeTag}`;
-    
+
     onPromoteEvent?.({
-        ...event,
-        description: content 
+      ...event,
+      description: content
     });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
       <div className="bg-white dark:bg-[#111] rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800">
-        <div 
+        <div
           className="h-48 relative overflow-hidden group/banner transition-all duration-700 border-b border-gray-50 dark:border-zinc-900 cursor-pointer"
           style={{ backgroundColor: bannerColor }}
           onClick={() => setIsShowStatusModalOpen(true)}
         >
           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
-             <div className="bg-white/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 text-white font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
-               Ver estatus Novagober
-             </div>
+            <div className="bg-white/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 text-white font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
+              Ver estatus Novagober
+            </div>
           </div>
           <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 text-white">
             <Award size={14} className={bannerColor === 'rgb(255, 255, 255)' ? 'text-slate-400' : 'text-white'} />
@@ -552,14 +555,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </div>
 
-        <div className="px-10 pb-10">
-          <div className="relative flex flex-col md:flex-row justify-between items-start md:items-end -mt-12 mb-8 gap-6">
+        <div className="px-4 md:px-10 pb-8 md:pb-10">
+          <div className="relative flex flex-col items-center text-center md:flex-row md:justify-between md:items-end md:text-left -mt-16 md:-mt-12 mb-8 gap-6">
             <div className="relative flex-shrink-0">
               <div className="group relative">
-                <img 
-                  src={user.avatar} 
-                  className="w-44 h-44 rounded-[2.5rem] border-8 border-white dark:border-zinc-800 object-cover transition-all cursor-pointer hover:opacity-95 active:scale-95" 
-                  alt="" 
+                <img
+                  src={user.avatar}
+                  className="w-32 h-32 md:w-44 md:h-44 rounded-[2rem] md:rounded-[2.5rem] border-4 md:border-8 border-white dark:border-zinc-800 object-cover transition-all cursor-pointer hover:opacity-95 active:scale-95 shadow-xl"
+                  alt=""
                   onClick={handlePhotoClick}
                 />
                 {isCurrentUser && (
@@ -571,11 +574,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {showPhotoOptions && (
                 <>
-                  <div 
+                  <div
                     className="absolute top-full left-0 mt-3 w-64 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[130] animate-in slide-in-from-top-2 duration-200 overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button 
+                    <button
                       onClick={() => {
                         setFullScreenImage(user.avatar);
                         setShowPhotoOptions(false);
@@ -585,9 +588,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <Maximize2 size={18} className="text-blue-600" />
                       <span>Ver imagen completa</span>
                     </button>
-                    
+
                     {isCurrentUser && (
-                      <button 
+                      <button
                         onClick={() => fileInputRef.current?.click()}
                         className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all"
                       >
@@ -596,55 +599,59 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </button>
                     )}
                   </div>
-                  {isCurrentUser && <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />}
                 </>
               )}
             </div>
-            
-            <div className="flex-1 pt-6 md:pt-0">
-              <div className="flex wrap items-center gap-3 mb-2">
-                <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">{user.name} {user.lastName}</h1>
+            {isCurrentUser && <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />}
+
+            <div className="flex-1 pt-2 md:pt-0 w-full overflow-hidden">
+              <div className="flex flex-col md:flex-row items-center gap-1 md:gap-3 mb-2">
+                <h1 className="text-2xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight break-words max-w-full">{user.name} {user.lastName}</h1>
               </div>
-              <div className="flex flex-col space-y-1.5">
-                <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold">
-                  <Briefcase size={16} />
-                  <span>{user.position} en {user.department}</span>
+              <div className="flex flex-col space-y-1.5 items-center md:items-start">
+                <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-sm md:text-base">
+                  <Briefcase size={14} className="md:w-4 md:h-4" />
+                  <span className="truncate">{user.position} en {user.department}</span>
                 </div>
-                <div className="flex wrap items-center gap-x-4 gap-y-1 text-gray-400 dark:text-zinc-500 font-medium text-sm">
-                  <div className="flex items-center space-x-1.5"><MapPin size={14} /><span>{user.region}, {user.country}</span></div>
-                  <div className="flex items-center space-x-1.5"><Calendar size={14} /><span>{joinedDateFormatted}</span></div>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-4 gap-y-1 text-gray-400 dark:text-zinc-500 font-medium text-[11px] md:text-sm">
+                  <div className="flex items-center space-x-1.5"><MapPin size={12} className="md:w-[14px] md:h-[14px]" /><span>{user.region}, {user.country}</span></div>
+                  <div className="flex items-center space-x-1.5"><Calendar size={12} className="md:w-[14px] md:h-[14px]" /><span>{joinedDateFormatted}</span></div>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col items-end space-y-4">
-              <div className="flex items-center space-x-6 mr-2">
-                <button onClick={() => setViewingUsersList('followers')} className="text-right group">
-                  <p className="text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{user.followers}</p>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Seguidores</p>
+            <div className="flex flex-col items-center md:items-end space-y-4 w-full md:w-auto">
+              <div className="flex items-center justify-center md:justify-end space-x-4 sm:space-x-6 w-full px-4 md:px-0">
+                <button onClick={() => setViewingUsersList('followers')} className="text-center md:text-right group">
+                  <p className="text-lg md:text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase">{user.followers}</p>
+                  <p className="text-[9px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">Seguidores</p>
                 </button>
-                <button onClick={() => setViewingUsersList('following')} className="text-right group">
-                  <p className="text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{user.following}</p>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Siguiendo</p>
+                <button onClick={() => setViewingUsersList('following')} className="text-center md:text-right group">
+                  <p className="text-lg md:text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase">{user.following}</p>
+                  <p className="text-[9px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">Siguiendo</p>
                 </button>
               </div>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center justify-center md:justify-end space-x-3 w-full">
                 {isCurrentUser ? (
                   <>
-                    <button onClick={() => setIsShareModalOpen(true)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all"><Share2 size={20}/></button>
-                    <button onClick={() => setIsEditModalOpen(true)} className="bg-blue-600 text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95 flex items-center space-x-2"><Edit3 size={18}/><span>Editar Perfil</span></button>
+                    <button onClick={() => setIsShareModalOpen(true)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shadow-sm"><Share2 size={20} /></button>
+                    <button onClick={() => setIsEditModalOpen(true)} className="flex-1 md:flex-none bg-blue-600 text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20"><Edit3 size={18} /><span>Editar Perfil</span></button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => setIsShareModalOpen(true)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all"><Share2 size={20}/></button>
-                    <button onClick={() => onStartChat?.(user)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all"><MessageCircle size={20}/></button>
-                    <button 
+                    <button onClick={() => setIsShareModalOpen(true)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shadow-sm"><Share2 size={20} /></button>
+                    <button onClick={() => onStartChat?.(user)} className="p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shadow-sm"><MessageCircle size={20} /></button>
+                    <button
                       onClick={() => onToggleFollow?.(user.id)}
-                      className={`px-8 py-3.5 rounded-2xl font-black text-sm transition-all transform active:scale-95 flex items-center space-x-2 ${isFollowed ? 'bg-slate-100 dark:bg-zinc-800 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                      className={`flex-1 md:flex-none px-8 py-3.5 rounded-2xl font-black text-sm transition-all transform active:scale-95 flex items-center justify-center space-x-2 ${isFollowed ? 'bg-slate-100 dark:bg-zinc-800 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'}`}
                     >
-                      {isFollowed ? <UserMinus size={18}/> : <UserPlus size={18}/>}
-                      <span>{isFollowed ? 'Siguiendo' : 'Seguir'}</span>
+                      {isFollowed ? <UserMinus size={18} /> : <UserPlus size={18} />}
+                      <span>
+                        {isFollowed && isFollower ? 'Amigos' :
+                          isFollowed ? 'Siguiendo' :
+                            isFollower ? 'Seguir también' : 'Seguir'}
+                      </span>
                     </button>
                   </>
                 )}
@@ -655,12 +662,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-8 mt-4">
             <div className="space-y-4">
               <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">Biografía profesional</h3>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-lg max-w-3xl">{user.bio || "Sin biografía todavía."}</p>
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-lg max-w-3xl whitespace-pre-wrap">{user.bio || "Sin biografía todavía."}</p>
             </div>
 
             <div className="space-y-4">
               <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">Intereses</h3>
-              <div className="flex wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-2 items-center">
                 {user.interests && user.interests.length > 0 ? (
                   user.interests.map(interest => (
                     <span key={interest} className="px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black border border-blue-100 dark:border-blue-900/20">{interest}</span>
@@ -669,7 +676,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span className="text-gray-400 italic text-sm font-medium">No hay intereses seleccionados.</span>
                 )}
                 {isCurrentUser && (
-                  <button 
+                  <button
                     onClick={() => setIsPreferencesModalOpen(true)}
                     className="p-2 bg-slate-50 dark:bg-zinc-900 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all border border-dashed border-blue-200 dark:border-blue-800"
                     title="Añadir o cambiar intereses"
@@ -684,7 +691,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       <div className="space-y-6">
-        <div className="flex space-x-10 border-b border-gray-100 dark:border-zinc-900 px-6 overflow-x-auto scrollbar-hide">
+        <div className="flex space-x-6 md:space-x-10 border-b border-gray-100 dark:border-zinc-900 px-4 md:px-6 overflow-x-auto scrollbar-hide">
           <button onClick={() => setActiveTab('posts')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'posts' ? 'text-blue-600 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
             <LayoutGrid size={18} />
             <span>Posts ({userPosts.length})</span>
@@ -711,23 +718,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {activeTab === 'badges' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-600 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
           </button>
         </div>
-        
+
         <div className="grid gap-6">
           {activeTab === 'posts' && (
             userPosts.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                <LayoutGrid className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48}/>
+                <LayoutGrid className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                 <p className="text-slate-400 font-bold italic">No hay posts disponibles.</p>
               </div>
             ) : userPosts.map(post => (
-              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => {}} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} />
+              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} />
             ))
           )}
-          
+
           {activeTab === 'news' && (
             userNews.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                <Newspaper className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48}/>
+                <Newspaper className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                 <p className="text-slate-400 font-bold italic">No hay noticias registradas.</p>
               </div>
             ) : userNews.map(news => (
@@ -738,11 +745,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {activeTab === 'reposts' && (
             userRepostsList.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                <Repeat className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48}/>
+                <Repeat className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                 <p className="text-slate-400 font-bold italic">No hay republicaciones aún.</p>
               </div>
             ) : userRepostsList.map(post => (
-              <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => {}} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} />
+              <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} />
             ))
           )}
 
@@ -758,8 +765,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                     <h4 className="text-slate-900 dark:text-white font-black mb-2">No hay eventos organizados</h4>
                     <p className="text-slate-400 font-medium text-sm italic mb-8">
-                      {isCurrentUser 
-                        ? "Aún no has organizado ningún evento. ¡Sé el promotor del cambio en tu administración!" 
+                      {isCurrentUser
+                        ? "Aún no has organizado ningún evento. ¡Sé el promotor del cambio en tu administración!"
                         : "Este usuario aún no ha organizado ningún evento público."}
                     </p>
                     {isCurrentUser && (
@@ -786,14 +793,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   {userEvents.map(event => {
                     const isFocused = focusedEventId === event.id;
                     return (
-                      <div 
-                        key={event.id} 
+                      <div
+                        key={event.id}
                         id={`event-${event.id}`}
-                        className={`bg-white dark:bg-[#111] p-6 rounded-[2.5rem] border transition-all group animate-in slide-in-from-bottom-2 relative ${
-                          isFocused 
-                            ? 'border-emerald-500 shadow-emerald-100 ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-black scale-[1.02]' 
-                            : 'border-gray-100 dark:border-zinc-800'
-                        }`}
+                        className={`bg-white dark:bg-[#111] p-6 rounded-[2.5rem] border transition-all group animate-in slide-in-from-bottom-2 relative ${isFocused
+                          ? 'border-emerald-500 ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-black scale-[1.02]'
+                          : 'border-gray-100 dark:border-zinc-800'
+                          }`}
                       >
                         {isFocused && (
                           <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
@@ -831,22 +837,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 mb-4 leading-relaxed italic">
                           {event.description}
                         </p>
-                        
+
                         <div className="flex flex-wrap items-center gap-3 mb-4 px-1">
-                          <button 
+                          <button
                             onClick={() => handleSupportEvent(event.id)}
-                            className={`flex items-center space-x-1.5 font-black text-[10px] uppercase tracking-widest transition-all ${
-                              supportedEventIds.has(event.id) 
-                                ? 'text-red-500 fill-red-500' 
-                                : 'text-blue-600 dark:text-blue-400 hover:opacity-70'
-                            }`}
+                            className={`flex items-center space-x-1.5 font-black text-[10px] uppercase tracking-widest transition-all ${supportedEventIds.has(event.id)
+                              ? 'text-red-500 fill-red-500'
+                              : 'text-blue-600 dark:text-blue-400 hover:opacity-70'
+                              }`}
                           >
                             <Heart size={14} fill={supportedEventIds.has(event.id) ? "currentColor" : "none"} />
                             <span>{supportedEventIds.has(event.id) ? 'Apoyado' : 'Apoyar'}</span>
                           </button>
                         </div>
 
-                        <button 
+                        <button
                           onClick={() => handlePromoteEventInternal(event)}
                           className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
                         >
@@ -865,7 +870,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(!user.badges || user.badges.length === 0) ? (
                 <div className="col-span-full text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                  <Award className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48}/>
+                  <Award className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                   <p className="text-slate-400 font-bold italic">Aún no has conseguido insignias.</p>
                   <p className="text-xs text-slate-400 mt-2">Participa en la comunidad para desbloquear reconocimientos.</p>
                 </div>
@@ -890,20 +895,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {isEditModalOpen && <EditProfileModal user={user} onClose={() => setIsEditModalOpen(false)} onSave={onUpdateUser} />}
       {isPreferencesModalOpen && <PreferencesModal user={user} onClose={() => setIsPreferencesModalOpen(false)} onSave={onUpdateUser} />}
       {isShareModalOpen && (
-        <ShareModal 
-          user={user} 
-          onClose={() => setIsShareModalOpen(false)} 
+        <ShareModal
+          user={user}
+          onClose={() => setIsShareModalOpen(false)}
           onShare={onShareViaChat}
-          chats={chats}
           users={users}
           followerUserIds={followerUserIds}
+          followedUserIds={followedUserIds}
           currentUser={currentUser}
         />
       )}
       {viewingUsersList && <UsersListModal type={viewingUsersList} userId={user.id} onClose={() => setViewingUsersList(null)} onNavigate={(id) => onNavigateToProfile?.(id)} />}
       {isCreateEventModalOpen && <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} />}
       {isShowStatusModalOpen && <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} />}
-      
+
       {fullScreenImage && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300 cursor-pointer" onClick={() => setFullScreenImage(null)}>
           <button onClick={() => setFullScreenImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 z-10"><X size={24} /></button>

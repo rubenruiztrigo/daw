@@ -9,13 +9,13 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
-  const [identifier, setIdentifier] = useState(''); 
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
-  
+
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [isRecoverySent, setIsRecoverySent] = useState(false);
@@ -39,7 +39,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
         .select('name')
         .eq(isEmail ? 'email' : 'username', id.toLowerCase())
         .single();
-      
+
       if (!profileError && data?.name) {
         setDisplayName(data.name);
       }
@@ -126,8 +126,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
   if (isForgotPassword) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300 shadow-2xl shadow-blue-500/5">
-          <button 
+        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
+          <button
             onClick={() => { setIsForgotPassword(false); setIsRecoverySent(false); setError(null); }}
             className="flex items-center space-x-2 text-gray-400 hover:text-blue-600 transition-colors group"
           >
@@ -154,13 +154,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                     <span>{error}</span>
                   </div>
                 )}
-                
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Correo Institucional</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input 
-                      type="email" 
+                    <input
+                      type="email"
                       value={recoveryEmail}
                       onChange={(e) => setRecoveryEmail(e.target.value)}
                       placeholder="nombre@gob.es"
@@ -173,7 +173,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                 <button
                   type="submit"
                   disabled={loading || !recoveryEmail}
-                  className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
+                  className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 disabled:opacity-50"
                 >
                   {loading ? <Loader2 className="animate-spin" size={24} /> : <span>Enviar Instrucciones</span>}
                 </button>
@@ -187,7 +187,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                   <Check size={48} strokeWidth={3} />
                 </div>
               </div>
-              
+
               <div className="space-y-3">
                 <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">¡Correo enviado!</h2>
                 <p className="text-gray-500 dark:text-gray-400 text-sm font-medium leading-relaxed px-2">
@@ -201,7 +201,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               </div>
 
               <div className="pt-4 flex flex-col space-y-3">
-                <button 
+                <button
                   onClick={() => setIsForgotPassword(false)}
                   className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-gray-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >
@@ -235,14 +235,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               {error}
             </div>
           )}
-          
+
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-zinc-600 uppercase ml-1">Usuario o Correo</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={identifier}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -262,8 +262,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
               <label className="text-xs font-bold text-gray-400 dark:text-zinc-600 uppercase ml-1">Contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -284,9 +284,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
                 </div>
                 <span className="text-xs font-bold text-gray-500 dark:text-zinc-500 group-hover:text-gray-700 dark:group-hover:text-zinc-300 transition-colors select-none">Recordar</span>
               </button>
-              
-              <button 
-                type="button" 
+
+              <button
+                type="button"
                 onClick={() => setIsForgotPassword(true)}
                 className="text-xs font-bold text-blue-600 hover:underline"
               >
@@ -307,7 +307,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
         <div className="text-center pt-4 border-t border-gray-50 dark:border-zinc-900">
           <p className="text-xs text-gray-400 font-medium">
             ¿No tienes cuenta?{' '}
-            <button 
+            <button
               onClick={onRegister}
               className="text-blue-600 font-bold hover:underline transition-all"
             >

@@ -113,10 +113,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-8 pb-20 animate-in fade-in duration-500 relative" onClick={() => setIsSelectorOpen(false)}>
-      <div className="flex-1 bg-white dark:bg-[#111] p-8 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 shadow-sm relative overflow-visible">
+      <div className="flex-1 bg-white dark:bg-[#111] p-8 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative overflow-visible">
         <div className="flex items-center justify-between mb-10">
           <div className="relative">
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setIsSelectorOpen(!isSelectorOpen); }}
               className="group flex items-center space-x-2 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 p-2 -m-2 rounded-2xl transition-all"
             >
@@ -130,8 +130,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
             </button>
 
             {isSelectorOpen && (
-              <div 
-                className="absolute top-full left-0 mt-4 w-72 bg-white dark:bg-[#0a0a0a] rounded-[2rem] shadow-2xl border border-gray-100 dark:border-zinc-800 z-50 p-6 animate-in zoom-in-95 duration-200"
+              <div
+                className="absolute top-full left-0 mt-4 w-72 bg-white dark:bg-[#0a0a0a] rounded-[2rem] border border-gray-100 dark:border-zinc-800 z-50 p-6 animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="space-y-6">
@@ -139,7 +139,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Seleccionar Mes</label>
                     <div className="grid grid-cols-3 gap-2">
                       {MONTHS.map((m, idx) => (
-                        <button 
+                        <button
                           key={m}
                           onClick={() => { setCurrentDate(new Date(currentYear, idx, 1)); setIsSelectorOpen(false); }}
                           className={`py-2 text-[11px] font-bold rounded-xl transition-all ${idx === currentMonth ? 'bg-blue-600 text-white' : 'bg-gray-50 dark:bg-zinc-900 text-gray-500 hover:bg-gray-100'}`}
@@ -153,7 +153,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Seleccionar Año</label>
                     <div className="grid grid-cols-3 gap-2">
                       {YEARS.map((y) => (
-                        <button 
+                        <button
                           key={y}
                           onClick={() => { setCurrentDate(new Date(y, currentMonth, 1)); setIsSelectorOpen(false); }}
                           className={`py-2 text-xs font-bold rounded-xl transition-all ${y === currentYear ? 'bg-blue-600 text-white' : 'bg-gray-50 dark:bg-zinc-900 text-gray-500 hover:bg-gray-100'}`}
@@ -175,8 +175,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-             <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-             <p className="text-gray-400 font-bold">Cargando agenda comunitaria...</p>
+            <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+            <p className="text-gray-400 font-bold">Cargando agenda comunitaria...</p>
           </div>
         ) : (
           <>
@@ -190,20 +190,19 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               {Array.from({ length: firstDayOfMonth }).map((_, i) => (
                 <div key={`empty-${i}`} className="aspect-square" />
               ))}
-              
+
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1;
                 const hasEvents = mappedEventsByDate[`${currentYear}-${currentMonth}-${day}`];
                 const isSelected = selectedDay === day;
                 return (
-                  <button 
-                    key={day} 
+                  <button
+                    key={day}
                     onClick={() => selectDate(day)}
-                    className={`aspect-square rounded-[1.5rem] flex flex-col items-center justify-center relative transition-all border-2 ${
-                      isSelected 
-                        ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-100 dark:shadow-none' 
+                    className={`aspect-square rounded-[1.5rem] flex flex-col items-center justify-center relative transition-all border-2 ${isSelected
+                        ? 'bg-blue-600 border-blue-600 text-white'
                         : 'bg-white dark:bg-zinc-900 border-transparent hover:border-gray-100 dark:hover:border-zinc-800 text-gray-600 dark:text-gray-400'
-                    }`}
+                      }`}
                   >
                     <span className="text-lg font-black">{day}</span>
                     {hasEvents && !isSelected && (
@@ -215,17 +214,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
             </div>
           </>
         )}
-        
+
         <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/20">
-           <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold leading-relaxed">
-             💡 Nota: Solo los eventos con al menos 2 apoyos de la comunidad aparecen en el calendario global. 
-             Organiza tus propios eventos desde tu perfil.
-           </p>
+          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold leading-relaxed">
+            💡 Nota: Solo los eventos con al menos 2 apoyos de la comunidad aparecen en el calendario global.
+            Organiza tus propios eventos desde tu perfil.
+          </p>
         </div>
       </div>
 
       <div className="w-full lg:w-96 space-y-6">
-        <div className="bg-blue-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-blue-100 dark:shadow-none relative overflow-hidden">
+        <div className="bg-blue-600 p-8 rounded-[2.5rem] text-white relative overflow-hidden">
           <Sparkles className="absolute top-4 right-4 opacity-30" size={24} />
           <h3 className="text-4xl font-black mb-1 italic">{selectedDay}</h3>
           <p className="text-blue-100 font-bold uppercase text-xs tracking-widest">{MONTHS[currentMonth]}</p>
@@ -234,9 +233,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
         <div className="space-y-4">
           {todaysEvents.length > 0 ? (
             todaysEvents.map(event => (
-              <div key={event.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-900 shadow-sm hover:shadow-md transition-all group relative">
+              <div key={event.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-900 hover:border-gray-200 dark:hover:border-zinc-800 transition-all group relative">
                 <div className="absolute top-6 right-6">
-                  <button 
+                  <button
                     onClick={() => onPromoteEvent?.(event)}
                     className="flex items-center space-x-1 font-black text-[9px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 px-2 py-1 rounded-lg transition-all"
                   >
@@ -264,7 +263,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     <span>{event.attendees} apoyos</span>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
                   className="w-full py-3 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-gray-100 transition-all"
                 >

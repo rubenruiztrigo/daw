@@ -7,7 +7,7 @@ interface UpdatePasswordProps {
   onComplete: () => void;
 }
 
-export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) => {
+export const PasswordRecover: React.FC<UpdatePasswordProps> = ({ onComplete }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,7 +49,7 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300 shadow-2xl shadow-blue-500/5">
-        
+
         <div className="text-center space-y-3">
           <div className="inline-flex p-5 bg-blue-50 dark:bg-zinc-900 rounded-[2rem] text-blue-600 mb-2">
             <ShieldCheck size={32} />
@@ -84,14 +84,14 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
                 <span>{error}</span>
               </div>
             )}
-            
+
             <div className="space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Escribe la nueva contraseña</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                  <input 
-                    type="password" 
+                  <input
+                    type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Mínimo 8 caracteres"
@@ -105,8 +105,8 @@ export const UpdatePassword: React.FC<UpdatePasswordProps> = ({ onComplete }) =>
                 <label className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Repite la contraseña</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                  <input 
-                    type="password" 
+                  <input
+                    type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirmar contraseña"

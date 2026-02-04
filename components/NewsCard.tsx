@@ -18,7 +18,7 @@ interface NewsCardProps {
   onPreviewImage?: (url: string) => void;
 }
 
-export const NewsCard: React.FC<NewsCardProps> = ({ 
+export const NewsCard: React.FC<NewsCardProps> = ({
   post, onVote, onRepost, onAddComment, currentUser, followedUserIds, users, onNavigateToProfile, onNavigateToPost, onSearchHashtag, onPreviewImage
 }) => {
   const handleNewsClick = () => {
@@ -72,7 +72,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#111] p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 hover:bg-slate-50/50 hover:border-orange-200 dark:hover:border-orange-900/30 transition-all cursor-pointer shadow-sm" onClick={handleNewsClick}>
+    <div className="bg-white dark:bg-[#111] p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 hover:bg-slate-50/50 hover:border-orange-200 dark:hover:border-orange-900/30 transition-all cursor-pointer" onClick={handleNewsClick}>
       <div className="flex space-x-4">
         <img src={post.authorAvatar} className="w-12 h-12 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-orange-50 transition-all" alt="" onClick={handleAvatarClick} />
         <div className="flex-1 min-w-0">
@@ -86,7 +86,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             </span>
           </div>
           <p className="text-[10px] font-black mb-2 text-orange-600 uppercase tracking-widest">{post.authorPosition}</p>
-          <div className="text-slate-800 dark:text-gray-200 text-[15px] font-medium leading-relaxed mb-4">
+          <div className="text-slate-800 dark:text-gray-200 text-[15px] font-medium leading-relaxed mb-4 whitespace-pre-wrap">
             {renderContent(post.content)}
           </div>
 
@@ -98,8 +98,8 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
           <div className="flex items-center justify-between text-slate-500" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center space-x-4">
-              <button 
-                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2" 
+              <button
+                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2"
                 onClick={handleNewsClick}
               >
                 <MessageSquare size={18} />
@@ -108,13 +108,13 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             </div>
 
             <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-2xl p-1 border border-slate-100 dark:border-zinc-800 ml-auto">
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
                 <ChevronUp size={22} strokeWidth={3} />
               </button>
               <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white'}`}>
-                {post.likes}
+                {post.upvotes !== undefined ? post.upvotes : post.likes}
               </span>
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600 shadow-sm' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
                 <ChevronDown size={22} strokeWidth={3} />
               </button>
             </div>

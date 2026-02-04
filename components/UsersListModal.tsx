@@ -69,12 +69,12 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
       onClick={onClose}
     >
-      <div 
-        className="bg-white dark:bg-[#0a0a0a] w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
+      <div
+        className="bg-white dark:bg-[#0a0a0a] w-full max-w-md rounded-[2.5rem] overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -87,7 +87,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
               {type === 'followers' ? 'Seguidores' : 'Siguiendo'}
             </h3>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"
           >
@@ -111,8 +111,8 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
             </div>
           ) : (
             users.map((person) => (
-              <div 
-                key={person.id} 
+              <div
+                key={person.id}
                 className="flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900 transition-all group cursor-pointer"
                 onClick={() => {
                   onNavigate(person.id);
@@ -120,13 +120,13 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
                 }}
               >
                 <div className="flex items-center space-x-3">
-                  <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" />
+                  <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
                   <div>
                     <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
                     <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
                   </div>
                 </div>
-                <button 
+                <button
                   className="p-2 bg-white dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 text-slate-400 rounded-xl group-hover:text-blue-600 group-hover:border-blue-100 transition-all"
                 >
                   <ArrowRight size={18} />
@@ -138,7 +138,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
 
         {/* Footer */}
         <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-center">
-            <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional Red Social de NovaGob</span>
+          <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional Red Social de NovaGob</span>
         </div>
       </div>
     </div>

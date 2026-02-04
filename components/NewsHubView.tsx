@@ -23,7 +23,7 @@ interface NewsHubViewProps {
 
 type NewsTab = 'latest' | 'popular' | 'ranking';
 
-export const NewsHubView: React.FC<NewsHubViewProps> = ({ 
+export const NewsHubView: React.FC<NewsHubViewProps> = ({
   posts, user, onVote, onRepost, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
 }) => {
   const [activeTab, setActiveTab] = useState<NewsTab>('latest');
@@ -34,22 +34,30 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   const sortedNews = useMemo(() => {
     let filtered = [...posts];
     const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
-    
+
     if (activeTab === 'latest') {
       return filtered
         .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
-    
-    if (activeTab === 'ranking') return filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 10);
-    
+
+    const getScore = (n: Post) => {
+      const up = n.upvotes !== undefined ? n.upvotes : 0;
+      const down = n.downvotes !== undefined ? n.downvotes : 0;
+      // Fallback to 'likes' if up/down are 0/undefined (legacy compatibility)
+      if (n.upvotes === undefined && n.downvotes === undefined) return n.likes || 0;
+      return up - down;
+    };
+
+    if (activeTab === 'ranking') return filtered.sort((a, b) => getScore(b) - getScore(a)).slice(0, 5);
+
     if (activeTab === 'popular') {
       // Filtrar para mostrar solo noticias relevantes (por votos) publicadas en las últimas 24h
       return filtered
         .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
-        .sort((a, b) => (b.likes || 0) - (a.likes || 0));
+        .sort((a, b) => getScore(b) - getScore(a));
     }
-    
+
     return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [posts, activeTab]);
 
@@ -72,8 +80,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
       {activeTab !== 'ranking' ? (
         <>
-          <div className="bg-white dark:bg-[#111] p-5 rounded-2xl border border-gray-100 dark:border-zinc-800">
-            <div className="flex space-x-4">
+          <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-slate-700 overflow-hidden">
+            <div className="flex space-x-4 p-5">
               <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
               <form onSubmit={(e) => {
                 e.preventDefault();
@@ -82,7 +90,21 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 setNewsContent('');
                 setSelectedImage(null);
               }} className="flex-1">
-                <textarea value={newsContent} onChange={(e) => setNewsContent(e.target.value)} placeholder="Comparte una primicia institucional..." className="w-full bg-transparent border-none text-xl dark:text-white placeholder-gray-500 focus:ring-0 resize-none min-h-[60px]" />
+                <textarea
+                  value={newsContent}
+                  onChange={(e) => setNewsContent(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!newsContent.trim()) return;
+                      onAddPost(newsContent, 'news', [], selectedImage || undefined);
+                      setNewsContent('');
+                      setSelectedImage(null);
+                    }
+                  }}
+                  placeholder="Comparte tu noticia"
+                  className="w-full bg-transparent border-none text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[80px] p-2"
+                />
                 <div className="flex items-center justify-between mt-4">
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full"><ImageIcon size={20} /></button>
                   <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
@@ -110,12 +132,12 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                   {activeTab === 'latest' ? "Sin noticias en las últimas 24h" : "No hay noticias relevantes hoy"}
                 </h4>
                 <p className="text-slate-400 font-medium text-sm italic mb-6">
-                  {activeTab === 'latest' 
-                    ? "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!" 
+                  {activeTab === 'latest'
+                    ? "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!"
                     : "Parece que no hay noticias destacadas en las últimas 24 horas. ¡Sube tu aportación!"}
                 </p>
                 {activeTab === 'latest' && (
-                  <button 
+                  <button
                     onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                     className="inline-flex items-center space-x-2 px-6 py-3 bg-orange-600 text-white rounded-2xl font-black text-xs hover:bg-orange-700 transition-all"
                   >
@@ -137,8 +159,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
           {sortedNews.map((post, index) => (
             <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
               <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
-              <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover shadow-sm" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
-              <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.likes}</span></div>
+              <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
+              <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.upvotes !== undefined ? post.upvotes : post.likes}</span></div>
             </div>
           ))}
         </div>

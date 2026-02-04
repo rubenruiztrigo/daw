@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Heart, UserPlus, MessageSquare, Bell, CheckCircle, ChevronUp, Repeat } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat } from 'lucide-react';
 import { Notification } from '../types';
 
 interface NotificationsViewProps {
@@ -9,28 +9,34 @@ interface NotificationsViewProps {
   onNotificationClick?: (postId?: string) => void;
 }
 
-export const NotificationsView: React.FC<NotificationsViewProps> = ({ 
-  notifications, 
+export const NotificationsView: React.FC<NotificationsViewProps> = ({
+  notifications,
   onMarkAllRead,
-  onNotificationClick 
+  onNotificationClick
 }) => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  useEffect(() => {
+    if (unreadCount > 0) {
+      onMarkAllRead();
+    }
+  }, [unreadCount, onMarkAllRead]);
 
   const getIcon = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
-      case 'like': 
+      case 'like':
         if (isNews) {
-          return <ChevronUp size={18} className="text-orange-500" strokeWidth={3} />;
+          return <ChevronUp size={18} className="text-emerald-500" strokeWidth={3} />;
         }
         return <Heart size={18} className="text-pink-500" fill="currentColor" />;
-      case 'follow': 
+      case 'follow':
         return <UserPlus size={18} className="text-blue-500" />;
-      case 'comment': 
+      case 'comment':
         return <MessageSquare size={18} className={isNews ? "text-orange-600" : "text-emerald-500"} />;
       case 'repost':
         return <Repeat size={18} className="text-emerald-500" strokeWidth={3} />;
-      default: 
+      default:
         return <Bell size={18} className="text-gray-400" />;
     }
   };
@@ -38,15 +44,15 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   const getBgColor = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
-      case 'like': 
+      case 'like':
         return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-pink-50 dark:bg-pink-900/20';
-      case 'follow': 
+      case 'follow':
         return 'bg-blue-50 dark:bg-blue-900/20';
-      case 'comment': 
+      case 'comment':
         return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
       case 'repost':
         return 'bg-emerald-50 dark:bg-emerald-900/20';
-      default: 
+      default:
         return 'bg-gray-50 dark:bg-zinc-800';
     }
   };
@@ -58,16 +64,6 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           <h2 className="text-2xl font-black text-gray-900 dark:text-white">Notificaciones</h2>
           <p className="text-gray-500 dark:text-zinc-500 text-sm font-medium">Seguidores, reacciones y comentarios en tu red.</p>
         </div>
-        
-        {unreadCount > 0 && (
-          <button 
-            onClick={onMarkAllRead}
-            className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl text-blue-600 dark:text-blue-400 text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all animate-in fade-in slide-in-from-right-2"
-          >
-            <CheckCircle size={16} />
-            <span>Marcar todo como leído</span>
-          </button>
-        )}
       </div>
 
       <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm">
@@ -79,8 +75,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-zinc-900">
             {notifications.map((n) => (
-              <div 
-                key={n.id} 
+              <div
+                key={n.id}
                 onClick={() => onNotificationClick?.(n.postId)}
                 className={`px-8 py-6 flex space-x-4 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative ${!n.isRead ? 'bg-red-50/20 dark:bg-red-900/10' : ''}`}
               >

@@ -25,12 +25,14 @@ interface PostCardProps {
   onPreviewImage?: (url: string) => void;
   onViewCalendar?: () => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
+  showMenu?: boolean;
 }
 
-export const PostCard: React.FC<PostCardProps> = ({ 
-  post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag, 
-  onSharePost, onNavigateToProfile, onNavigateToPost, onOpenShare, currentUser, 
-  followedUserIds, followerUserIds, onToggleFollow, users, onPreviewImage, onViewCalendar, onNavigateToEvent
+export const PostCard: React.FC<PostCardProps> = ({
+  post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag,
+  onSharePost, onNavigateToProfile, onNavigateToPost, onOpenShare, currentUser,
+  followedUserIds, followerUserIds, onToggleFollow, users, onPreviewImage, onViewCalendar, onNavigateToEvent,
+  showMenu
 }) => {
   const isNews = post.type === 'news';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -88,12 +90,12 @@ export const PostCard: React.FC<PostCardProps> = ({
       } else if (part.startsWith('http')) {
         // Detección de enlace profundo a evento: .../u/[USER_ID]/e/[EVENT_ID]
         const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
-        
+
         if (profileEventMatch && onNavigateToEvent) {
           const [, userId, eventId] = profileEventMatch;
           const eventOwner = users.find(u => u.id === userId);
           const label = eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`;
-          
+
           return (
             <button
               key={i}
@@ -131,22 +133,22 @@ export const PostCard: React.FC<PostCardProps> = ({
   };
 
   return (
-    <div 
+    <div
       className={`bg-white dark:bg-[#111] p-5 rounded-2xl border transition-all cursor-pointer group flex space-x-3 hover:border-gray-300 dark:hover:border-zinc-700 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'}`}
       onClick={handlePostClick}
     >
       <div className="relative flex-shrink-0">
-        <img 
-          src={post.authorAvatar} 
-          className="w-10 h-10 rounded-full object-cover cursor-pointer" 
+        <img
+          src={post.authorAvatar}
+          className="w-10 h-10 rounded-full object-cover cursor-pointer"
           onClick={handleAvatarClick}
-          alt="" 
+          alt=""
         />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center space-x-2 truncate">
-            <span 
+            <span
               className="font-bold text-gray-900 dark:text-white hover:underline text-[15px] cursor-pointer"
               onClick={handleAuthorClick}
             >
@@ -154,19 +156,48 @@ export const PostCard: React.FC<PostCardProps> = ({
             </span>
             <span className="text-blue-500 dark:text-blue-400 text-sm font-bold truncate">@{post.authorUsername}</span>
           </div>
-          <span className="text-gray-400 dark:text-zinc-600 text-[11px] font-bold whitespace-nowrap ml-4">
-            {timeAgo(post.timestamp)}
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-gray-400 dark:text-zinc-600 text-[11px] font-bold whitespace-nowrap">
+              {timeAgo(post.timestamp)}
+            </span>
+            {showMenu && post.authorId === currentUser.id && (
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-900 rounded-full text-gray-400 transition-colors"
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+                {isMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl shadow-xl z-10 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm('¿Estás seguro de que quieres eliminar este post?')) {
+                          onDeletePost?.(post.id);
+                        }
+                        setIsMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center space-x-2 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                      <span>Eliminar post</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        
+
         <p className={`text-[11px] font-bold mb-1 uppercase tracking-tight ${isNews ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
-        
+
         <div className="text-gray-900 dark:text-gray-200 text-[15px] leading-relaxed py-2 whitespace-pre-wrap font-medium">
           {renderContent(post.content)}
         </div>
 
         {post.linkedEvent && (
-          <div className="mt-2 mb-4 bg-gray-50 dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group/event">
+          <div className="mt-2 mb-4 bg-gray-50 dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl overflow-hidden transition-all group/event">
             <div className="p-4">
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center space-x-2">
@@ -182,7 +213,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   <span className="text-[10px] font-black text-slate-600 dark:text-slate-300">{post.linkedEvent.event_time.substring(0, 5)}h</span>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="flex items-center text-[11px] text-slate-500 dark:text-slate-400 font-bold">
                   <Calendar size={14} className="mr-2 text-slate-300" />
@@ -194,16 +225,16 @@ export const PostCard: React.FC<PostCardProps> = ({
                 </div>
               </div>
 
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (onNavigateToEvent) {
                     onNavigateToEvent(post.authorId, post.linkedEvent!.id);
                   } else {
                     onViewCalendar?.();
                   }
                 }}
-                className="w-full flex items-center justify-center space-x-2 py-3 bg-white dark:bg-zinc-800 border-2 border-blue-50 dark:border-zinc-700 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all shadow-sm"
+                className="w-full flex items-center justify-center space-x-2 py-3 bg-white dark:bg-zinc-800 border-2 border-blue-50 dark:border-zinc-700 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all"
               >
                 <span>Ver Detalles en Perfil</span>
                 <ChevronRight size={14} />
@@ -219,15 +250,15 @@ export const PostCard: React.FC<PostCardProps> = ({
         )}
 
         <div className="flex items-center justify-between max-w-md text-gray-500 mt-2">
-          <button 
-            onClick={(e) => { e.stopPropagation(); onLike(post.id); }} 
+          <button
+            onClick={(e) => { e.stopPropagation(); onLike(post.id); }}
             className={`flex items-center space-x-2 transition-colors group/btn ${post.userLiked ? 'text-pink-600' : 'hover:text-pink-600'}`}
           >
             <div className={`p-2 rounded-full transition-all ${post.userLiked ? 'bg-pink-50 dark:bg-pink-900/20' : 'group-hover/btn:bg-pink-50 dark:group-hover/btn:bg-pink-900/20'}`}><Heart size={18} fill={post.userLiked ? "currentColor" : "none"} /></div>
             <span className="text-sm font-medium">{post.likes}</span>
           </button>
-          
-          <button 
+
+          <button
             onClick={(e) => { e.stopPropagation(); handlePostClick(); }}
             className="flex items-center space-x-2 hover:text-blue-500 transition-colors group/btn"
           >
@@ -235,7 +266,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             <span className="text-sm font-medium">{post.comments}</span>
           </button>
 
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onRepost(post.id); }}
             className={`flex items-center space-x-2 transition-all group/btn ${post.userReposted ? 'text-emerald-500' : 'hover:text-emerald-500'}`}
           >
@@ -244,8 +275,8 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
             <span className={`text-sm font-medium ${post.userReposted ? 'font-black' : ''}`}>{post.reposts}</span>
           </button>
-          
-          <button 
+
+          <button
             onClick={(e) => { e.stopPropagation(); onOpenShare(post); }}
             className="flex items-center space-x-2 hover:text-blue-500 transition-colors group/btn"
           >
