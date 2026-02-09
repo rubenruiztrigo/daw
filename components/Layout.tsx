@@ -1,12 +1,10 @@
-
 import React, { useState, useMemo } from 'react';
-import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle } from 'lucide-react';
-import { User as UserType, Notification, AppView, CalendarEvent, Post } from '../types';
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag } from 'lucide-react';
+import { User as UserType, Notification, CalendarEvent, Post } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentView: AppView;
-  onViewChange: (view: AppView) => void;
   user: UserType;
   notifications?: Notification[];
   globalEvents?: CalendarEvent[];
@@ -14,7 +12,6 @@ interface LayoutProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchSubmit?: (query: string) => void;
-  isViewingOwnProfile?: boolean;
   onLogout?: () => void;
 }
 
@@ -30,8 +27,6 @@ const Logo = () => (
 
 export const Layout: React.FC<LayoutProps> = ({
   children,
-  currentView,
-  onViewChange,
   user,
   notifications = [],
   globalEvents = [],
@@ -39,22 +34,19 @@ export const Layout: React.FC<LayoutProps> = ({
   searchQuery,
   onSearchChange,
   onSearchSubmit,
-  isViewingOwnProfile = true,
-  onLogout
+  onLogout,
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const NavItem = ({ view, icon: Icon, label, badge }: { view: AppView, icon: any, label: string, badge?: number }) => {
-    const isActive = view === 'profile'
-      ? (currentView === 'profile' && isViewingOwnProfile)
-      : currentView === view;
-
+  const NavItem = ({ to, icon: Icon, label, badge }: { to: string, icon: any, label: string, badge?: number }) => {
     return (
-      <button
-        onClick={() => onViewChange(view)}
-        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${isActive
+      <NavLink
+        to={to}
+        className={({ isActive }) => `w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${isActive
           ? 'bg-blue-600 text-white'
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-900 hover:text-blue-600'
           }`}
@@ -64,11 +56,11 @@ export const Layout: React.FC<LayoutProps> = ({
           <span className="font-semibold text-sm">{label}</span>
         </div>
         {badge !== undefined && badge > 0 && (
-          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isActive ? 'bg-white text-red-600' : 'bg-red-600 text-white animate-pulse'}`}>
+          <span className="bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
             {badge}
           </span>
         )}
-      </button>
+      </NavLink>
     );
   };
 
@@ -87,16 +79,35 @@ export const Layout: React.FC<LayoutProps> = ({
   const trendingTags = useMemo(() => {
     const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
     const relevantPosts = posts.filter(p => new Date(p.timestamp).getTime() > oneDayAgo);
-    // Strict 24h window, no fallback to older posts
-    const targetPosts = relevantPosts;
+
+    const countTags = (text: string, counts: Record<string, number>) => {
+      if (!text) return;
+      const matches = text.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g);
+      if (matches) {
+        matches.forEach(t => {
+          const cleanTag = t.slice(1);
+          counts[cleanTag] = (counts[cleanTag] || 0) + 1;
+        });
+      }
+    };
 
     const counts: Record<string, number> = {};
-    targetPosts.forEach(post => {
+    relevantPosts.forEach(post => {
+      // Tags from metadata (which come from content usually)
       post.tags?.forEach(tag => {
         const cleanTag = tag.trim();
-        if (cleanTag) {
-          counts[cleanTag] = (counts[cleanTag] || 0) + 1;
-        }
+        if (cleanTag) counts[cleanTag] = (counts[cleanTag] || 0) + 1;
+      });
+
+      // Also scan content just in case tags array missed something or to be sure
+      // (Usually tags array is enough for posts, but user asked for "comments" too)
+
+      // Scan comments
+      post.commentsList?.forEach(comment => {
+        countTags(comment.text, counts);
+        comment.replies?.forEach(reply => {
+          countTags(reply.text, counts);
+        });
       });
     });
 
@@ -133,35 +144,28 @@ export const Layout: React.FC<LayoutProps> = ({
     if (searchQuery.trim() && onSearchSubmit) onSearchSubmit(searchQuery);
   };
 
-  const showSidebar = currentView === 'feed' || currentView === 'news';
+  const showSidebar = ['/feed', '/news'].includes(location.pathname) || location.pathname === '/';
 
   return (
-    <div className="min-h-screen bg-[#F3F4F6] dark:bg-black flex transition-colors duration-200 font-sans">
+    <div className="min-h-screen bg-[#F3F4F6] dark:bg-black flex transition-colors duration-200 font-sans overflow-x-hidden">
       <aside className="w-64 fixed inset-y-0 left-0 bg-white dark:bg-[#0a0a0a] border-r border-gray-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
-        <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => onViewChange('feed')}>
+        <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => navigate('/feed')}>
           <Logo />
           <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Red Social</span>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-hide pr-2">
-          <NavItem view="feed" icon={Home} label="Inicio" />
-          <NavItem view="news" icon={Newspaper} label="Noticias" />
-          <NavItem view="calendar" icon={Calendar} label="Calendario" />
-          <NavItem view="messages" icon={MessageCircle} label="Mensajes" />
-          <NavItem view="notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
-          <NavItem view="profile" icon={User} label="Mi Perfil" />
-          <NavItem view="settings" icon={Settings} label="Configuración" />
+          <NavItem to="/feed" icon={Home} label="Inicio" />
+          <NavItem to="/news" icon={Newspaper} label="Noticias" />
+          <NavItem to="/calendar" icon={Calendar} label="Calendario" />
+          <NavItem to="/messages" icon={MessageCircle} label="Mensajes" />
+          <NavItem to="/notifications" icon={Bell} label="Notificaciones" badge={unreadCount} />
+          <NavItem to={`/profile/${user.id}`} icon={User} label="Mi Perfil" />
+          <NavItem to="/settings" icon={Settings} label="Configuración" />
         </nav>
 
         <div className="mt-auto pt-6 border-t border-gray-100 dark:border-zinc-900 relative">
           {isProfileMenuOpen && (
             <div className="absolute bottom-full left-0 mb-1 w-full bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
-              <button
-                onClick={() => { onViewChange('profile'); setIsProfileMenuOpen(false); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all rounded-xl"
-              >
-                <User size={16} />
-                <span>Ver mi perfil</span>
-              </button>
               <button
                 onClick={() => { setShowLogoutConfirm(true); setIsProfileMenuOpen(false); }}
                 className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-xl"
@@ -172,31 +176,44 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
           )}
 
-          <button
-            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-            className={`w-full flex items-center space-x-3 p-2 rounded-2xl transition-all hover:bg-gray-50 dark:hover:bg-zinc-900 ${isProfileMenuOpen ? 'bg-gray-50 dark:bg-zinc-900' : ''}`}
+          <div
+            className={`w-full flex items-center justify-between p-2 rounded-2xl transition-all hover:bg-gray-50 dark:hover:bg-zinc-900 ${isProfileMenuOpen ? 'bg-gray-50 dark:bg-zinc-900' : ''}`}
           >
-            <div className="relative flex-shrink-0">
-              <img src={user.avatar} className="w-10 h-10 rounded-xl object-cover border-2 border-transparent" alt="Avatar" />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-50 border-2 border-white dark:border-zinc-900 rounded-full"></div>
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-none mb-1">{user.name}</p>
-              <p className="text-[10px] text-gray-400 font-bold truncate">{user.username ? `@${user.username.toLowerCase()}` : user.department}</p>
-            </div>
-            <MoreVertical size={16} className="text-gray-400" />
-          </button>
+            <Link
+              to={`/profile/${user.id}`}
+              className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer group"
+            >
+              <div className="relative flex-shrink-0">
+                <img src={user.avatar} className="w-10 h-10 rounded-xl object-cover border-2 border-transparent group-hover:border-blue-200 transition-all" alt="Avatar" />
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-xs font-bold text-gray-900 dark:text-white truncate leading-none mb-1 group-hover:text-blue-600 transition-colors">{user.name}</p>
+                <p className="text-[10px] text-gray-400 font-bold truncate">{user.username ? `@${user.username.toLowerCase()}` : user.department}</p>
+              </div>
+            </Link>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsProfileMenuOpen(!isProfileMenuOpen);
+              }}
+              className="p-2 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <MoreVertical size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
       <div className={`flex-1 md:ml-64 ${showSidebar ? 'lg:mr-80' : ''} min-h-screen transition-all duration-300`}>
         <header className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-zinc-900 px-6 py-4 flex items-center justify-between sticky top-0 z-20 h-16 md:hidden">
-          <div className="flex items-center space-x-3" onClick={() => onViewChange('feed')}>
+          <div className="flex items-center space-x-3" onClick={() => navigate('/feed')}>
             <Logo />
             <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Red Social</span>
           </div>
         </header>
-        <main className="p-3 sm:p-4 md:p-8">{children}</main>
+        <main className="p-3 sm:p-4 md:p-8 pb-20 md:pb-8">{children}</main>
       </div>
 
       {showSidebar && (
@@ -240,11 +257,14 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="p-6 bg-white dark:bg-zinc-900/30 rounded-3xl border border-gray-100 dark:border-zinc-800">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Próximos eventos</h3>
-                <button onClick={() => onViewChange('calendar')} className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-black uppercase">Ver todos</button>
+                <Link to="/calendar" className="text-blue-600 dark:text-blue-400 hover:underline text-[10px] font-black uppercase">Ver todos</Link>
               </div>
               <div className="space-y-4">
                 {upcomingEvents.length > 0 ? upcomingEvents.map(event => (
-                  <div key={event.id} className="group cursor-pointer" onClick={() => onViewChange('calendar')}>
+                  <div key={event.id} className="group cursor-pointer" onClick={() => {
+                    // Navigate to calendar with the event date
+                    navigate('/calendar', { state: { date: event.event_date } });
+                  }}>
                     <div className="flex items-start space-x-3">
                       <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${getEventColor(event.type)}`} />
                       <div className="min-w-0">
@@ -268,13 +288,14 @@ export const Layout: React.FC<LayoutProps> = ({
       <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-zinc-900 flex justify-around p-3 z-30">
         {isProfileMenuOpen && (
           <div className="absolute bottom-16 right-4 w-60 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 py-1 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
-            <button
-              onClick={() => { onViewChange('profile'); setIsProfileMenuOpen(false); }}
+            <Link
+              to={`/profile/${user.id}`}
+              onClick={() => setIsProfileMenuOpen(false)}
               className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all rounded-xl"
             >
               <User size={16} />
               <span>Ver mi perfil</span>
-            </button>
+            </Link>
             <button
               onClick={() => { setShowLogoutConfirm(true); setIsProfileMenuOpen(false); }}
               className="w-full flex items-center space-x-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all rounded-xl"
@@ -284,15 +305,15 @@ export const Layout: React.FC<LayoutProps> = ({
             </button>
           </div>
         )}
-        <button onClick={() => onViewChange('feed')} className={currentView === 'feed' ? 'text-blue-600' : 'text-gray-400'}><Home size={22} /></button>
-        <button onClick={() => onViewChange('news')} className={currentView === 'news' ? 'text-blue-600' : 'text-gray-400'}><Newspaper size={22} /></button>
-        <button onClick={() => onViewChange('calendar')} className={currentView === 'calendar' ? 'text-blue-600' : 'text-gray-400'}><Calendar size={22} /></button>
-        <button onClick={() => onViewChange('messages')} className={currentView === 'messages' ? 'text-blue-600' : 'text-gray-400'}><MessageCircle size={22} /></button>
-        <button onClick={() => onViewChange('notifications')} className={`relative ${currentView === 'notifications' ? 'text-blue-600' : 'text-gray-400'}`}>
+        <NavLink to="/feed" className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'}><Home size={22} /></NavLink>
+        <NavLink to="/news" className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'}><Newspaper size={22} /></NavLink>
+        <NavLink to="/calendar" className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'}><Calendar size={22} /></NavLink>
+        <NavLink to="/messages" className={({ isActive }) => isActive ? 'text-blue-600' : 'text-gray-400'}><MessageCircle size={22} /></NavLink>
+        <NavLink to="/notifications" className={({ isActive }) => `relative ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
           <Bell size={22} />
           {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center">{unreadCount}</span>}
-        </button>
-        <button onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className={isProfileMenuOpen || (currentView === 'profile' && isViewingOwnProfile) ? 'text-blue-600' : 'text-gray-400'}><User size={22} /></button>
+        </NavLink>
+        <button onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)} className={isProfileMenuOpen || location.pathname === `/profile/${user.id}` ? 'text-blue-600' : 'text-gray-400'}><User size={22} /></button>
       </nav>
 
       {/* Modal de Confirmación de Cierre de Sesión */}

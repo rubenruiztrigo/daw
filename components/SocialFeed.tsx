@@ -29,13 +29,14 @@ interface SocialFeedProps {
   onViewCalendar?: () => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
+  globalEvents?: CalendarEvent[];
 }
 
 type FeedTab = 'for-you' | 'following';
 
 export const SocialFeed: React.FC<SocialFeedProps> = ({
   // ... (keep existing props destructuring)
-  posts, user, onLike, onVote, onRepost, onAddPost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, users = [], initialContent, prefilledEvent, onClearInitialContent, onViewCalendar, onNavigateToEvent, onShareViaChat
+  posts, user, onLike, onVote, onRepost, onAddPost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, users = [], initialContent, prefilledEvent, onClearInitialContent, onViewCalendar, onNavigateToEvent, onShareViaChat, globalEvents = []
 }) => {
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const [content, setContent] = useState('');
@@ -278,7 +279,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
       <div className="space-y-4">
         {filteredPosts.length > 0 ? (
-          filteredPosts.map(post => <PostCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onSharePost={onSharePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onOpenShare={setSharingPost} currentUser={user} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} onViewCalendar={onViewCalendar} onNavigateToEvent={onNavigateToEvent} />)
+          filteredPosts.map(post => <PostCard key={post.id} post={post} onLike={onLike} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} onDeletePost={onDeletePost} onSearchHashtag={onSearchHashtag} onSharePost={onSharePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onOpenShare={setSharingPost} currentUser={user} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={onToggleFollow} users={users} onViewCalendar={onViewCalendar} onNavigateToEvent={onNavigateToEvent} globalEvents={globalEvents} />)
         ) : (
           <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800 px-10">
             <div className="mx-auto w-16 h-16 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-4">

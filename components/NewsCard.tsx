@@ -111,7 +111,10 @@ export const NewsCard: React.FC<NewsCardProps> = ({
               <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
                 <ChevronUp size={22} strokeWidth={3} />
               </button>
-              <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white'}`}>
+              <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.upvotes !== undefined
+                  ? (post.upvotes > 0 ? 'text-emerald-600' : 'text-slate-900 dark:text-white')
+                  : (post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white')
+                }`}>
                 {post.upvotes !== undefined ? post.upvotes : post.likes}
               </span>
               <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}>

@@ -1,8 +1,8 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { Post, User } from '../types';
 import { ImageIcon, ChevronUp, Trophy, Clock, Sparkles } from 'lucide-react';
 import { NewsCard } from './NewsCard';
+import { RankingHistoryModal } from './RankingHistoryModal';
 
 interface NewsHubViewProps {
   posts: Post[];
@@ -26,12 +26,15 @@ type NewsTab = 'latest' | 'popular' | 'ranking';
 export const NewsHubView: React.FC<NewsHubViewProps> = ({
   posts, user, onVote, onRepost, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = []
 }) => {
+  // State for history modal
   const [activeTab, setActiveTab] = useState<NewsTab>('latest');
   const [newsContent, setNewsContent] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const sortedNews = useMemo(() => {
+    // ... (existing logic)
     let filtered = [...posts];
     const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
 
@@ -49,7 +52,27 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
       return up - down;
     };
 
-    if (activeTab === 'ranking') return filtered.sort((a, b) => getScore(b) - getScore(a)).slice(0, 5);
+    if (activeTab === 'ranking') {
+      const now = new Date();
+      const day = now.getDay(); // 0 (Sun) - 6 (Sat)
+      const daysSinceMonday = (day + 6) % 7; // Mon=0, Tue=1, ..., Sun=6
+
+      const mondayStart = new Date(now);
+      mondayStart.setDate(now.getDate() - daysSinceMonday);
+      mondayStart.setHours(0, 0, 0, 0);
+
+      const fridayEnd = new Date(mondayStart);
+      fridayEnd.setDate(mondayStart.getDate() + 4);
+      fridayEnd.setHours(23, 59, 59, 999);
+
+      return filtered
+        .filter(n => {
+          const t = new Date(n.timestamp).getTime();
+          return t >= mondayStart.getTime() && t <= fridayEnd.getTime();
+        })
+        .sort((a, b) => getScore(b) - getScore(a))
+        .slice(0, 5);
+    }
 
     if (activeTab === 'popular') {
       // Filtrar para mostrar solo noticias relevantes (por votos) publicadas en las últimas 24h
@@ -63,20 +86,38 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-20">
-      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex items-center justify-center gap-x-10 px-4 rounded-b-2xl mb-2 h-14">
-        <button onClick={() => setActiveTab('latest')} className="px-4 py-4 text-sm font-bold relative group">
-          <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Última hora</span>
-          {activeTab === 'latest' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
-        </button>
-        <button onClick={() => setActiveTab('popular')} className="px-4 py-4 text-sm font-bold relative group">
-          <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Más relevante (24h)</span>
-          {activeTab === 'popular' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
-        </button>
-        <button onClick={() => setActiveTab('ranking')} className="px-4 py-4 text-sm font-bold relative group">
-          <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Top ranking</span>
-          {activeTab === 'ranking' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
-        </button>
+      <div className="sticky top-0 z-20 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 flex items-center justify-between px-4 rounded-b-2xl mb-2 h-14">
+        <div className="flex items-center gap-x-6 flex-1 justify-center">
+          <button onClick={() => setActiveTab('latest')} className="px-4 py-4 text-sm font-bold relative group">
+            <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Última hora</span>
+            {activeTab === 'latest' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
+          </button>
+          <button onClick={() => setActiveTab('popular')} className="px-4 py-4 text-sm font-bold relative group">
+            <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Más relevante (24h)</span>
+            {activeTab === 'popular' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
+          </button>
+          <button onClick={() => setActiveTab('ranking')} className="px-4 py-4 text-sm font-bold relative group">
+            <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>Top ranking</span>
+            {activeTab === 'ranking' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full" />}
+          </button>
+        </div>
+        {activeTab === 'ranking' && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-zinc-800 rounded-full transition-colors absolute right-4"
+            title="Ver historial de ranking"
+          >
+            <Trophy size={20} />
+          </button>
+        )}
       </div>
+
+      {showHistory && (
+        <RankingHistoryModal
+          badges={currentUser.badges || []}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
 
       {activeTab !== 'ranking' ? (
         <>

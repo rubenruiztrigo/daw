@@ -1,36 +1,43 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { encryptMessage, decryptMessage } from './utils/encryption';
 import { Layout } from './components/Layout';
 import { SocialFeed } from './components/SocialFeed';
 import { ProfileView } from './components/ProfileView';
+import { ProfileRoute } from './components/ProfileRoute';
 import { MessagesView } from './components/MessagesView';
 import { NewsHubView } from './components/NewsHubView';
 import { CalendarView } from './components/CalendarView';
 import { SearchResultsView } from './components/SearchResultsView';
+import { SearchRoute } from './components/SearchRoute'; // Added import
 import { SettingsView } from './components/SettingsView';
 import { Onboarding } from './components/Onboarding';
+import { ShareModal } from './components/ShareModal';
+import { StoreView } from './components/StoreView';
 import { Login } from './components/Login';
 import { PasswordRecover } from './components/PasswordRecover';
 import { NotificationsView } from './components/NotificationsView';
 import { FullPostView } from './components/FullPostView';
-import { User, Post, Chat, Message, Notification, Comment, AppView, CommentReply, CalendarEvent } from './types';
+import { User, Post, Chat, Message, Notification, Comment, AppView, CommentReply, CalendarEvent, BADGE_CATALOG } from './types';
 import { supabase } from './supabaseClient';
 import { Loader2 } from 'lucide-react';
 import { Toast } from './components/Toast';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 type Theme = 'light' | 'dark';
 
 const App: React.FC = () => {
+  const navigate = useNavigate();
   const [session, setSession] = useState<any>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [currentView, setCurrentView] = useState<AppView>('feed');
+  // const [currentView, setCurrentView] = useState<AppView>('feed'); // Removed in favor of Router
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
-  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  // const [viewingUserId, setViewingUserId] = useState<string | null>(null); // Handled by URL param
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [previousView, setPreviousView] = useState<AppView>('feed');
+  const [previousView, setPreviousView] = useState<string>('/feed');
   const [posts, setPosts] = useState<Post[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -43,13 +50,19 @@ const App: React.FC = () => {
   const [processingReposts, setProcessingReposts] = useState<Set<string>>(new Set());
   const [processingFollows, setProcessingFollows] = useState<Set<string>>(new Set());
   const [processingVotes, setProcessingVotes] = useState<Set<string>>(new Set());
+  const [sharingEvent, setSharingEvent] = useState<CalendarEvent | null>(null);
+  const [sharingPost, setSharingPost] = useState<Post | null>(null);
 
   const [prefilledPostContent, setPrefilledPostContent] = useState<string | null>(null);
   const [prefilledEvent, setPrefilledEvent] = useState<CalendarEvent | null>(null);
   const [targetEventId, setTargetEventId] = useState<string | null>(null);
+  const [targetCalendarDate, setTargetCalendarDate] = useState<Date | null>(null);
 
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const [followerUserIds, setFollowerUserIds] = useState<Set<string>>(new Set());
+
+  const [notificationsLimit, setNotificationsLimit] = useState(15);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -59,10 +72,17 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || (session && (session as any).type === 'recovery')) {
         setIsResettingPassword(true);
       }
     });
+
+    // Handle explicit route for password recovery (initial load)
+    if (window.location.pathname.includes('/recover-password')) {
+      setIsResettingPassword(true);
+      // No need to navigate here yet, the state will trigger the rendering
+      // Or better yet, we can navigate if we want to clean the URL later
+    }
 
     return () => subscription.unsubscribe();
   }, []);
@@ -78,6 +98,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (session?.user && !isResettingPassword) {
+      // Trigger weekly ranking rewards check
+      supabase.rpc('assign_weekly_ranking_badges').then(({ error }) => {
+        if (error) console.error("Error checking ranking rewards:", error);
+      });
+
       fetchUserProfile(session.user.id);
       fetchUsers();
       fetchFeed();
@@ -108,59 +133,100 @@ const App: React.FC = () => {
   }, [session, isResettingPassword]);
 
   const fetchUserProfile = async (uid: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).single();
-    if (data) setCurrentUserData({
-      id: data.id,
-      name: data.name,
-      lastName: data.last_name,
-      username: data.username,
-      email: data.email,
-      position: data.position || 'Personal Público',
-      department: data.department || 'Administración',
-      jobCategory: data.job_category,
-      administrationType: data.administration_type,
-      roleDescription: data.role_description,
-      organizationName: data.organization_name,
-      avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
-      banner: data.banner,
-      bannerColor: data.banner_color,
-      bio: data.bio || '',
-      interests: data.interests || [],
-      followers: data.followers_count || 0,
-      following: data.following_count || 0,
-      country: data.country,
-      region: data.region,
-      joinedDate: data.created_at,
-      birthDate: data.birth_date
-    });
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
+    const { data: badges } = await supabase.from('user_badges').select('badge_id, created_at').eq('user_id', uid);
+
+    if (profile) {
+      const now = new Date();
+      const day = now.getDay();
+      const isWeekend = day === 0 || day === 6;
+
+      const lastMonday = new Date(now);
+      if (!isWeekend) {
+        lastMonday.setDate(now.getDate() - (day - 1));
+        lastMonday.setHours(0, 0, 0, 0);
+      }
+
+      const filteredBadges = (badges || []).filter(b => {
+        return true;
+      });
+
+      setCurrentUserData({
+        id: profile.id,
+        name: profile.name,
+        lastName: profile.last_name,
+        username: profile.username,
+        email: profile.email,
+        position: profile.position || 'Personal Público',
+        department: profile.department || 'Administración',
+        jobCategory: profile.job_category,
+        administrationType: profile.administration_type,
+        roleDescription: profile.role_description,
+        organizationName: profile.organization_name,
+        avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+        banner: profile.banner,
+        bannerColor: profile.banner_color,
+        bio: profile.bio || '',
+        interests: profile.interests || [],
+        followers: profile.followers_count || 0,
+        following: profile.following_count || 0,
+        country: profile.country,
+        region: profile.region,
+        joinedDate: profile.created_at,
+        birthDate: profile.birth_date,
+        badges: filteredBadges.map(b => ({ id: b.badge_id, created_at: b.created_at }))
+      });
+    }
   };
 
   const fetchUsers = async () => {
-    const { data } = await supabase.from('profiles').select('*');
-    if (data) setUsers(data.map((u: any) => ({
-      id: u.id,
-      name: u.name,
-      lastName: u.last_name,
-      username: u.username,
-      email: u.email,
-      position: u.position || 'Personal Público',
-      department: u.department || 'Administración',
-      jobCategory: u.job_category,
-      administrationType: u.administration_type,
-      roleDescription: u.role_description,
-      organizationName: u.organization_name,
-      avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-      banner: u.banner,
-      bannerColor: u.banner_color,
-      bio: u.bio || '',
-      interests: u.interests || [],
-      followers: u.followers_count || 0,
-      following: u.following_count || 0,
-      country: u.country,
-      region: u.region,
-      joinedDate: u.created_at,
-      birthDate: u.birth_date
-    })));
+    const { data: profiles } = await supabase.from('profiles').select('*');
+    const { data: allBadges } = await supabase.from('user_badges').select('user_id, badge_id, created_at');
+
+    if (profiles) {
+      const now = new Date();
+      const day = now.getDay();
+      const isWeekend = day === 0 || day === 6;
+      const lastMonday = new Date(now);
+      if (!isWeekend) {
+        lastMonday.setDate(now.getDate() - (day - 1));
+        lastMonday.setHours(0, 0, 0, 0);
+      }
+
+      const badgesByUserId = (allBadges || []).reduce((acc: any, curr: any) => {
+        const badgeInfo = BADGE_CATALOG.find(cat => cat.id === curr.badge_id);
+
+        if (!acc[curr.user_id]) acc[curr.user_id] = [];
+        acc[curr.user_id].push({ id: curr.badge_id, created_at: curr.created_at });
+        return acc;
+      }, {});
+
+      setUsers(profiles.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        lastName: u.last_name,
+        username: u.username,
+        email: u.email,
+        position: u.position || 'Personal Público',
+        department: u.department || 'Administración',
+        jobCategory: u.job_category,
+        administrationType: u.administration_type,
+        roleDescription: u.role_description,
+        organizationName: u.organization_name,
+        avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+        banner: u.banner,
+        bannerColor: u.banner_color,
+        bio: u.bio || '',
+        interests: u.interests || [],
+        followers: u.followers_count || 0,
+        following: u.following_count || 0,
+        country: u.country,
+        region: u.region,
+        joinedDate: u.created_at,
+        birthDate: u.birth_date,
+        badges: badgesByUserId[u.id] || []
+      })));
+    }
   };
 
   const fetchFollows = async () => {
@@ -173,8 +239,8 @@ const App: React.FC = () => {
 
   const fetchChats = async () => {
     if (!session?.user) return;
-    const { data: messagesData } = await supabase.from('messages').select('*, sender:profiles!sender_id(*), recipient:profiles!recipient_id(*)').or(`sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`).order('created_at', { ascending: true });
-    const deletedPosts: any[] = []; // await supabase.from('posts_eliminados').select('post_id').eq('user_id', session.user.id);
+    const { data: messagesData } = await supabase.from('messages').select('*, sender:profiles!sender_id(*), recipient:profiles!recipient_id(*), shared_profile:profiles!shared_profile_id(*)').or(`sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`).order('created_at', { ascending: true });
+    const deletedPosts: any[] = []; // await supabase.from('posts_deleted').select('post_id').eq('user_id', session.user.id);
     const deletedPostIds = new Set(deletedPosts?.map((p: any) => p.post_id) || []);
 
     const chatsMap = new Map<string, Chat>();
@@ -183,8 +249,36 @@ const App: React.FC = () => {
       if (!otherUser) return;
       const chatId = otherUser.id;
       const chat = chatsMap.get(chatId) || { id: chatId, participant: { id: otherUser.id, name: otherUser.name, lastName: otherUser.last_name, username: otherUser.username, avatar: otherUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUser.id}`, position: otherUser.position, department: otherUser.department }, messages: [], lastMessage: '', timestamp: new Date() };
-      chat.messages.push({ id: m.id, senderId: m.sender_id, recipientId: m.recipient_id, text: m.text, timestamp: new Date(m.created_at), isRead: m.is_read, postId: m.post_id, isPostShare: m.is_post_share });
-      chat.lastMessage = m.text;
+
+      let sharedEventData = undefined;
+      if (m.shared_event_id) {
+        sharedEventData = globalEvents.find(e => e.id === m.shared_event_id);
+        // If not in global (e.g. past event or restricted), we might miss it. 
+        // Ideally we should fetch, but for now relying on globalEvents is a good start or we do a bulk fetch later.
+      }
+
+      chat.messages.push({
+        id: m.id,
+        senderId: m.sender_id,
+        recipientId: m.recipient_id,
+        text: decryptMessage(m.text),
+        timestamp: new Date(m.created_at),
+        isRead: m.is_read,
+        postId: m.post_id,
+        isPostShare: m.is_post_share,
+        sharedProfile: m.shared_profile ? {
+          id: m.shared_profile.id,
+          name: m.shared_profile.name,
+          lastName: m.shared_profile.last_name,
+          username: m.shared_profile.username,
+          avatar: m.shared_profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.shared_profile.id}`,
+          position: m.shared_profile.position,
+          department: m.shared_profile.department
+        } : undefined,
+        sharedEventId: m.shared_event_id,
+        sharedEvent: sharedEventData
+      });
+      chat.lastMessage = decryptMessage(m.text);
       chat.timestamp = new Date(m.created_at);
       chatsMap.set(chatId, chat);
     });
@@ -193,12 +287,25 @@ const App: React.FC = () => {
 
   const fetchNotifications = async () => {
     if (!session?.user) return;
-    const { data } = await supabase.from('notifications').select('*, sender:profiles!sender_id(*)').eq('user_id', session.user.id).order('created_at', { ascending: false });
-    if (data) setNotifications(data.map((n: any) => ({ id: n.id, type: n.type, senderName: `${n.sender?.name} ${n.sender?.last_name || ''}`, senderAvatar: n.sender?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.sender_id}`, content: n.content, timestamp: n.created_at, isRead: n.is_read, postId: n.post_id })));
+    const { data, count } = await supabase
+      .from('notifications')
+      .select('*, sender:profiles!sender_id(*)', { count: 'exact' })
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .range(0, notificationsLimit - 1);
+
+    if (data) {
+      setNotifications(data.map((n: any) => ({ id: n.id, type: n.type, senderName: `${n.sender?.name} ${n.sender?.last_name || ''}`, senderAvatar: n.sender?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.sender_id}`, content: n.content, timestamp: n.created_at, isRead: n.is_read, postId: n.post_id })));
+      if (count !== null) setHasMoreNotifications(data.length < count);
+    }
   };
 
+  useEffect(() => {
+    fetchNotifications();
+  }, [notificationsLimit]);
+
   const fetchGlobalEvents = async () => {
-    const { data } = await supabase.from('user_events').select('*').gte('attendees_count', 2);
+    const { data } = await supabase.from('user_events').select('*');
     if (data) setGlobalEvents(data.map(ev => ({ id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count })));
   };
 
@@ -294,7 +401,7 @@ const App: React.FC = () => {
           timestamp: n.created_at,
           type: 'news',
           tags: n.tags || [],
-          likes: n.likes_count || 0, // Keep likes as score for sorting/logic if needed, but we have strict upvotes now
+          likes: n.likes_count || 0,
           upvotes: votes.up,
           downvotes: votes.down,
           reposts: n.reposts_count || 0,
@@ -306,7 +413,7 @@ const App: React.FC = () => {
         };
       });
 
-      const { data: deletedPosts } = await supabase.from('posts_eliminados').select('post_id').eq('user_id', session.user.id);
+      const { data: deletedPosts } = await supabase.from('posts_deleted').select('post_id').eq('user_id', session.user.id);
       const deletedPostIds = new Set(deletedPosts?.map(p => p.post_id) || []);
 
       setPosts([...formattedPosts, ...formattedNews]
@@ -372,13 +479,35 @@ const App: React.FC = () => {
       if (existing) {
         if (existing.vote_type === dir) {
           await supabase.from(table).delete().eq('user_id', session.user.id).eq(idField, id);
+          // Delete notification if it was an upvote
+          if (dir === 'up') {
+            await supabase.from('notifications')
+              .delete()
+              .match({ user_id: post.authorId, sender_id: session.user.id, type: 'like', post_id: id });
+          }
         } else {
           await supabase.from(table).update({ vote_type: dir }).eq('user_id', session.user.id).eq(idField, id);
+          // If switching from up to down, delete notification
+          if (dir === 'down') {
+            await supabase.from('notifications')
+              .delete()
+              .match({ user_id: post.authorId, sender_id: session.user.id, type: 'like', post_id: id });
+          }
+          // If switching from down to up, create notification
+          if (dir === 'up' && post.authorId !== session.user.id) {
+            const { data: existingNotif } = await supabase.from('notifications').select('id').match({ user_id: post.authorId, sender_id: session.user.id, type: 'like', post_id: id }).maybeSingle();
+            if (!existingNotif) {
+              await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'like', content: `le ha gustado tu ${isNews ? 'noticia' : 'post'}`, post_id: id });
+            }
+          }
         }
       } else {
         await supabase.from(table).insert({ user_id: session.user.id, [idField]: id, vote_type: dir });
         if (post.authorId !== session.user.id && dir === 'up') {
-          await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'like', content: `le ha gustado tu ${isNews ? 'noticia' : 'post'}`, post_id: id });
+          const { data: existingNotif } = await supabase.from('notifications').select('id').match({ user_id: post.authorId, sender_id: session.user.id, type: 'like', post_id: id }).maybeSingle();
+          if (!existingNotif) {
+            await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'like', content: `le ha gustado tu ${isNews ? 'noticia' : 'post'}`, post_id: id });
+          }
         }
       }
       fetchFeed();
@@ -402,8 +531,18 @@ const App: React.FC = () => {
     setProcessingFollows(prev => new Set(prev).add(userId));
     setFollowedUserIds(prev => { const next = new Set(prev); if (isCurrentlyFollowing) next.delete(userId); else next.add(userId); return next; });
     try {
-      if (isCurrentlyFollowing) { await supabase.from('follows').delete().match({ follower_id: session.user.id, followed_id: userId }); setToast({ message: "Has dejado de seguir a este usuario.", type: 'info' }); }
-      else { await supabase.from('follows').insert({ follower_id: session.user.id, followed_id: userId }); await supabase.from('notifications').insert({ user_id: userId, sender_id: session.user.id, type: 'follow', content: `ha comenzado a seguirte` }); setToast({ message: "¡Ahora sigues a este usuario!", type: 'success' }); }
+      if (isCurrentlyFollowing) {
+        await supabase.from('follows').delete().match({ follower_id: session.user.id, followed_id: userId });
+        await supabase.from('notifications').delete().match({ user_id: userId, sender_id: session.user.id, type: 'follow' });
+        setToast({ message: "Has dejado de seguir a este usuario.", type: 'info' });
+      } else {
+        await supabase.from('follows').insert({ follower_id: session.user.id, followed_id: userId });
+        const { data: existingNotif } = await supabase.from('notifications').select('id').match({ user_id: userId, sender_id: session.user.id, type: 'follow' }).maybeSingle();
+        if (!existingNotif) {
+          await supabase.from('notifications').insert({ user_id: userId, sender_id: session.user.id, type: 'follow', content: `ha comenzado a seguirte` });
+        }
+        setToast({ message: "¡Ahora sigues a este usuario!", type: 'success' });
+      }
       await Promise.all([fetchFollows(), fetchUserProfile(session.user.id), fetchUsers()]);
     } catch (error: any) { console.error("Error toggle follow:", error.message); fetchFollows(); }
     finally { setTimeout(() => setProcessingFollows(prev => { const next = new Set(prev); next.delete(userId); return next; }), 400); }
@@ -462,6 +601,32 @@ const App: React.FC = () => {
     if (type === 'post') { payload.doc_url = docUrl || null; payload.doc_name = docName || null; if (linkedEventId) payload.linked_event_id = linkedEventId; }
     const { error } = await supabase.from(table).insert(payload);
     if (error) console.error("Error al publicar:", error.message); else fetchFeed();
+  };
+
+  const handleAddComment = async (postId: string, text: string) => {
+    if (!session?.user) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const table = post.type === 'news' ? 'news_comments' : 'post_comments';
+    const idField = post.type === 'news' ? 'news_id' : 'post_id';
+
+    try {
+      await supabase.from(table).insert({ [idField]: postId, author_id: session.user.id, text });
+
+      if (post.authorId !== session.user.id) {
+        await supabase.from('notifications').insert({
+          user_id: post.authorId,
+          sender_id: session.user.id,
+          type: 'comment',
+          content: `comentó en tu ${post.type === 'news' ? 'noticia' : 'post'}`,
+          post_id: postId
+        });
+      }
+      fetchFeed();
+    } catch (e: any) {
+      console.error("Error adding comment:", e);
+      setToast({ message: "Error al publicar comentario.", type: 'error' });
+    }
   };
 
   const handleAddReply = async (commentId: string, text: string, parentReplyId?: string) => {
@@ -563,8 +728,25 @@ const App: React.FC = () => {
     try {
       if (isLiked) {
         await supabase.from('comment_likes').delete().eq('user_id', session.user.id).eq('comment_id', commentId);
+        await supabase.from('notifications').delete().match({ user_id: targetComment.authorId, sender_id: session.user.id, type: 'like', post_id: targetPost?.id });
       } else {
         await supabase.from('comment_likes').insert({ user_id: session.user.id, comment_id: commentId });
+
+        // Notify comment author
+        if (targetComment.authorId !== session.user.id) {
+          const { data: existing } = await supabase.from('notifications').select('id').match({ user_id: targetComment.authorId, sender_id: session.user.id, type: 'like', content: 'le ha gustado tu comentario' }).maybeSingle(); // Content key for dedup? Or just type/sender/recipient
+          // Better unique constraint would be comment_id if we store it. But notifications table links to post_id usually.
+          // Let's rely on standard dedup pattern.
+          if (!existing) {
+            await supabase.from('notifications').insert({
+              user_id: targetComment.authorId,
+              sender_id: session.user.id,
+              type: 'like',
+              content: `le ha gustado tu comentario`,
+              post_id: targetPost?.id
+            });
+          }
+        }
       }
 
       // No manual count update needed if trigger is installed.
@@ -580,6 +762,45 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSupportEvent = async (event: CalendarEvent) => {
+    if (!session?.user) return;
+
+    // Optimistic update
+    setGlobalEvents(prev => prev.map(e => e.id === event.id ? { ...e, attendees: (e.attendees || 0) + 1 } : e));
+
+    try {
+      const { error } = await supabase.from('event_supports').insert({
+        user_id: session.user.id,
+        event_id: event.id
+      });
+
+      if (error) {
+        if (error.code === '23505') { // Unique violation
+          setToast({ message: "Ya has apoyado este evento.", type: 'info' });
+        } else {
+          throw error;
+        }
+      } else {
+        setToast({ message: "¡Estás apoyando este evento!", type: 'success' });
+        if (event.creator_id !== session.user.id) {
+          const { data: existing } = await supabase.from('notifications').select('id').match({ user_id: event.creator_id, sender_id: session.user.id, type: 'like', content: `está apoyando tu evento: ${event.title}` }).maybeSingle();
+          if (!existing) {
+            await supabase.from('notifications').insert({
+              user_id: event.creator_id,
+              sender_id: session.user.id,
+              type: 'like',
+              content: `está apoyando tu evento: ${event.title}`
+            });
+          }
+        }
+      }
+      fetchGlobalEvents();
+    } catch (e: any) {
+      console.error("Error supporting event:", e);
+      setToast({ message: "Error al apoyar evento.", type: 'error' });
+      fetchGlobalEvents();
+    }
+  };
 
   const handleRepost = async (postId: string) => {
     if (!session?.user || processingReposts.has(postId)) return;
@@ -590,8 +811,20 @@ const App: React.FC = () => {
     setPosts(prevPosts => prevPosts.map(p => { if (p.id === postId) return { ...p, userReposted: isAdding, reposts: isAdding ? p.reposts + 1 : Math.max(0, p.reposts - 1) }; return p; }));
     try {
       const { data: existingRepost } = await supabase.from('post_reposts').select('*').eq('user_id', session.user.id).eq('post_id', postId).maybeSingle();
-      if (existingRepost) { await supabase.from('post_reposts').delete().eq('user_id', session.user.id).eq('post_id', postId); setToast({ message: "Has eliminado tu republicación.", type: 'info' }); }
-      else { await supabase.from('post_reposts').insert({ user_id: session.user.id, post_id: postId }); if (targetPost.authorId !== session.user.id) supabase.from('notifications').insert({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', content: `ha republicado tu post`, post_id: postId }); setToast({ message: "¡Publicación republicada!", type: 'success' }); }
+      if (existingRepost) {
+        await supabase.from('post_reposts').delete().eq('user_id', session.user.id).eq('post_id', postId);
+        await supabase.from('notifications').delete().match({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', post_id: postId });
+        setToast({ message: "Has eliminado tu republicación.", type: 'info' });
+      } else {
+        await supabase.from('post_reposts').insert({ user_id: session.user.id, post_id: postId });
+        if (targetPost.authorId !== session.user.id) {
+          const { data: existingNotif } = await supabase.from('notifications').select('id').match({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', post_id: postId }).maybeSingle();
+          if (!existingNotif) {
+            supabase.from('notifications').insert({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', content: `ha republicado tu post`, post_id: postId });
+          }
+        }
+        setToast({ message: "¡Publicación republicada!", type: 'success' });
+      }
     } catch (err: any) { fetchFeed(); } finally { setTimeout(() => setProcessingReposts(prev => { const next = new Set(prev); next.delete(postId); return next; }), 500); }
   };
 
@@ -633,17 +866,29 @@ const App: React.FC = () => {
     */
   };
 
-  const handleNavigateToEvent = (userId: string, eventId: string) => { setViewingUserId(userId); setTargetEventId(eventId); setCurrentView('profile'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const handleNavigateToEvent = (userId: string, eventId: string) => {
+    setTargetEventId(eventId);
+    navigate(`/profile/${userId}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  const handleSendMessage = async (recipientId: string, text: string, postShareId?: string, profileShareId?: string) => {
+  const handleNavigateToCalendarDate = (date: Date) => {
+    setTargetCalendarDate(date);
+    navigate('/calendar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSendMessage = async (recipientId: string, text: string, postShareId?: string, profileShareId?: string, sharedEventId?: string) => {
     if (!session?.user) return;
     try {
       const { error } = await supabase.from('messages').insert({
         sender_id: session.user.id,
         recipient_id: recipientId,
-        text: text,
+        text: encryptMessage(text),
         post_id: postShareId,
-        is_post_share: !!postShareId
+        is_post_share: !!postShareId,
+        shared_profile_id: profileShareId,
+        shared_event_id: sharedEventId
       });
 
       if (error) throw error;
@@ -667,32 +912,247 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendMessageFromShare = async (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => {
-    await handleSendMessage(recipientId, text, sharedPostId, sharedProfileId);
+  const handleSendMessageFromShare = async (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string) => {
+    await handleSendMessage(recipientId, text, sharedPostId, sharedProfileId, sharedEventId);
     setToast({ message: "Contenido compartido por chat.", type: 'success' });
   };
 
+  const handleDeletePost = async (postId: string) => {
+    if (!session?.user) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    // 1. Insert into posts_deleted (Log/Backup)
+    const { error: backupError } = await supabase.from('posts_deleted').insert({
+      post_id: postId,
+      user_id: session.user.id,
+      content: post.content,
+      image_url: post.imageUrl,
+      post_type: post.type,
+      original_created_at: post.timestamp
+    });
+
+    if (backupError) {
+      console.error("Error backing up post:", backupError);
+      // Decide logic: if we fail to backup, do we delete? 
+      // User request "Quiero que se almacene". If storage fails, we should probably warn or try anyway if it's already deleted?
+      // Let's assume strict compliance: "If backup fails, warn user".
+      // But usually user just wants deletion. Let's log error but proceed if it's unique constraint (already backed up).
+      if (backupError.code !== '23505') { // 23505 = distinct violation
+        setToast({ message: "Error al registrar eliminación. Inténtalo de nuevo.", type: 'error' });
+        return;
+      }
+    }
+
+    // 2. Delete from original table
+    const table = post.type === 'news' ? 'news' : 'posts';
+    const { error: deleteError } = await supabase.from(table).delete().eq('id', postId);
+
+    if (deleteError) {
+      console.error("Error deleting post:", deleteError);
+      setToast({ message: "No se pudo eliminar el post.", type: 'error' });
+    } else {
+      setToast({ message: "Post eliminado correctamente.", type: 'success' });
+      fetchFeed();
+    }
+  };
+
   if (isLoadingAuth || (!currentUserData && session && !isResettingPassword)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
-  if (isResettingPassword) return <PasswordRecover onComplete={() => setIsResettingPassword(false)} />;
+  if (isResettingPassword) return <PasswordRecover onComplete={() => { setIsResettingPassword(false); navigate('/'); }} />;
   if (!session) { if (isRegistering) return <Onboarding onComplete={() => setIsRegistering(false)} onCancel={() => setIsRegistering(false)} />; return <Login onLogin={() => { }} onRegister={() => setIsRegistering(true)} />; }
 
-  const selectedPost = selectedPostId ? posts.find(p => p.id === selectedPostId) : null;
-  const isViewingOwnProfile = !viewingUserId || viewingUserId === currentUserData?.id;
+  // Replace ProfileWrapper usage with ProfileRoute in routes
+  // This step will be done in the next call or by carefully targeting the lines.
+  // FIRST: Remove ProfileWrapper definition block completely.
+
+
+
+  // Removed SearchWrapper in favor of SearchRoute
+
+
+  const PostDetailWrapper = () => {
+    const { postId } = useParams();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return <div className="p-10 text-center">Post no encontrado</div>;
+
+    return (
+      <FullPostView
+        post={post}
+        currentUser={currentUserData!}
+        onDeletePost={handleDeletePost}
+        onLike={(id) => handleVote(id, 'up')}
+        onVote={handleVote}
+        onAddComment={handleAddComment}
+        onAddReply={handleAddReply}
+        onVoteComment={handleVoteComment}
+        onRepost={handleRepost}
+        onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+        onBack={() => navigate(-1)}
+        onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+        users={users}
+        onNavigateToEvent={handleNavigateToEvent}
+        chats={chats}
+        followerUserIds={followerUserIds}
+        onShareViaChat={handleSendMessageFromShare}
+      />
+    );
+  };
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
-      <Layout currentView={currentView} onViewChange={(v) => { if (v === 'profile') setViewingUserId(currentUserData?.id || null); setCurrentView(v); window.scrollTo({ top: 0, behavior: 'smooth' }); }} user={currentUserData!} notifications={notifications} globalEvents={globalEvents} posts={posts} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={(q) => { setSearchQuery(q); setCurrentView('search'); }} onLogout={() => supabase.auth.signOut()} isViewingOwnProfile={isViewingOwnProfile}>
-        {currentView === 'feed' && <SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={(pid, t) => { const post = posts.find(p => p.id === pid); if (!post) return; const table = post.type === 'news' ? 'news_comments' : 'post_comments'; const idField = post.type === 'news' ? 'news_id' : 'post_id'; supabase.from(table).insert({ [idField]: pid, author_id: session.user.id, text: t }).then(() => { if (post.authorId !== session.user.id) supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `comentó en tu post`, post_id: pid }); fetchFeed(); }); }} users={users} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onNavigateToPost={(id) => { setPreviousView('feed'); setSelectedPostId(id); setCurrentView('post-detail'); }} onSearchHashtag={(t) => { setSearchQuery(t); setCurrentView('search'); }} onDeletePost={(pid) => { if (!session?.user) return; const p = posts.find(x => x.id === pid); if (!p) return; const table = p.type === 'news' ? 'news' : 'posts'; supabase.from(table).delete().eq('id', pid).then(() => fetchFeed()); }} initialContent={prefilledPostContent} prefilledEvent={prefilledEvent} onClearInitialContent={() => { setPrefilledPostContent(null); setPrefilledEvent(null); }} onViewCalendar={() => setCurrentView('calendar')} onNavigateToEvent={handleNavigateToEvent} chats={chats} onShareViaChat={handleSendMessageFromShare} />}
-        {currentView === 'news' && <NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={handleVote} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={(pid, t) => { const post = posts.find(p => p.id === pid); if (!post) return; const table = post.type === 'news' ? 'news_comments' : 'post_comments'; const idField = post.type === 'news' ? 'news_id' : 'post_id'; supabase.from(table).insert({ [idField]: pid, author_id: session.user.id, text: t }).then(() => { if (post.authorId !== session.user.id) supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `comentó en tu noticia`, post_id: pid }); fetchFeed(); }); }} currentUser={currentUserData!} users={users} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} onNavigateToPost={(id) => { setPreviousView('news'); setSelectedPostId(id); setCurrentView('post-detail'); }} onSearchHashtag={(t) => { setSearchQuery(t); setCurrentView('search'); }} onDeletePost={(pid) => { if (!session?.user) return; supabase.from('posts_eliminados').insert({ post_id: pid, user_id: session.user.id }).then(() => fetchFeed()); }} chats={chats} followerUserIds={followerUserIds} onShareViaChat={handleSendMessageFromShare} />}
-        {currentView === 'calendar' && <CalendarView onNavigateToEvent={handleNavigateToEvent} onPromoteEvent={(ev) => { setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://redsocial.app/u/${ev.creator_id}/e/${ev.id} #Evento`); setPrefilledEvent(ev); setCurrentView('feed'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />}
-        {currentView === 'profile' && <ProfileView user={users.find(u => u.id === viewingUserId) || currentUserData!} isCurrentUser={isViewingOwnProfile} posts={posts} onUpdateUser={handleUpdateUser} currentUser={currentUserData!} onRepost={handleRepost} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} onToggleFollow={handleToggleFollow} isFollowed={followedUserIds.has(viewingUserId || '')} isFollower={followerUserIds.has(viewingUserId || '')} users={users} onNavigateToPost={(id) => { setPreviousView('profile'); setSelectedPostId(id); setCurrentView('post-detail'); }} onSearchHashtag={(t) => { setSearchQuery(t); setCurrentView('search'); }} onDeletePost={async (pid) => { if (!session?.user) return; const p = posts.find(x => x.id === pid); if (!p) return; const table = p.type === 'news' ? 'news' : 'posts'; await supabase.from(table).delete().eq('id', pid); fetchFeed(); }} onNavigateToEvent={handleNavigateToEvent} focusedEventId={targetEventId} onClearFocusedEvent={() => setTargetEventId(null)} onStartChat={(tu) => { setActiveChatUserId(tu.id); setCurrentView('messages'); }} onAddPost={handleAddPost} onPromoteEvent={(ev) => { setPrefilledPostContent(`📢 ¡Evento organizado!\n\n${ev.title}\n\nhttps://redsocial.app/u/${ev.creator_id}/e/${ev.id} #Evento`); setPrefilledEvent(ev); setCurrentView('feed'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onShareViaChat={handleSendMessageFromShare} showMenuForPosts={isViewingOwnProfile} />}
-        {currentView === 'messages' && <MessagesView user={currentUserData!} chats={chats} posts={posts} users={users} onSendMessage={handleSendMessage} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} onViewPost={(pid) => { setPreviousView('messages'); setSelectedPostId(pid); setCurrentView('post-detail'); }} externalActiveId={activeChatUserId} onMarkChatAsRead={handleMarkChatAsRead} />}
-        {currentView === 'notifications' && <NotificationsView notifications={notifications} onMarkAllRead={handleMarkAllNotificationsRead} onNotificationClick={(id) => { if (id) { setSelectedPostId(id); setCurrentView('post-detail'); } }} />}
-        {currentView === 'search' && <SearchResultsView query={searchQuery} posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onAddComment={(pid, t) => { const post = posts.find(p => p.id === pid); if (!post) return; const table = post.type === 'news' ? 'news_comments' : 'post_comments'; const idField = post.type === 'news' ? 'news_id' : 'post_id'; supabase.from(table).insert({ [idField]: pid, author_id: session.user.id, text: t }).then(() => { if (post.authorId !== session.user.id) supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `comentó en tu post`, post_id: pid }); fetchFeed(); }); }} onDeletePost={async (pid) => { if (!session?.user) return; const p = posts.find(x => x.id === pid); if (!p) return; const { error: insErr } = await supabase.from('posts_eliminados').insert({ post_id: pid, user_id: session.user.id }); if (!insErr) { const table = p.type === 'news' ? 'news' : 'posts'; await supabase.from(table).delete().eq('id', pid); fetchFeed(); } }} onViewChange={(v) => { if (v === 'profile') setViewingUserId(currentUserData?.id || null); setCurrentView(v); }} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} onNavigateToPost={(id) => { setPreviousView('search'); setSelectedPostId(id); setCurrentView('post-detail'); }} onSearchHashtag={(t) => { setSearchQuery(t); setCurrentView('search'); }} onNavigateToEvent={handleNavigateToEvent} chats={chats} onShareViaChat={handleSendMessageFromShare} />}
-        {currentView === 'settings' && <SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={(v) => setCurrentView(v)} theme={theme} onThemeChange={setTheme} />}
-        {currentView === 'post-detail' && selectedPost && <FullPostView post={selectedPost} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={(pid, t) => { const post = posts.find(p => p.id === pid); if (!post) return; const table = post.type === 'news' ? 'news_comments' : 'post_comments'; const idField = post.type === 'news' ? 'news_id' : 'post_id'; supabase.from(table).insert({ [idField]: pid, author_id: session.user.id, text: t }).then(() => { if (post.authorId !== session.user.id) supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `comentó en tu post`, post_id: pid }); fetchFeed(); }); }} onAddReply={handleAddReply} onVoteComment={handleVoteComment} onRepost={handleRepost} onNavigateToProfile={(id) => { setViewingUserId(id); setTargetEventId(null); setCurrentView('profile'); }} onBack={() => setCurrentView(previousView)} onSearchHashtag={(t) => { setSearchQuery(t); setCurrentView('search'); }} users={users} onNavigateToEvent={handleNavigateToEvent} chats={chats} followerUserIds={followerUserIds} onShareViaChat={handleSendMessageFromShare} />}
+      <Layout
+        user={currentUserData!}
+        notifications={notifications}
+        globalEvents={globalEvents}
+        posts={posts}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchSubmit={(q) => navigate(`/search?q=${q}`)}
+        onLogout={() => supabase.auth.signOut()}
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="/feed" replace />} />
+          <Route path="/feed" element={
+            <SocialFeed
+              posts={posts.filter(p => p.type === 'post')}
+              user={currentUserData!}
+              onLike={(id) => handleVote(id, 'up')}
+              onVote={handleVote}
+              onRepost={handleRepost}
+              onAddPost={handleAddPost}
+              onAddComment={handleAddComment}
+              users={users}
+              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              followedUserIds={followedUserIds}
+              followerUserIds={followerUserIds}
+              onToggleFollow={handleToggleFollow}
+              onNavigateToPost={(id) => navigate(`/post/${id}`)}
+              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+              onDeletePost={handleDeletePost}
+              initialContent={prefilledPostContent}
+              prefilledEvent={prefilledEvent}
+              onClearInitialContent={() => { setPrefilledPostContent(null); setPrefilledEvent(null); }}
+              onViewCalendar={() => navigate('/calendar')}
+              onNavigateToEvent={handleNavigateToEvent}
+              chats={chats}
+              onShareViaChat={handleSendMessageFromShare}
+            />
+          } />
+          <Route path="/news" element={
+            <NewsHubView
+              posts={posts.filter(p => p.type === 'news')}
+              user={currentUserData!}
+              onVote={handleVote}
+              onRepost={handleRepost}
+              onAddPost={handleAddPost}
+              onAddComment={handleAddComment}
+              currentUser={currentUserData!}
+              users={users}
+              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToPost={(id) => navigate(`/post/${id}`)}
+              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+              onDeletePost={handleDeletePost}
+              chats={chats}
+              followerUserIds={followerUserIds}
+              onShareViaChat={handleSendMessageFromShare}
+            />
+          } />
+          <Route path="/calendar" element={
+            <CalendarView
+              onNavigateToEvent={handleNavigateToEvent}
+              onPromoteEvent={(ev) => {
+                setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://redsocial.app/u/${ev.creator_id}/e/${ev.id} #Evento`);
+                setPrefilledEvent(ev);
+                navigate('/feed');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onSupportEvent={handleSupportEvent}
+              onShareEvent={setSharingEvent}
+              initialDate={targetCalendarDate}
+            />
+          } />
+          <Route path="/messages" element={
+            <MessagesView
+              user={currentUserData!}
+              chats={chats}
+              posts={posts}
+              users={users}
+              onSendMessage={handleSendMessage}
+              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onViewPost={(pid) => navigate(`/post/${pid}`)}
+              externalActiveId={activeChatUserId}
+              onMarkChatAsRead={handleMarkChatAsRead}
+              onNavigateToEvent={handleNavigateToEvent}
+              globalEvents={globalEvents}
+            />
+          } />
+          <Route path="/notifications" element={
+            <NotificationsView
+              notifications={notifications}
+              onMarkAllRead={handleMarkAllNotificationsRead}
+              onNotificationClick={(id) => { if (id) navigate(`/post/${id}`); }}
+              onLoadMore={() => setNotificationsLimit(prev => prev + 10)}
+              hasMore={hasMoreNotifications}
+            />
+          } />
+          <Route path="/store" element={<StoreView user={currentUserData!} />} />
+          <Route path="/profile/:userId?" element={
+            <ProfileRoute
+              users={users}
+              currentUserData={currentUserData}
+              posts={posts}
+              chats={chats}
+              followerUserIds={followerUserIds}
+              followedUserIds={followedUserIds}
+              onUpdateUser={handleUpdateUser}
+              onRepost={handleRepost}
+              onToggleFollow={handleToggleFollow}
+              onDeletePost={handleDeletePost}
+              onNavigateToEvent={handleNavigateToEvent}
+              onStartChat={(tu) => { setActiveChatUserId(tu.id); navigate('/messages'); }}
+              onAddPost={handleAddPost}
+              onPromoteEvent={(ev) => { setPrefilledPostContent(ev.description || `📢 ¡Evento organizado!\n\n${ev.title}\n\n#Evento`); setPrefilledEvent(ev); navigate('/feed'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              onShareViaChat={handleSendMessageFromShare}
+              focusedEventId={targetEventId}
+              onClearFocusedEvent={() => setTargetEventId(null)}
+              onSearchHashtag={(t) => { setSearchQuery(t); navigate(`/search?q=${t}`); }}
+              onNavigateToPost={(id) => navigate(`/post/${id}`)}
+              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onLike={(id) => handleVote(id, 'up')}
+              onVote={handleVote}
+              onAddComment={handleAddComment}
+              globalEvents={globalEvents}
+            />
+          } />
+          <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={(v) => navigate(`/${v}`)} theme={theme} onThemeChange={setTheme} />} />
+          <Route path="/search" element={
+            <SearchRoute
+              posts={posts}
+              users={users}
+              onLike={(id) => handleVote(id, 'up')}
+              onVote={handleVote}
+              onRepost={handleRepost}
+              onAddComment={handleAddComment}
+              onDeletePost={handleDeletePost}
+              onViewChange={(v) => { if (v === 'profile') navigate(`/profile/${currentUserData?.id}`); else navigate(`/${v}`); }}
+              currentUser={currentUserData!}
+              followedUserIds={followedUserIds}
+              followerUserIds={followerUserIds}
+              onToggleFollow={handleToggleFollow}
+              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToPost={(id) => navigate(`/post/${id}`)}
+              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+              onNavigateToEvent={handleNavigateToEvent}
+              chats={chats}
+              onShareViaChat={handleSendMessageFromShare}
+            />
+          } />
+          <Route path="/post/:postId" element={<PostDetailWrapper />} />
+        </Routes>
       </Layout>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={handleSendMessageFromShare} currentUser={currentUserData!} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
+      {sharingEvent && <ShareModal event={sharingEvent} onClose={() => setSharingEvent(null)} onShare={handleSendMessageFromShare} currentUser={currentUserData!} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
     </div>
   );
 };

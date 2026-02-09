@@ -7,7 +7,7 @@
 -- 3. Actualizar el trigger de registro para ser más robusto (soluciona error 500 por fechas vacías)
 
 -- 1. SOLUCIÓN ERROR 404: Crear tabla de posts eliminados si no existe
-CREATE TABLE IF NOT EXISTS public.posts_eliminados (
+CREATE TABLE IF NOT EXISTS public.posts_deleted (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     post_id uuid NOT NULL,
     user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -15,16 +15,16 @@ CREATE TABLE IF NOT EXISTS public.posts_eliminados (
 );
 
 -- Habilitar seguridad (RLS)
-ALTER TABLE public.posts_eliminados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts_deleted ENABLE ROW LEVEL SECURITY;
 
 -- Políticas (si no existen, el comando CREATE POLICY puede fallar si se duplica, así que usamos bloque DO)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'posts_eliminados' AND policyname = 'Permitir inserción a dueños') THEN
-        CREATE POLICY "Permitir inserción a dueños" ON public.posts_eliminados FOR INSERT WITH CHECK (auth.uid() = user_id);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'posts_deleted' AND policyname = 'Permitir inserción a dueños') THEN
+        CREATE POLICY "Permitir inserción a dueños" ON public.posts_deleted FOR INSERT WITH CHECK (auth.uid() = user_id);
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'posts_eliminados' AND policyname = 'Permitir lectura a dueños') THEN
-        CREATE POLICY "Permitir lectura a dueños" ON public.posts_eliminados FOR SELECT USING (auth.uid() = user_id);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'posts_deleted' AND policyname = 'Permitir lectura a dueños') THEN
+        CREATE POLICY "Permitir lectura a dueños" ON public.posts_deleted FOR SELECT USING (auth.uid() = user_id);
     END IF;
 END $$;
 

@@ -42,6 +42,7 @@ export const PasswordRecover: React.FC<UpdatePasswordProps> = ({ onComplete }) =
       setLoading(false);
       setTimeout(() => {
         onComplete();
+        window.location.href = '/'; // Hard redirect to clear session/state if needed, or just let App handle it
       }, 2500);
     }
   };

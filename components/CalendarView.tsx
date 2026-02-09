@@ -1,12 +1,17 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, Users, Sparkles, Plus, X, Check, Save, Loader2, ChevronDown, Megaphone } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, Users, Sparkles, Plus, X, Check, Save, Loader2, ChevronDown, Megaphone, Share2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { CalendarEvent } from '../types';
+import { UsersListModal } from './UsersListModal';
 
 interface CalendarViewProps {
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   onPromoteEvent?: (event: CalendarEvent) => void;
+  onSupportEvent?: (event: CalendarEvent) => void;
+  onShareEvent?: (event: CalendarEvent) => void;
+  initialDate?: Date | null;
 }
 
 interface EventDisplay extends CalendarEvent {
@@ -19,20 +24,44 @@ const MONTHS = [
 ];
 
 const YEARS = [2024, 2025, 2026, 2027, 2028, 2029];
-
-export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, onPromoteEvent }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, onPromoteEvent, onSupportEvent, onShareEvent, initialDate }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const location = useLocation();
   const [events, setEvents] = useState<EventDisplay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [viewingSupportersEventId, setViewingSupportersEventId] = useState<string | null>(null);
 
-  const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
   const selectedDay = currentDate.getDate();
 
+  // ... (existing effects)
+
+  // New effect to handle navigation state
   useEffect(() => {
+    if (location.state?.date) {
+      // Parse the date string (YYYY-MM-DD) or ensure it's a valid date object
+      const newDate = new Date(location.state.date);
+      if (!isNaN(newDate.getTime())) {
+        // Fix: Ensure we are setting it to the correct local day, preventing timezone shifts
+        // Since input is usually YYYY-MM-DD string from database
+        const [year, month, day] = location.state.date.toString().split('-').map(Number);
+        if (year && month && day) {
+          setCurrentDate(new Date(year, month - 1, day));
+        } else {
+          setCurrentDate(newDate);
+        }
+      }
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (initialDate) {
+      setCurrentDate(initialDate);
+    }
     fetchEvents();
-  }, []);
+  }, [initialDate]);
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -64,10 +93,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   const mappedEventsByDate = useMemo(() => {
     const record: Record<string, EventDisplay[]> = {};
     events.forEach(ev => {
-      const d = new Date(ev.event_date);
-      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      if (!record[key]) record[key] = [];
-      record[key].push(ev);
+      const parts = ev.event_date.split('-');
+      // Aseguramos formato YYYY-MM-DD
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Meses en JS son 0-11
+        const day = parseInt(parts[2], 10);
+        const key = `${year}-${month}-${day}`;
+        if (!record[key]) record[key] = [];
+        record[key].push(ev);
+      }
     });
     return record;
   }, [events]);
@@ -200,8 +235,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     key={day}
                     onClick={() => selectDate(day)}
                     className={`aspect-square rounded-[1.5rem] flex flex-col items-center justify-center relative transition-all border-2 ${isSelected
-                        ? 'bg-blue-600 border-blue-600 text-white'
-                        : 'bg-white dark:bg-zinc-900 border-transparent hover:border-gray-100 dark:hover:border-zinc-800 text-gray-600 dark:text-gray-400'
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-zinc-900 border-transparent hover:border-gray-100 dark:hover:border-zinc-800 text-gray-600 dark:text-gray-400'
                       }`}
                   >
                     <span className="text-lg font-black">{day}</span>
@@ -235,13 +270,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
             todaysEvents.map(event => (
               <div key={event.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-900 hover:border-gray-200 dark:hover:border-zinc-800 transition-all group relative">
                 <div className="absolute top-6 right-6">
-                  <button
-                    onClick={() => onPromoteEvent?.(event)}
-                    className="flex items-center space-x-1 font-black text-[9px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 px-2 py-1 rounded-lg transition-all"
-                  >
-                    <Megaphone size={12} />
-                    <span>Promocionar</span>
-                  </button>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider mb-3 inline-block ${getTypeStyle(event.type)}`}>
                   {getTypeName(event.type)}
@@ -260,15 +288,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                   </div>
                   <div className="flex items-center text-xs text-blue-600 font-bold">
                     <Users size={14} className="mr-2" />
-                    <span>{event.attendees} apoyos</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewingSupportersEventId(event.id); }}
+                      className="hover:underline cursor-pointer"
+                    >
+                      {event.attendees} apoyos
+                    </button>
                   </div>
+                  <button
+                    onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                    className="w-full py-3 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-gray-100 transition-all"
+                  >
+                    Ver detalles del evento
+                  </button>
                 </div>
-                <button
-                  onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
-                  className="w-full py-3 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-gray-100 transition-all"
-                >
-                  Ver detalles del evento
-                </button>
               </div>
             ))
           ) : (
@@ -279,6 +312,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
           )}
         </div>
       </div>
+
+      {viewingSupportersEventId && (
+        <UsersListModal
+          type="event-supporters"
+          userId={viewingSupportersEventId}
+          onClose={() => setViewingSupportersEventId(null)}
+          onNavigate={(id) => onNavigateToEvent?.(id, '')} // Simple navigation to profile, eventId irrelevant for this call
+        />
+      )}
     </div>
   );
 };

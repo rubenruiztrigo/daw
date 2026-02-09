@@ -17,13 +17,13 @@ interface PostDetailsModalProps {
   users?: User[];
 }
 
-export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({ 
+export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   post, onClose, onAddComment, onAddReply, onLike, onVote, onSearchHashtag, onNavigateToProfile, users = []
 }) => {
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
-  
+
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
   const mainInputRef = useRef<HTMLInputElement>(null);
@@ -32,8 +32,8 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
     const query = mentionQuery.toLowerCase();
-    return users.filter(u => 
-      u.name.toLowerCase().includes(query) || 
+    return users.filter(u =>
+      u.name.toLowerCase().includes(query) ||
       u.username?.toLowerCase().includes(query)
     ).slice(0, 5);
   }, [mentionQuery, users]);
@@ -59,7 +59,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
     const lastAt = currentVal.lastIndexOf('@');
     const before = currentVal.slice(0, lastAt);
     const newVal = `${before}@${selectedUser.username} `;
-    
+
     if (isMain) setText(newVal); else setReplyText(newVal);
     setMentionQuery(null);
     setMentionTarget(null);
@@ -161,7 +161,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                         <span className="text-sm font-bold text-slate-900 dark:text-white cursor-pointer hover:text-blue-600" onClick={() => { if (comment.authorId) { onNavigateToProfile?.(comment.authorId); onClose(); } }}>{comment.authorName}</span>
                         <span className="text-[10px] text-slate-400 font-bold">{timeAgo(comment.timestamp)}</span>
                       </div>
-                      <div className="text-sm text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900 p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-zinc-800 shadow-sm mb-2">
+                      <div className="text-sm text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900 p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-zinc-800 mb-2">
                         {renderContentWithHashtags(comment.text)}
                       </div>
                       <button onClick={() => { setReplyingTo(comment.id); setReplyText(`@${comment.authorUsername} `); setTimeout(() => replyInputRef.current?.focus(), 100); }} className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1">
@@ -191,13 +191,13 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                         <div className="mt-3 space-y-3">
                           {comment.replies.map(reply => (
                             <div key={reply.id} className="flex space-x-3 group/reply animate-in fade-in slide-in-from-left-1 duration-300">
-                              <img src={reply.authorAvatar} className="w-7 h-7 rounded-lg object-cover shadow-sm ring-1 ring-slate-100 dark:ring-zinc-800" alt="" />
+                              <img src={reply.authorAvatar} className="w-7 h-7 rounded-lg object-cover ring-1 ring-slate-100 dark:ring-zinc-800" alt="" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-0.5">
                                   <span className="text-[11px] font-bold text-slate-900 dark:text-white">{reply.authorName}</span>
                                   <span className="text-[8px] text-slate-400 font-bold">{timeAgo(reply.timestamp)}</span>
                                 </div>
-                                <div className="text-[12px] text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900/50 p-3 rounded-xl rounded-tl-none border border-slate-50 dark:border-zinc-800 shadow-sm">{renderContentWithHashtags(reply.text)}</div>
+                                <div className="text-[12px] text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900/50 p-3 rounded-xl rounded-tl-none border border-slate-50 dark:border-zinc-800">{renderContentWithHashtags(reply.text)}</div>
                               </div>
                             </div>
                           ))}
@@ -214,10 +214,10 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
         <div className="p-6 bg-white dark:bg-[#0a0a0a] border-t border-slate-50 dark:border-zinc-900 relative">
           <form onSubmit={handleSubmit} className="flex items-center space-x-3 bg-slate-50 dark:bg-zinc-900 rounded-2xl p-2 border border-slate-100 dark:border-zinc-800">
             <input ref={mainInputRef} type="text" value={text} onChange={(e) => handleInputChange(e.target.value, 'main')} placeholder="Escribe tu aportación..." className="flex-1 bg-transparent border-none px-4 py-2 text-sm font-medium outline-none focus:ring-0 dark:text-white" />
-            <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 shadow-md"><Send size={18} /></button>
+            <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700"><Send size={18} /></button>
           </form>
           {mentionTarget === 'main' && mentionSuggestions.length > 0 && (
-            <div className="absolute left-6 bottom-full mb-4 w-72 bg-white dark:bg-[#1a1a1a] rounded-2xl shadow-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2">
+            <div className="absolute left-6 bottom-full mb-4 w-72 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2">
               {mentionSuggestions.map(u => (
                 <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/10 text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
                   <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />

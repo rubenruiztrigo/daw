@@ -197,7 +197,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       country: formData.country,
       region: formData.region,
       interests: formData.interests,
-      interests: formData.interests,
       birth_date: formData.birthDate || null, // Ensure empty string becomes null
       // Extra fields if needed for future
       bio: ''
@@ -348,11 +347,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           {step === 2 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Cargo</h2>
-                <p className="text-slate-500 font-medium mt-2">Indica tu nivel de responsabilidad actual</p>
+                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de puesto que desempeñas</h2>
+                <p className="text-slate-500 font-medium">Indica tu nivel de responsabilidad actual</p>
               </div>
               <div className="grid grid-cols-1 gap-3">
-                {['Presidente', 'Directivo', 'Técnico', 'Administrativo', 'Otro'].map(cat => (
+                {['Directivo', 'Técnico', 'Administrativo', 'Otro'].map(cat => (
                   <button
                     key={cat}
                     onClick={() => updateField('jobCategory', cat)}
@@ -385,16 +384,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           {step === 3 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Administración</h2>
-                <p className="text-slate-500 font-medium mt-2">¿En qué tipo de entidad prestas servicio?</p>
+                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de organización</h2>
+                <p className="text-slate-500 font-medium">¿En qué tipo de entidad prestas servicio?</p>
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {[
-                  'Administración central',
-                  'Administración regional',
-                  'Administración local / municipal',
-                  'Empresa pública',
-                  'Organismo autónomo',
+                  'Administración Pública central',
+                  'Administración Pública regional',
+                  'Administración Pública local/municipal',
+                  'Empresa privada',
+                  'Organización del tercer sector',
                   'Otra'
                 ].map(type => (
                   <button

@@ -1,18 +1,22 @@
 
 import React, { useEffect } from 'react';
-import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat } from 'lucide-react';
+import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat, Star } from 'lucide-react';
 import { Notification } from '../types';
 
 interface NotificationsViewProps {
   notifications: Notification[];
   onMarkAllRead: () => void;
   onNotificationClick?: (postId?: string) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
 }
 
 export const NotificationsView: React.FC<NotificationsViewProps> = ({
   notifications,
   onMarkAllRead,
-  onNotificationClick
+  onNotificationClick,
+  onLoadMore,
+  hasMore
 }) => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -24,11 +28,14 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
   const getIcon = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
+    const isEvent = content.toLowerCase().includes('evento');
+    const isComment = content.toLowerCase().includes('comentario');
+
     switch (type) {
       case 'like':
-        if (isNews) {
-          return <ChevronUp size={18} className="text-emerald-500" strokeWidth={3} />;
-        }
+        if (isNews) return <ChevronUp size={18} className="text-emerald-500" strokeWidth={3} />;
+        if (isEvent) return <Star size={18} className="text-amber-500" fill="currentColor" />;
+        if (isComment) return <Heart size={16} className="text-pink-400" fill="currentColor" />;
         return <Heart size={18} className="text-pink-500" fill="currentColor" />;
       case 'follow':
         return <UserPlus size={18} className="text-blue-500" />;
@@ -43,9 +50,15 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
   const getBgColor = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
+    const isEvent = content.toLowerCase().includes('evento');
+    const isComment = content.toLowerCase().includes('comentario');
+
     switch (type) {
       case 'like':
-        return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-pink-50 dark:bg-pink-900/20';
+        if (isNews) return 'bg-emerald-50 dark:bg-emerald-900/20';
+        if (isEvent) return 'bg-amber-50 dark:bg-amber-900/20';
+        if (isComment) return 'bg-pink-50/50 dark:bg-pink-900/10';
+        return 'bg-pink-50 dark:bg-pink-900/20';
       case 'follow':
         return 'bg-blue-50 dark:bg-blue-900/20';
       case 'comment':
@@ -66,7 +79,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden">
         {notifications.length === 0 ? (
           <div className="py-20 text-center">
             <Bell className="mx-auto text-gray-100 dark:text-zinc-900 mb-4" size={64} />
@@ -81,7 +94,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                 className={`px-8 py-6 flex space-x-4 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative ${!n.isRead ? 'bg-red-50/20 dark:bg-red-900/10' : ''}`}
               >
                 {!n.isRead && (
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.5)]"></div>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse"></div>
                 )}
                 <div className="relative flex-shrink-0">
                   <img src={n.senderAvatar} className="w-12 h-12 rounded-2xl object-cover border border-gray-100 dark:border-zinc-800" alt="" />
@@ -102,6 +115,17 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           </div>
         )}
       </div>
+
+      {hasMore && notifications.length > 0 && (
+        <div className="flex justify-center pb-8">
+          <button
+            onClick={onLoadMore}
+            className="px-6 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900 transition-all"
+          >
+            Mostrar más
+          </button>
+        </div>
+      )}
     </div>
   );
 };

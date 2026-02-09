@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Share2, Repeat, Reply, AtSign, ChevronRight, Link as LinkIcon, Calendar, Clock, MapPin } from 'lucide-react';
+import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Share2, Repeat, Reply, AtSign, ChevronRight, Link as LinkIcon, Calendar, Clock, MapPin, Trash2 } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 
 interface FullPostViewProps {
   post: Post;
+  currentUser?: User;
   onAddComment: (postId: string, text: string) => void;
   onAddReply?: (commentId: string, text: string, parentReplyId?: string) => void;
   onVoteComment?: (commentId: string) => void;
@@ -14,9 +15,11 @@ interface FullPostViewProps {
   onRepost: (id: string) => void;
   onSearchHashtag?: (tag: string) => void;
   onNavigateToProfile?: (id: string) => void;
+  onDeletePost?: (id: string) => void;
   onBack: () => void;
   users?: User[];
   onNavigateToEvent?: (userId: string, eventId: string) => void;
+  globalEvents?: any[];
 }
 
 const NestedReply: React.FC<{
@@ -67,7 +70,7 @@ const NestedReply: React.FC<{
 };
 
 export const FullPostView: React.FC<FullPostViewProps> = ({
-  post, onAddComment, onAddReply, onVoteComment, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onBack, users = [], onNavigateToEvent
+  post, currentUser, onAddComment, onAddReply, onVoteComment, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onDeletePost, onBack, users = [], onNavigateToEvent, globalEvents = []
 }) => {
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<{ commentId: string, parentReplyId?: string } | null>(null);
@@ -85,7 +88,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
     return users.filter(u =>
       u.name.toLowerCase().includes(query) ||
       (u.lastName?.toLowerCase().includes(query)) ||
-      u.username?.toLowerCase().includes(query)
+      (u.username?.toLowerCase().includes(query))
     ).slice(0, 5);
   }, [mentionQuery, users]);
 
@@ -186,7 +189,6 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               onSearchHashtag?.(part.slice(1));
-              onBack();
             }}
             className={`font-black hover:underline transition-all ${post.type === 'news' ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400'}`}
           >
@@ -202,7 +204,6 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
-              onBack();
             }}
             className="text-blue-600 dark:text-blue-400 font-bold hover:underline transition-all"
           >
@@ -214,7 +215,8 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
         if (profileEventMatch && onNavigateToEvent) {
           const [, userId, eventId] = profileEventMatch;
           const eventOwner = users.find(u => u.id === userId);
-          const label = eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`;
+          const foundEvent = globalEvents?.find(ev => ev.id === eventId);
+          const label = foundEvent ? foundEvent.title : (eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`);
           return (
             <button key={i} onClick={(e) => { e.stopPropagation(); onNavigateToEvent(userId, eventId); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1">
               <Calendar size={14} className="mr-1" /><span>{label}</span>
@@ -231,17 +233,34 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
     });
   };
 
+  const isOwner = currentUser?.id === post.authorId;
+
   return (
     <div className="max-w-3xl mx-auto bg-white dark:bg-[#111] rounded-[2.5rem] border border-gray-100 dark:border-zinc-800 animate-in fade-in duration-500">
-      <div className="px-8 py-6 border-b border-gray-50 dark:border-zinc-900 flex items-center space-x-4 bg-white dark:bg-[#111] sticky top-0 z-10">
-        <button onClick={onBack} className="p-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl text-slate-400 hover:text-blue-600 transition-all">
-          <ArrowLeft size={20} />
-        </button>
-        <div>
+      <div className="px-8 py-6 border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between bg-white dark:bg-[#111] sticky top-0 z-10">
+        <div className="flex items-center space-x-4">
+          <button onClick={onBack} className="p-3 bg-gray-50 dark:bg-zinc-800 rounded-2xl text-slate-400 hover:text-blue-600 transition-all">
+            <ArrowLeft size={20} />
+          </button>
           <h3 className="text-xl font-black text-slate-900 dark:text-white">
             {post.type === 'news' ? 'Noticia' : 'Post'}
           </h3>
         </div>
+
+        {isOwner && onDeletePost && (
+          <button
+            onClick={() => {
+              if (window.confirm("¿Seguro que quieres eliminar este post?")) {
+                onDeletePost(post.id);
+                onBack();
+              }
+            }}
+            className="p-3 bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
+            title="Eliminar publicación"
+          >
+            <Trash2 size={20} />
+          </button>
+        )}
       </div>
 
       <div className="p-8">

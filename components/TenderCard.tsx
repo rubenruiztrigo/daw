@@ -32,7 +32,7 @@ export const TenderCard: React.FC<TenderCardProps> = ({ tender }) => {
   };
 
   return (
-    <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm hover:shadow-md transition-all group">
+    <div className="bg-white dark:bg-[#111] rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden transition-all group">
       <div className="p-6">
         <div className="flex justify-between items-start mb-4">
           <div className={`px-3 py-1 rounded-full flex items-center space-x-1.5 text-[10px] font-black uppercase tracking-widest ${status.color}`}>
@@ -94,18 +94,18 @@ export const TenderCard: React.FC<TenderCardProps> = ({ tender }) => {
           )}
 
           <div className="flex space-x-2">
-            <button 
+            <button
               onClick={handleAnalyze}
               disabled={loading}
               className="flex-1 py-3 bg-white dark:bg-zinc-800 border-2 border-blue-50 dark:border-zinc-700 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black hover:bg-blue-50 dark:hover:bg-zinc-700 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : <><Sparkles size={16} /><span>Resumen IA</span></>}
             </button>
-            <a 
+            <a
               href={tender.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-blue-100 dark:shadow-none transform active:scale-95"
+              className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
             >
               <span>Ver Pliegos</span>
               <ExternalLink size={16} />

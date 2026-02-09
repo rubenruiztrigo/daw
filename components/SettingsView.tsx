@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { User } from '../types';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2, Medal, GraduationCap, Star, Trophy } from 'lucide-react';
+import { User, BADGE_CATALOG } from '../types';
 import { supabase } from '../supabaseClient';
 
 interface SettingsViewProps {
@@ -136,11 +136,89 @@ const PrivacyPolicyContent = () => (
   </div>
 );
 
+const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClose }) => {
+  // Static definition of available badges for now
+  // Centralized badge catalog is used here via import
+  const allBadges = BADGE_CATALOG;
+
+  const categories = [
+    { id: 'general', label: 'De Cuenta', icon: UserCircle },
+    { id: 'novas', label: 'Méritos NovaGob', icon: Star },
+    { id: 'congresos', label: 'Congresos (15 Novas)', icon: Calendar },
+    { id: 'premios', label: 'Premios (20 Novas)', icon: Medal },
+    { id: 'eventos', label: 'Eventos Especiales (15 Novas)', icon: GraduationCap },
+    { id: 'formacion', label: 'Formación (10 Novas)', icon: FileText },
+    { id: 'ranking', label: 'Ranking Semanal (5/3/1 Novas)', icon: Trophy }
+  ];
+
+  // Check if user has badges (mapping by ID or checking if object exists)
+  const userBadgeIds = new Set(user.badges?.map(b => b.id) || []);
+
+  return (
+    <div className="flex flex-col h-full max-h-[85vh]">
+      <div className="p-8 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-amber-600">
+            <Medal size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">Mis Insignias</h3>
+            <p className="text-xs text-slate-500 font-medium">Reconocimientos y logros obtenidos</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-8 scrollbar-hide bg-slate-50 dark:bg-black/20 space-y-8">
+        {categories.map(cat => {
+          const catBadges = allBadges.filter(b => b.category === cat.id);
+          if (catBadges.length === 0) return null;
+
+          return (
+            <div key={cat.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center space-x-2 text-slate-400 dark:text-zinc-500 uppercase tracking-widest text-[10px] font-black pl-1">
+                <cat.icon size={14} />
+                <span>{cat.label}</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {catBadges.map(badge => {
+                  const isUnlocked = userBadgeIds.has(badge.id);
+                  return (
+                    <div key={badge.id} className={`p-5 rounded-3xl border transition-all ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 shadow-sm' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent opacity-60 grayscale'}`}>
+                      <div className="flex items-start space-x-4">
+                        <div className={`p-3 rounded-2xl ${isUnlocked ? badge.color : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
+                          <Medal size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center mb-1">
+                            <h4 className="font-bold text-slate-900 dark:text-white">{badge.label}</h4>
+                            {isUnlocked ? (
+                              <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-black uppercase tracking-wide">Obtenido</span>
+                            ) : (
+                              <span className="text-[9px] bg-gray-200 text-gray-500 px-2 py-1 rounded-full font-black uppercase tracking-wide">Bloqueado</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-gray-400 font-medium leading-relaxed">{badge.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, onLogout, onViewChange, theme, onThemeChange }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showAccessibility, setShowAccessibility] = useState(false);
   const [showPersonalData, setShowPersonalData] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showBadges, setShowBadges] = useState(false);
 
   const SettingItem = ({ icon: Icon, label, color = "text-slate-600 dark:text-gray-400", onClick }: { icon: any, label: string, color?: string, onClick?: () => void }) => (
     <button
@@ -174,12 +252,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
         <SettingItem icon={UserCircle} label="Datos Personales" onClick={() => setShowPersonalData(true)} />
+        <SettingItem icon={Medal} label="Insignias" onClick={() => setShowBadges(true)} />
         <SettingItem icon={Wand2} label="Accesibilidad" onClick={() => setShowAccessibility(true)} />
         <SettingItem icon={Bell} label="Notificaciones" />
         <SettingItem icon={Lock} label="Privacidad y seguridad" />
         <SettingItem icon={Globe} label="Idioma y región" />
         <SettingItem icon={Smartphone} label="Dispositivos" />
       </div>
+
+      {showBadges && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowBadges(false)}>
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
+            <BadgesList user={user} onClose={() => setShowBadges(false)} />
+          </div>
+        </div>
+      )}
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
         <SettingItem icon={Shield} label="Centro de ayuda" />

@@ -1,13 +1,14 @@
 
 import React, { useState } from 'react';
-import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon } from 'lucide-react';
+import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
 import { Post, User } from '../types';
 
 interface ShareModalProps {
   post?: Post;
+  event?: any; // Start with any to avoid import loop if types not ready, or use CalendarEvent
   user?: User; // The user profile being shared (if applicable)
   onClose: () => void;
-  onShare?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void;
+  onShare?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string) => void;
   currentUser?: User; // Add currentUser to identify "me"
   users?: User[]; // All users to search/filter from
   followedUserIds?: Set<string>;
@@ -16,6 +17,7 @@ interface ShareModalProps {
 
 export const ShareModal: React.FC<ShareModalProps> = ({
   post,
+  event,
   user: sharedUser,
   onClose,
   onShare,
@@ -30,18 +32,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   const shareUrl = sharedUser
     ? `https://redsocial.app/u/${sharedUser.username || sharedUser.id}`
-    : `https://redsocial.app/p/${post?.id}`;
+    : event
+      ? `https://redsocial.app/u/${event.creator_id}/e/${event.id}`
+      : `https://redsocial.app/p/${post?.id}`;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        // Fallback for non-secure contexts
+        const textArea = document.createElement("textarea");
+        textArea.value = shareUrl;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.top = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          console.error('Fallback: Oops, unable to copy', err);
+        }
+        document.body.removeChild(textArea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy!', err);
+    }
   };
 
   const handleSend = (contact: User) => {
     if (onShare) {
-      const message = `Te he compartido ${sharedUser ? 'un perfil' : 'una publicación'}: ${shareUrl}`;
-      onShare(contact.id, message, post?.id, sharedUser?.id);
+      const type = sharedUser ? 'un perfil' : event ? 'un evento' : 'una publicación';
+      const message = `Te he compartido ${type}: ${shareUrl}`;
+      onShare(contact.id, message, post?.id, sharedUser?.id, event?.id);
     }
     setSentTo([...sentTo, contact.id]);
   };
@@ -86,10 +113,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#111]">
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-xl ${sharedUser ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
-              {sharedUser ? <UserIcon size={20} /> : <Send size={20} />}
+              {sharedUser ? <UserIcon size={20} /> : event ? <Calendar size={20} /> : <Send size={20} />}
             </div>
             <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-              {sharedUser ? 'Compartir Perfil' : 'Compartir Publicación'}
+              {sharedUser ? 'Compartir Perfil' : event ? 'Compartir Evento' : 'Compartir Publicación'}
             </h3>
           </div>
           <button
@@ -108,6 +135,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               <div>
                 <p className="text-sm font-bold text-slate-900 dark:text-white">{sharedUser.name} {sharedUser.lastName}</p>
                 <p className="text-[10px] text-slate-500 font-bold uppercase">{sharedUser.position}</p>
+              </div>
+            </div>
+          )}
+          {event && (
+            <div className="flex items-center space-x-4 p-4 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-50 dark:border-blue-900/20 rounded-2xl">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl text-blue-600 dark:text-blue-400"><Calendar size={20} /></div>
+              <div>
+                <p className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{event.title}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">{event.location}</p>
               </div>
             </div>
           )}

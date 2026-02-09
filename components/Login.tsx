@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles } from 'lucide-react';
+import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles, ArrowRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LoginProps {
@@ -19,8 +19,35 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [isRecoverySent, setIsRecoverySent] = useState(false);
+  const [isLinkAccessed, setIsLinkAccessed] = useState(false);
 
   const STORAGE_KEY = 'remembered_identifier';
+
+  // Poll for session when recovery email is sent to unlock "Next" button
+  useEffect(() => {
+    let interval: any;
+    if (isRecoverySent) {
+      // Direct listener for auth state changes (robust across tabs)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session || event === 'PASSWORD_RECOVERY') {
+          setIsLinkAccessed(true);
+        }
+      });
+
+      interval = setInterval(async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setIsLinkAccessed(true);
+          clearInterval(interval);
+        }
+      }, 1500); // Slightly faster polling
+
+      return () => {
+        if (interval) clearInterval(interval);
+        subscription.unsubscribe();
+      };
+    }
+  }, [isRecoverySent]);
 
   useEffect(() => {
     const savedId = localStorage.getItem(STORAGE_KEY);
@@ -103,7 +130,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
     setError(null);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/recover-password/`,
     });
 
     if (resetError) {
@@ -202,12 +229,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
 
               <div className="pt-4 flex flex-col space-y-3">
                 <button
-                  onClick={() => setIsForgotPassword(false)}
-                  className="w-full py-4 bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-gray-400 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  onClick={() => window.location.reload()}
+                  disabled={!isLinkAccessed}
+                  className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center space-x-2 ${isLinkAccessed ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer' : 'bg-slate-100 dark:bg-zinc-900 text-slate-400 cursor-not-allowed'}`}
                 >
-                  Cerrar Ventana
+                  {isLinkAccessed ? (
+                    <>
+                      <span>Siguiente</span>
+                      <ArrowRight size={16} />
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={14} />
+                      <span>Esperando al mensaje...</span>
+                    </>
+                  )}
                 </button>
-                <p className="text-[10px] text-gray-400 font-bold">¿No has recibido nada? Revisa tu carpeta de SPAM.</p>
+                <p className="text-[10px] text-gray-400 font-bold">
+                  {isLinkAccessed ? '¡Identidad verificada! Haz clic en Siguiente.' : 'Accede al enlace de tu correo para desbloquear el botón.'}
+                </p>
               </div>
             </div>
           )}

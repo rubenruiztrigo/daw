@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Post, User } from '../types';
 import { MessageSquare, Heart, Share2, MoreHorizontal, Trash2, Repeat, Calendar, MapPin, ChevronRight, Clock, Link as LinkIcon } from 'lucide-react';
@@ -26,13 +25,14 @@ interface PostCardProps {
   onViewCalendar?: () => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   showMenu?: boolean;
+  globalEvents?: any[];
 }
 
 export const PostCard: React.FC<PostCardProps> = ({
   post, onLike, onVote, onRepost, onAddComment, onDeletePost, onSearchHashtag,
   onSharePost, onNavigateToProfile, onNavigateToPost, onOpenShare, currentUser,
   followedUserIds, followerUserIds, onToggleFollow, users, onPreviewImage, onViewCalendar, onNavigateToEvent,
-  showMenu
+  showMenu, globalEvents = []
 }) => {
   const isNews = post.type === 'news';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -89,12 +89,13 @@ export const PostCard: React.FC<PostCardProps> = ({
         );
       } else if (part.startsWith('http')) {
         // Detección de enlace profundo a evento: .../u/[USER_ID]/e/[EVENT_ID]
-        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
+        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/?\s]+)/);
 
         if (profileEventMatch && onNavigateToEvent) {
           const [, userId, eventId] = profileEventMatch;
           const eventOwner = users.find(u => u.id === userId);
-          const label = eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`;
+          const foundEvent = globalEvents?.find(ev => ev.id === eventId);
+          const label = foundEvent ? foundEvent.title : (eventOwner ? `Ver evento de ${eventOwner.name}` : `Ver evento`);
 
           return (
             <button
@@ -197,7 +198,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         </div>
 
         {post.linkedEvent && (
-          <div className="mt-2 mb-4 bg-gray-50 dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl overflow-hidden transition-all group/event">
+          <div className="bg-white dark:bg-[#0a0a0a] rounded-3xl border border-slate-100 dark:border-zinc-900 overflow-hidden hover:border-slate-200 dark:hover:border-zinc-800 transition-all duration-200">
             <div className="p-4">
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center space-x-2">
@@ -214,7 +215,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="flex items-center text-[11px] text-slate-500 dark:text-slate-400 font-bold">
                   <Calendar size={14} className="mr-2 text-slate-300" />
                   <span>{new Date(post.linkedEvent.event_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</span>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Send, Info, MessageSquare, Check, CheckCheck, Sparkles, X, Link as LinkIcon, Image as ImageIcon, Loader2 } from 'lucide-react';
-import { User, Chat, Message, Post } from '../types';
+import { Search, Send, Info, MessageSquare, Check, CheckCheck, Sparkles, X, Link as LinkIcon, Image as ImageIcon, Loader2, Calendar } from 'lucide-react';
+import { User, Chat, Message, Post, CalendarEvent } from '../types';
 import { normalizeString } from '../utils/stringUtils';
 import { supabase } from '../supabaseClient';
 
@@ -17,10 +17,12 @@ interface MessagesViewProps {
   onNavigateToProfile?: (userId: string) => void;
   onMarkChatAsRead?: (chatId: string) => void;
   externalActiveId?: string | null;
+  onNavigateToEvent?: (userId: string, eventId: string) => void;
+  globalEvents: CalendarEvent[];
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
-  user, chats, posts, onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId
+  user, chats, posts, onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(externalActiveId || chats[0]?.id || null);
   const [msg, setMsg] = useState('');
@@ -132,23 +134,27 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [infoTab, setInfoTab] = useState<'multimedia' | 'enlaces'>('multimedia');
 
   const chatInfoData = useMemo(() => {
-    if (!selectedChat) return { media: [], links: [], searchResults: [] };
+    if (!selectedChat) return { media: [], links: [], sharedPosts: [], sharedProfiles: [], sharedEvents: [], searchResults: [] };
 
     const media: string[] = [];
     const links: { text: string, url: string }[] = [];
+    const sharedPosts: Post[] = [];
+    const sharedProfiles: User[] = [];
+    const sharedEvents: CalendarEvent[] = [];
+
     const searchResults = infoSearch.trim()
       ? selectedChat.messages.filter(m => normalizeString(m.text).includes(normalizeString(infoSearch)))
       : [];
 
     selectedChat.messages.forEach(m => {
-      // Extract images
+      // Extract images from text
       const imgRegex = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp))/gi;
       let match;
       while ((match = imgRegex.exec(m.text)) !== null) {
         media.push(match[0]);
       }
 
-      // Extract general links (non-images)
+      // Extract general links from text
       const linkRegex = /(https?:\/\/[^\s]+)/gi;
       let lMatch;
       while ((lMatch = linkRegex.exec(m.text)) !== null) {
@@ -156,10 +162,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           links.push({ text: m.text, url: lMatch[0] });
         }
       }
+
+      // Extract shared objects
+      if (m.postId) {
+        const post = posts.find(p => p.id === m.postId);
+        if (post) sharedPosts.push(post);
+      }
+      if (m.sharedProfile) {
+        sharedProfiles.push(m.sharedProfile);
+      }
+      if (m.sharedEvent || m.sharedEventId) {
+        const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
+        if (event) sharedEvents.push(event);
+      }
     });
 
-    return { media, links, searchResults };
-  }, [selectedChat, infoSearch]);
+    return { media, links, sharedPosts, sharedProfiles, sharedEvents, searchResults };
+  }, [selectedChat, infoSearch, posts, globalEvents]);
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
@@ -181,8 +200,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const participant = selectedChat?.participant || temporaryParticipant;
 
   return (
-    <div className="h-[calc(100vh-180px)] bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex">
-      <div className="w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col hidden lg:flex">
+    <div className="h-[calc(100vh-120px)] sm:h-[calc(100vh-180px)] bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row">
+      <div className={`w-full md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-6 border-b border-gray-50 dark:border-zinc-900">
           <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">Mensajes</h2>
           <div className="relative">
@@ -238,11 +257,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col bg-slate-50/30 dark:bg-black/20">
+      <div className={`flex-1 flex flex-col bg-slate-50/30 dark:bg-black/20 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
         {participant ? (
           <>
             <div className="p-4 bg-white dark:bg-[#111] border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
               <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => setSelectedId(null)}
+                  className="p-2 -ml-2 text-slate-400 hover:text-blue-600 md:hidden"
+                >
+                  <X size={20} />
+                </button>
                 <img
                   src={participant.avatar}
                   className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
@@ -280,7 +305,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   id={`msg-${m.id}`}
                   className={`flex ${m.senderId === user.id ? 'justify-end' : 'justify-start'} transition-all duration-500 ${highlightedMessageId === m.id ? 'scale-105 brightness-110' : ''}`}
                 >
-                  <div className={`max-w-[75%] space-y-1 ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[85%] md:max-w-[75%] space-y-1 ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
                     {m.postId ? (
                       (() => {
                         const sharedPost = posts.find(p => p.id === m.postId);
@@ -291,7 +316,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                         return (
                           <div
-                            className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/50 ${m.senderId === user.id ? 'bg-blue-50 dark:bg-blue-900/10 rounded-tr-none' : 'bg-white dark:bg-zinc-900 rounded-tl-none shadow-sm'}`}
+                            className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/50 ${m.senderId === user.id ? 'bg-blue-50 dark:bg-blue-900/10 rounded-tr-none' : 'bg-white dark:bg-zinc-900 rounded-tl-none border border-slate-100 dark:border-zinc-800'}`}
                             onClick={() => onViewPost?.(sharedPost.id)}
                           >
                             <div className="p-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl m-1">
@@ -311,6 +336,44 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 p-2 rounded-lg">
                                 <span>Publicación</span>
                                 <span className="text-blue-600">Ver más</span>
+                              </div>
+                            </div>
+                            {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
+                          </div>
+                        );
+                      })()
+                    ) : m.sharedProfile ? (
+                      <div
+                        className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/50 ${m.senderId === user.id ? 'bg-blue-50 dark:bg-blue-900/10 rounded-tr-none' : 'bg-white dark:bg-zinc-900 rounded-tl-none border border-slate-100 dark:border-zinc-800'}`}
+                        onClick={() => m.sharedProfile?.id && onNavigateToProfile?.(m.sharedProfile.id)}
+                      >
+                        <div className="p-4 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl m-1 flex items-center space-x-3">
+                          <img src={m.sharedProfile.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-gray-900 dark:text-white truncate">{m.sharedProfile.name} {m.sharedProfile.lastName}</p>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{m.sharedProfile.position}</p>
+                            <p className="text-[9px] text-blue-600 font-bold mt-1">Ver Perfil</p>
+                          </div>
+                        </div>
+                        {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
+                      </div>
+                    ) : (m.sharedEvent || (m.sharedEventId && globalEvents.find(e => e.id === m.sharedEventId))) ? (
+                      (() => {
+                        const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
+                        if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">Evento no disponible</div>;
+                        return (
+                          <div
+                            className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/50 ${m.senderId === user.id ? 'bg-blue-50 dark:bg-blue-900/10 rounded-tr-none' : 'bg-white dark:bg-zinc-900 rounded-tl-none border border-slate-100 dark:border-zinc-800'}`}
+                            onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                          >
+                            <div className="p-4 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-xl m-1 flex items-center space-x-3">
+                              <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl text-blue-600 dark:text-blue-400">
+                                <Calendar size={20} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-gray-900 dark:text-white truncate">{event.title}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{event.location} • {new Date(event.event_date).toLocaleDateString()}</p>
+                                <p className="text-[9px] text-blue-600 font-bold mt-1">Ver Evento</p>
                               </div>
                             </div>
                             {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
@@ -479,6 +542,51 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-4 pb-6">
+                        {chatInfoData.sharedPosts.map((post, i) => (
+                          <div
+                            key={`post-${i}`}
+                            onClick={() => onViewPost?.(post.id)}
+                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
+                          >
+                            <div className="flex items-center space-x-2 mb-2">
+                              <img src={post.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                              <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{post.authorName}</p>
+                            </div>
+                            <p className="text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 font-medium">{post.content}</p>
+                            <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Ver Publicación</p>
+                          </div>
+                        ))}
+
+                        {chatInfoData.sharedProfiles.map((profile, i) => (
+                          <div
+                            key={`profile-${i}`}
+                            onClick={() => profile.id && onNavigateToProfile?.(profile.id)}
+                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all flex items-center space-x-3"
+                          >
+                            <img src={profile.avatar} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-gray-900 dark:text-white truncate">{profile.name} {profile.lastName}</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase truncate">{profile.position}</p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {chatInfoData.sharedEvents.map((event, i) => (
+                          <div
+                            key={`event-${i}`}
+                            onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
+                          >
+                            <div className="flex items-center space-x-3 mb-2">
+                              <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
+                                <Calendar size={14} />
+                              </div>
+                              <p className="text-xs font-black text-gray-900 dark:text-white truncate">{event.title}</p>
+                            </div>
+                            <p className="text-[9px] text-blue-600 font-bold">Ver Detalles</p>
+                          </div>
+                        ))}
+
                         {chatInfoData.links.length > 0 ? chatInfoData.links.map((link, i) => (
                           <button
                             key={i}
@@ -492,9 +600,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             <p className="text-xs font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600">{link.url}</p>
                           </button>
                         )) : (
-                          <div className="text-center py-20">
-                            <p className="text-xs text-slate-400 font-bold italic">No hay enlaces compartidos</p>
-                          </div>
+                          chatInfoData.sharedPosts.length === 0 && chatInfoData.sharedProfiles.length === 0 && chatInfoData.sharedEvents.length === 0 && (
+                            <div className="text-center py-20">
+                              <p className="text-xs text-slate-400 font-bold italic">No hay enlaces compartidos</p>
+                            </div>
+                          )
                         )}
                       </div>
                     )}
