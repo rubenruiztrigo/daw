@@ -23,8 +23,8 @@ export const TendersView: React.FC = () => {
 
   const filteredTenders = useMemo(() => {
     return tenders.filter(t => {
-      const matchesSearch = t.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          t.organism.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.organism.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = filterType === 'all' || t.type === filterType;
       const matchesRegion = filterRegion === 'all' || t.region === filterRegion;
       return matchesSearch && matchesType && matchesRegion;
@@ -38,7 +38,7 @@ export const TendersView: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center space-x-3 mb-2">
-            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-100 dark:shadow-none">
+            <div className="p-2.5 bg-blue-600 text-white rounded-2xl">
               <FileText size={24} />
             </div>
             <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Licitaciones Públicas</h2>
@@ -49,10 +49,10 @@ export const TendersView: React.FC = () => {
         <div className="flex flex-wrap gap-2">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Buscar por organismo o título..."
-              className="pl-12 pr-4 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold shadow-sm focus:ring-2 focus:ring-blue-500 outline-none w-64 md:w-80 transition-all dark:text-white"
+              className="pl-12 pr-4 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none w-64 md:w-80 transition-all dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -60,16 +60,16 @@ export const TendersView: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-[#111] p-4 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-sm">
+      <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-[#111] p-4 rounded-3xl border border-gray-100 dark:border-zinc-800">
         <div className="flex items-center space-x-2 px-3 border-r border-slate-100 dark:border-zinc-900 pr-6">
           <Filter size={16} className="text-slate-400" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtros:</span>
         </div>
-        
+
         <div className="flex items-center space-x-3">
           <Building2 size={14} className="text-blue-500" />
-          <select 
-            value={filterType} 
+          <select
+            value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
             className="bg-transparent text-xs font-black text-slate-600 dark:text-gray-300 outline-none cursor-pointer hover:text-blue-600"
           >
@@ -82,8 +82,8 @@ export const TendersView: React.FC = () => {
 
         <div className="flex items-center space-x-3">
           <Globe2 size={14} className="text-blue-500" />
-          <select 
-            value={filterRegion} 
+          <select
+            value={filterRegion}
             onChange={(e) => setFilterRegion(e.target.value)}
             className="bg-transparent text-xs font-black text-slate-600 dark:text-gray-300 outline-none cursor-pointer hover:text-blue-600"
           >
@@ -94,8 +94,8 @@ export const TendersView: React.FC = () => {
         </div>
 
         <div className="ml-auto flex items-center space-x-2 text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full">
-           <Sparkles size={12} />
-           <span>Monitorizando {tenders.length} licitaciones activas</span>
+          <Sparkles size={12} />
+          <span>Monitorizando {tenders.length} licitaciones activas</span>
         </div>
       </div>
 

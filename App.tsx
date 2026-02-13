@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Language } from './utils/translations';
 import { encryptMessage, decryptMessage } from './utils/encryption';
+import { notifyUserApproved, notifyUserRejected } from './utils/emailService';
 import { Layout } from './components/Layout';
 import { SocialFeed } from './components/SocialFeed';
 import { ProfileView } from './components/ProfileView';
@@ -20,14 +22,15 @@ import { NotificationsView } from './components/NotificationsView';
 import { FullPostView } from './components/FullPostView';
 import { User, Post, Chat, Message, Notification, Comment, AppView, CommentReply, CalendarEvent, BADGE_CATALOG } from './types';
 import { supabase } from './supabaseClient';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { Toast } from './components/Toast';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 
 type Theme = 'light' | 'dark';
 
 const App: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState<any>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -45,6 +48,7 @@ const App: React.FC = () => {
   const [globalEvents, setGlobalEvents] = useState<CalendarEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'light');
+  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem('language') as Language) || 'es');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const [processingReposts, setProcessingReposts] = useState<Set<string>>(new Set());
@@ -64,6 +68,45 @@ const App: React.FC = () => {
   const [notificationsLimit, setNotificationsLimit] = useState(15);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(true);
 
+  const [hasNewPosts, setHasNewPosts] = useState(false);
+
+  const handleRefreshFeed = async () => {
+    setIsLoadingMore(true);
+    await fetchFeed(0, 30);
+    setHasNewPosts(false);
+    setFeedOffset(30);
+    setIsLoadingMore(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Scroll Persistence Logic
+  useEffect(() => {
+    const currentPath = location.pathname;
+
+    // Restore scroll position
+    const savedPosition = sessionStorage.getItem(`scroll_${currentPath}`);
+    if (savedPosition) {
+      // Timeout to ensure content is rendered before scrolling
+      setTimeout(() => {
+        window.scrollTo({ top: parseInt(savedPosition, 10), behavior: 'instant' });
+      }, 0);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    // Save scroll position when navigating away
+    return () => {
+      sessionStorage.setItem(`scroll_${currentPath}`, window.scrollY.toString());
+    };
+  }, [location.pathname]);
+
+  // Clear search query when navigating away from search
+  useEffect(() => {
+    if (!location.pathname.startsWith('/search')) {
+      setSearchQuery('');
+    }
+  }, [location.pathname]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -72,6 +115,9 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'SIGNED_IN') {
+        // navigate('/feed'); // Removed to prevent redirect on tab focus
+      }
       if (event === 'PASSWORD_RECOVERY' || (session && (session as any).type === 'recovery')) {
         setIsResettingPassword(true);
       }
@@ -97,6 +143,10 @@ const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
+    localStorage.setItem('language', language);
+  }, [language]);
+
+  useEffect(() => {
     if (session?.user && !isResettingPassword) {
       // Trigger weekly ranking rewards check
       supabase.rpc('assign_weekly_ranking_badges').then(({ error }) => {
@@ -105,35 +155,90 @@ const App: React.FC = () => {
 
       fetchUserProfile(session.user.id);
       fetchUsers();
-      fetchFeed();
+      fetchFeed(0, 30); // Initial load: 30 items
+      setFeedOffset(30); // Prepare next offset
       fetchFollows();
+
+      // ... (rest of logic)
       fetchChats();
       fetchNotifications();
       fetchGlobalEvents();
 
       const channel = supabase
-        .channel('app_realtime_sync')
-        .on('postgres_changes', { event: '*', table: 'posts', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'news', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'post_reposts', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'user_events', schema: 'public' }, () => { fetchFeed(); fetchGlobalEvents(); })
-        .on('postgres_changes', { event: '*', table: 'post_comments', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'news_comments', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'comment_replies', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'messages', schema: 'public' }, () => fetchChats())
-        .on('postgres_changes', { event: '*', table: 'notifications', schema: 'public' }, () => fetchNotifications())
-        .on('postgres_changes', { event: '*', table: 'profiles', schema: 'public' }, () => { if (session?.user) fetchUserProfile(session.user.id); fetchUsers(); })
-        .on('postgres_changes', { event: '*', table: 'follows', schema: 'public' }, () => { fetchFollows(); if (session?.user) fetchUserProfile(session.user.id); fetchUsers(); })
-        .on('postgres_changes', { event: '*', table: 'post_likes', schema: 'public' }, () => fetchFeed())
-        .on('postgres_changes', { event: '*', table: 'news_votes', schema: 'public' }, () => fetchFeed())
+        .channel('app_realtime_main')
+        .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+          // Check if it's a new post or news
+          if ((payload.table === 'posts' || payload.table === 'news') && payload.eventType === 'INSERT') {
+            const newRecord = payload.new as any;
+            // Only notify if the content is NOT from the current user
+            if (newRecord && newRecord.author_id !== session.user.id) {
+              setHasNewPosts(true);
+            }
+          }
+        })
         .subscribe();
 
-      return () => { supabase.removeChannel(channel); };
+      // Listen for profile status changes (e.g. approval)
+      const profileChannel = supabase
+        .channel(`public:profiles:${session.user.id}`)
+        .on('postgres_changes', {
+          event: '*', // Listen for INSERT and UPDATE
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${session.user.id}`
+        }, (payload) => {
+          if (payload.eventType === 'DELETE') {
+            console.log("Profile deleted via Realtime");
+            setCurrentUserData({ id: session.user.id, status: 'rejected' } as any);
+          } else {
+            const newProfile = payload.new as any;
+            if (newProfile) {
+              console.log("Profile updated/created via Realtime!");
+              // Refresh profile on any change to own profile
+              fetchUserProfile(session.user.id);
+
+              if (newProfile.status === 'active') {
+                setToast({ message: "¡Tu cuenta ha sido aprobada! Bienvenido.", type: 'success' });
+              } else if (newProfile.status === 'rejected') {
+                setToast({ message: "Tu cuenta ha sido rechazada.", type: 'error' });
+              }
+            }
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+        supabase.removeChannel(profileChannel);
+      };
     }
   }, [session, isResettingPassword]);
 
+  // Polling effect for pending users (Fallback for Realtime)
+  useEffect(() => {
+    let interval: any;
+    if (session?.user && currentUserData?.status === 'pending') {
+      interval = setInterval(() => {
+        // Silent fetch to check status
+        supabase.from('profiles').select('status').eq('id', session.user.id).maybeSingle().then(({ data }) => {
+          if (data && data.status === 'active') {
+            console.log("Profile activated via Polling!");
+            fetchUserProfile(session.user.id);
+            setToast({ message: "¡Tu cuenta ha sido aprobada!", type: 'success' });
+          } else if (data && data.status === 'rejected') {
+            fetchUserProfile(session.user.id);
+          } else if (!data) {
+            console.log("Profile missing (Polling) -> Rejected");
+            fetchUserProfile(session.user.id);
+          }
+        });
+      }, 3000);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [session, currentUserData?.status]);
+
   const fetchUserProfile = async (uid: string) => {
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
     const { data: badges } = await supabase.from('user_badges').select('badge_id, created_at').eq('user_id', uid);
 
     if (profile) {
@@ -166,6 +271,7 @@ const App: React.FC = () => {
         avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
         banner: profile.banner,
         bannerColor: profile.banner_color,
+        // status: profile.status, // Removed duplicate
         bio: profile.bio || '',
         interests: profile.interests || [],
         followers: profile.followers_count || 0,
@@ -174,8 +280,14 @@ const App: React.FC = () => {
         region: profile.region,
         joinedDate: profile.created_at,
         birthDate: profile.birth_date,
-        badges: filteredBadges.map(b => ({ id: b.badge_id, created_at: b.created_at }))
+        badges: filteredBadges.map(b => ({ id: b.badge_id, created_at: b.created_at })),
+        notificationSettings: profile.notification_settings,
+        status: profile.status,
+        isAdmin: profile.is_admin
       });
+    } else {
+      console.log("Profile not found -> Rejected state");
+      setCurrentUserData({ id: uid, status: 'rejected' } as any);
     }
   };
 
@@ -224,7 +336,8 @@ const App: React.FC = () => {
         region: u.region,
         joinedDate: u.created_at,
         birthDate: u.birth_date,
-        badges: badgesByUserId[u.id] || []
+        badges: badgesByUserId[u.id] || [],
+        notificationSettings: u.notification_settings
       })));
     }
   };
@@ -248,7 +361,7 @@ const App: React.FC = () => {
       const otherUser = m.sender_id === session.user.id ? m.recipient : m.sender;
       if (!otherUser) return;
       const chatId = otherUser.id;
-      const chat = chatsMap.get(chatId) || { id: chatId, participant: { id: otherUser.id, name: otherUser.name, lastName: otherUser.last_name, username: otherUser.username, avatar: otherUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUser.id}`, position: otherUser.position, department: otherUser.department }, messages: [], lastMessage: '', timestamp: new Date() };
+      const chat = chatsMap.get(chatId) || { id: chatId, participant: { id: otherUser.id, name: otherUser.name, lastName: otherUser.last_name, username: otherUser.username, avatar: otherUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUser.id}`, position: otherUser.position, department: otherUser.department, notificationSettings: otherUser.notification_settings }, messages: [], lastMessage: '', timestamp: new Date() };
 
       let sharedEventData = undefined;
       if (m.shared_event_id) {
@@ -295,7 +408,18 @@ const App: React.FC = () => {
       .range(0, notificationsLimit - 1);
 
     if (data) {
-      setNotifications(data.map((n: any) => ({ id: n.id, type: n.type, senderName: `${n.sender?.name} ${n.sender?.last_name || ''}`, senderAvatar: n.sender?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.sender_id}`, content: n.content, timestamp: n.created_at, isRead: n.is_read, postId: n.post_id })));
+      setNotifications(data.map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        senderName: n.sender ? `${n.sender.name} ${n.sender.last_name || ''}` : 'NovaGob',
+        senderId: n.sender_id, // Add senderId
+        senderAvatar: n.sender?.avatar || (n.type === 'system' ? '/novagob-logo.png' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.sender_id}`),
+        content: n.content,
+        timestamp: n.created_at,
+        isRead: n.is_read,
+        postId: n.post_id
+      }))
+        .filter(n => !n.content.toLowerCase().includes('mensaje privado') && !n.content.toLowerCase().includes('private message') && n.type !== 'message' && n.type !== 'chat'));
       if (count !== null) setHasMoreNotifications(data.length < count);
     }
   };
@@ -309,19 +433,24 @@ const App: React.FC = () => {
     if (data) setGlobalEvents(data.map(ev => ({ id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count })));
   };
 
-  const fetchFeed = async () => {
+  const [feedOffset, setFeedOffset] = useState(0);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // ... (keep earlier useEffects)
+
+  const fetchFeed = async (offset = 0, limit = 30) => {
     if (!session?.user) return;
+    console.log(`Fetching feed with offset: ${offset}, limit: ${limit}`);
     try {
+      // 1. Fetch Posts and News in parallel (paginated)
       const [
-        { data: postsData }, { data: newsData }, { data: postComments }, { data: newsComments }, { data: repliesData },
-        { data: myPostLikes }, { data: myNewsVotes }, { data: myReposts }, { data: eventsData }, { data: profilesData },
+        { data: postsData, error: postsError }, { data: newsData, error: newsError },
+        { data: myPostLikes }, { data: myNewsVotes }, { data: myReposts }, { data: globalEventsData }, { data: profilesData },
         { data: commentLikesData }
       ] = await Promise.all([
-        supabase.from('posts').select('*').order('created_at', { ascending: false }),
-        supabase.from('news').select('*').order('created_at', { ascending: false }),
-        supabase.from('post_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
-        supabase.from('news_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
-        supabase.from('comment_replies').select('*').order('created_at', { ascending: true }),
+        supabase.from('posts').select('*').order('created_at', { ascending: false }).range(offset, offset + limit - 1),
+        supabase.from('news').select('*').order('created_at', { ascending: false }).range(offset, offset + limit - 1),
         supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id),
         supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id),
         supabase.from('post_reposts').select('post_id').eq('user_id', session.user.id),
@@ -330,20 +459,50 @@ const App: React.FC = () => {
         supabase.from('comment_likes').select('comment_id').eq('user_id', session.user.id)
       ]);
 
-      const profilesMap = new Map(); profilesData?.forEach(p => profilesMap.set(p.id, p));
-      const eventsMap = new Map(); eventsData?.forEach(ev => eventsMap.set(ev.id, { id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count }));
+      const profilesMap = new Map(); (profilesData || []).forEach(p => profilesMap.set(p.id, p));
+      const eventsMap = new Map(); (globalEventsData || []).forEach(ev => eventsMap.set(ev.id, { id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count }));
 
-      // Calculate Global Votes for News
-      const newsIds = (newsData || []).map((n: any) => n.id);
+      // 2. Collect IDs for related data fetching
+      const postIds = (postsData || []).map(p => p.id);
+      const newsIds = (newsData || []).map(n => n.id);
+      const allIds = [...postIds, ...newsIds];
+
+      if (allIds.length === 0 && offset > 0) {
+        setHasMorePosts(false);
+        return;
+      }
+
+      // 3. Fetch related data (Comments) specific to these posts/news
+      let postComments: any[] = [];
+      let newsComments: any[] = [];
+
+      if (postIds.length > 0) {
+        const { data: pc } = await supabase.from('post_comments').select('*, author:profiles!author_id(*)').in('post_id', postIds).order('created_at', { ascending: false });
+        postComments = pc || [];
+      }
+
+      if (newsIds.length > 0) {
+        const { data: nc } = await supabase.from('news_comments').select('*, author:profiles!author_id(*)').in('news_id', newsIds).order('created_at', { ascending: false });
+        newsComments = nc || [];
+      }
+
+      const commentIds = [...postComments.map(c => c.id), ...newsComments.map(c => c.id)];
+      // Fetch replies for these comments
+      let repliesData: any[] = [];
+      if (commentIds.length > 0) {
+        const { data: rd } = await supabase.from('comment_replies').select('*').in('comment_id', commentIds).order('created_at', { ascending: true });
+        repliesData = rd || [];
+      }
+
+      // Calculate Global Votes for News (only for fetched news)
       let newsVotesMap = new Map<string, { up: number, down: number }>();
-
       if (newsIds.length > 0) {
         const { data: allNewsVotes } = await supabase
           .from('news_votes')
           .select('news_id, vote_type')
           .in('news_id', newsIds);
 
-        allNewsVotes?.forEach((v: any) => {
+        (allNewsVotes || []).forEach((v: any) => {
           const current = newsVotesMap.get(v.news_id) || { up: 0, down: 0 };
           if (v.vote_type === 'up') current.up++;
           else if (v.vote_type === 'down') current.down++;
@@ -351,20 +510,13 @@ const App: React.FC = () => {
         });
       }
 
-      // Calculate Comment Likes
-      // Note: We need to fetch aggregate likes for comments. For efficiency, we might want a view or a separate query for heavy loads,
-      // but for now we'll assume comments come with a 'likes' count column if we updated the table, OR we count them.
-      // Since we didn't add a likes_count column to comments tables in the migration (just the linker table),
-      // we might rely on the existing 'likes' column in comments tables if it exists, or defaults to 0.
-      // Check database.sql: comment_replies has 'likes'. post_comments/news_comments usually have it too.
-
+      // ... (Rest of processing logic relies on standard variables)
       const myCommentLikes = new Set(commentLikesData?.map((l: any) => l.comment_id) || []);
-
       const allReplies = (repliesData || []).map((r: any) => { const author = profilesMap.get(r.author_id); return { id: r.id, commentId: r.comment_id, parentReplyId: r.parent_reply_id, authorId: r.author_id, authorName: author ? `${author.name} ${author.last_name || ''}` : 'Usuario', authorUsername: author?.username, authorAvatar: author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.author_id}`, text: r.content, timestamp: r.created_at, likes: r.likes || 0, replies: [] }; });
       const buildReplyTree = (replies: any[]) => { const roots = new Map(); replies.forEach(r => { if (r.parentReplyId) { const parent = replies.find(pr => pr.id === r.parentReplyId); if (parent) (parent.replies = parent.replies || []).push(r); } else { const list = roots.get(r.commentId) || []; list.push(r); roots.set(r.commentId, list); } }); return roots; };
       const repliesMap = buildReplyTree(allReplies);
       const commentsMap = new Map();
-      const processComments = (data: any[], idField: string) => data?.forEach((c: any) => {
+      const processComments = (data: any[], idField: string) => (data || []).forEach((c: any) => {
         const targetId = c[idField];
         const list = commentsMap.get(targetId) || [];
         list.push({
@@ -382,12 +534,15 @@ const App: React.FC = () => {
         commentsMap.set(targetId, list);
       });
       processComments(postComments || [], 'post_id'); processComments(newsComments || [], 'news_id');
+
       const upvotedIds = new Set([...(myPostLikes?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []), ...(myNewsVotes?.filter(l => l.vote_type === 'up').map(l => l.news_id) || [])]);
       const downvotedIds = new Set([...(myPostLikes?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []), ...(myNewsVotes?.filter(l => l.vote_type === 'down').map(l => l.news_id) || [])]);
       const repostedIds = new Set(myReposts?.map(r => r.post_id) || []);
+
       const formattedPosts = (postsData || []).map((p: any) => { const author = profilesMap.get(p.author_id); return { id: p.id, authorId: p.author_id, authorName: author ? `${author.name} ${author.last_name || ''}` : 'Usuario', authorUsername: author?.username, authorPosition: author?.position, authorAvatar: author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.author_id}`, content: p.content, imageUrl: p.image_url, docUrl: p.doc_url, docName: p.doc_name, timestamp: p.created_at, type: 'post', tags: p.tags || [], likes: p.likes_count || 0, reposts: p.reposts_count || 0, comments: p.comments_count || 0, commentsList: commentsMap.get(p.id) || [], userLiked: upvotedIds.has(p.id), userReposted: repostedIds.has(p.id), userDownvoted: downvotedIds.has(p.id), linkedEventId: p.linked_event_id, linkedEvent: p.linked_event_id ? eventsMap.get(p.linked_event_id) : undefined }; });
       const formattedNews = (newsData || []).map((n: any) => {
         const author = profilesMap.get(n.author_id);
+
         const votes = newsVotesMap.get(n.id) || { up: 0, down: 0 };
         return {
           id: n.id,
@@ -416,12 +571,54 @@ const App: React.FC = () => {
       const { data: deletedPosts } = await supabase.from('posts_deleted').select('post_id').eq('user_id', session.user.id);
       const deletedPostIds = new Set(deletedPosts?.map(p => p.post_id) || []);
 
-      setPosts([...formattedPosts, ...formattedNews]
+      const newItems = [...formattedPosts, ...formattedNews]
         .filter(p => !deletedPostIds.has(p.id))
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      );
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      console.log(`Fetched ${newItems.length} items. Offset: ${offset}`);
+
+      if (offset === 0) {
+        setPosts(newItems);
+        setHasMorePosts(newItems.length >= limit); // Heuristic
+      } else {
+        setPosts(prev => {
+          // Dedup?
+          const existingIds = new Set(prev.map(p => p.id));
+          const filteredNew = newItems.filter(p => !existingIds.has(p.id));
+          return [...prev, ...filteredNew];
+        });
+        if (newItems.length < limit) setHasMorePosts(false);
+      }
+
     } catch (e) { console.error("Error fetching feed:", e); }
   };
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore || !hasMorePosts) return;
+    setIsLoadingMore(true);
+    const nextOffset = feedOffset + 30; // Wait, strategy check.
+    // Initial: 0. Limit 30.
+    // Next: we want +15.
+    // So if current offset is 0, next should be 30. limit 15.
+    // Logic:
+    const limit = 15;
+    const currentCount = posts.length; // Approximate offset?
+    // Using explicit offset state is safer.
+    // Initial state: offset=0.
+    // LoadMore: offset = offset + (last_fetch_count?).
+    // Better: keep track of next offset.
+    // Initial: fetch(0, 30). setOffset(30).
+    // LoadMore: fetch(offset, 15). setOffset(offset + 15).
+
+    await fetchFeed(feedOffset, 15);
+    setFeedOffset(prev => prev + 15);
+    setIsLoadingMore(false);
+  };
+
+  // Update initial fetch to update offset
+  // We need to modify the useEffect calling fetchFeed too.
+  // ...
+
 
   const handleVote = useCallback(async (id: string, dir: 'up' | 'down') => {
     if (!session?.user || processingVotes.has(id)) return;
@@ -570,6 +767,7 @@ const App: React.FC = () => {
       avatar: updatedUser.avatar,
       banner: updatedUser.banner,
       banner_color: updatedUser.bannerColor,
+      notification_settings: updatedUser.notificationSettings,
       updated_at: new Date().toISOString()
     }).eq('id', session.user.id);
     if (!error) {
@@ -849,9 +1047,22 @@ const App: React.FC = () => {
 
   const handleMarkChatAsRead = async (chatId: string) => {
     if (!session?.user) return;
-    // Column messages.is_read does not exist, skipping update.
-    // console.log("Skipping mark as read (column missing)");
-    /*
+
+    // Optimistic UI Update: Mark relevant messages as read locally
+    setChats(prevChats => prevChats.map(c => {
+      if (c.id === chatId) {
+        // Mark last message and any other unread messages as read
+        const updatedMessages = c.messages.map(m => {
+          if (m.senderId === chatId && !m.isRead) {
+            return { ...m, isRead: true };
+          }
+          return m;
+        });
+        return { ...c, messages: updatedMessages };
+      }
+      return c;
+    }));
+
     try {
       await supabase
         .from('messages')
@@ -859,23 +1070,31 @@ const App: React.FC = () => {
         .eq('recipient_id', session.user.id)
         .eq('sender_id', chatId)
         .eq('is_read', false);
-      fetchChats();
+
+      // We can fetch, but optimistic update handles the immediate feedback.
+      // fetchChats(); // Only if needed to sync exactly. Realtime might handle it eventually.
+      fetchNotifications();
     } catch (err) {
       console.error("Error marking chat as read:", err);
+      // Revert if error? (Optional, but usually not critical for read status)
+      fetchChats();
     }
-    */
+  };
+
+  const handleNavigateToProfile = (userId: string) => {
+    const targetUser = users.find(u => u.id === userId) || (currentUserData?.id === userId ? currentUserData : null);
+    const identifier = targetUser?.username || userId;
+    navigate(`/${identifier}`);
   };
 
   const handleNavigateToEvent = (userId: string, eventId: string) => {
     setTargetEventId(eventId);
-    navigate(`/profile/${userId}`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleNavigateToProfile(userId);
   };
 
   const handleNavigateToCalendarDate = (date: Date) => {
     setTargetCalendarDate(date);
     navigate('/calendar');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSendMessage = async (recipientId: string, text: string, postShareId?: string, profileShareId?: string, sharedEventId?: string) => {
@@ -893,17 +1112,7 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      // Opcional: Notificación de nuevo mensaje (si no existe un sistema de push/unread global)
-      try {
-        await supabase.from('notifications').insert({
-          user_id: recipientId,
-          sender_id: session.user.id,
-          type: 'follow', // O crear tipo 'message' si la tabla lo permite
-          content: `te ha enviado un mensaje privado`
-        });
-      } catch (notifyErr) {
-        console.warn("Could not send notification:", notifyErr);
-      }
+
 
       fetchChats();
     } catch (err: any) {
@@ -959,7 +1168,7 @@ const App: React.FC = () => {
 
   if (isLoadingAuth || (!currentUserData && session && !isResettingPassword)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
   if (isResettingPassword) return <PasswordRecover onComplete={() => { setIsResettingPassword(false); navigate('/'); }} />;
-  if (!session) { if (isRegistering) return <Onboarding onComplete={() => setIsRegistering(false)} onCancel={() => setIsRegistering(false)} />; return <Login onLogin={() => { }} onRegister={() => setIsRegistering(true)} />; }
+  if (!session) { if (isRegistering) return <Onboarding onComplete={() => setIsRegistering(false)} onCancel={() => setIsRegistering(false)} />; return <Login onLogin={() => { navigate('/feed'); }} onRegister={() => setIsRegistering(true)} />; }
 
   // Replace ProfileWrapper usage with ProfileRoute in routes
   // This step will be done in the next call or by carefully targeting the lines.
@@ -970,10 +1179,99 @@ const App: React.FC = () => {
   // Removed SearchWrapper in favor of SearchRoute
 
 
+  const handleApproveUser = async (userId: string, notificationId: string) => {
+    try {
+      const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+      if (error) throw error;
+
+      const { data: userProfile } = await supabase.from('profiles').select('email').eq('id', userId).single();
+      if (userProfile?.email) await notifyUserApproved(userProfile.email);
+
+      await supabase.from('notifications').delete().eq('id', notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      setToast({ message: "Usuario aprobado correctamente.", type: 'success' });
+    } catch (error) {
+      console.error("Error approving user:", error);
+      setToast({ message: "Error al aprobar usuario.", type: 'error' });
+    }
+  };
+
+  const handleRejectUser = async (userId: string, notificationId: string) => {
+    try {
+      // SOFT DELETE processing: Update status to rejected and clear username
+      const { data: userProfile } = await supabase.from('profiles').select('email').eq('id', userId).single();
+
+      // Update generic fields to clear PII if needed, but critical is status and username
+      const { error } = await supabase.from('profiles').update({
+        status: 'rejected',
+        username: null, // Clear username so it can be reused
+        updated_at: new Date().toISOString()
+      }).eq('id', userId);
+
+      if (error) throw error;
+
+      if (userProfile?.email) await notifyUserRejected(userProfile.email);
+
+      await supabase.from('notifications').delete().eq('id', notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      setToast({ message: "Usuario rechazado (perfil conservado).", type: 'info' });
+    } catch (error) {
+      console.error("Error rejecting user:", error);
+      setToast({ message: "Error al rechazar usuario.", type: 'error' });
+    }
+  };
+
+  if (session && currentUserData) {
+    if (currentUserData.status === 'pending') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-3xl p-8 text-center shadow-xl">
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Loader2 className="animate-spin" size={32} />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">Cuenta en revisión</h2>
+            <p className="text-slate-600 mb-8">
+              Tu solicitud está pendiente de aprobación por el administrador.
+              Te notificaremos por correo electrónico cuando tu cuenta esté activa.
+            </p>
+            <button
+              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
+              className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (currentUserData.status === 'rejected') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-3xl p-8 text-center shadow-xl">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <X size={32} />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">Solicitud rechazada</h2>
+            <p className="text-slate-600 mb-8">
+              Tu solicitud de registro ha sido denegada por el administrador.
+            </p>
+            <button
+              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
+              className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   const PostDetailWrapper = () => {
     const { postId } = useParams();
     const post = posts.find(p => p.id === postId);
-    if (!post) return <div className="p-10 text-center">Post no encontrado</div>;
+    if (!post) return <div className="p-10 text-center">{language === 'es' ? 'Post no encontrado' : 'Post not found'}</div>;
 
     return (
       <FullPostView
@@ -986,7 +1284,7 @@ const App: React.FC = () => {
         onAddReply={handleAddReply}
         onVoteComment={handleVoteComment}
         onRepost={handleRepost}
-        onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+        onNavigateToProfile={handleNavigateToProfile}
         onBack={() => navigate(-1)}
         onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
         users={users}
@@ -994,6 +1292,7 @@ const App: React.FC = () => {
         chats={chats}
         followerUserIds={followerUserIds}
         onShareViaChat={handleSendMessageFromShare}
+        language={language}
       />
     );
   };
@@ -1008,13 +1307,20 @@ const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onSearchSubmit={(q) => navigate(`/search?q=${q}`)}
-        onLogout={() => supabase.auth.signOut()}
+        onLogout={() => {
+          sessionStorage.clear(); // Clear all scroll/tab persistence on logout
+          supabase.auth.signOut();
+        }}
+        language={language}
       >
         <Routes>
           <Route path="/" element={<Navigate to="/feed" replace />} />
           <Route path="/feed" element={
             <SocialFeed
               posts={posts.filter(p => p.type === 'post')}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMorePosts}
+              isLoadingMore={isLoadingMore}
               user={currentUserData!}
               onLike={(id) => handleVote(id, 'up')}
               onVote={handleVote}
@@ -1022,7 +1328,7 @@ const App: React.FC = () => {
               onAddPost={handleAddPost}
               onAddComment={handleAddComment}
               users={users}
-              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToProfile={handleNavigateToProfile}
               followedUserIds={followedUserIds}
               followerUserIds={followerUserIds}
               onToggleFollow={handleToggleFollow}
@@ -1036,11 +1342,17 @@ const App: React.FC = () => {
               onNavigateToEvent={handleNavigateToEvent}
               chats={chats}
               onShareViaChat={handleSendMessageFromShare}
+              language={language}
+              hasNewContent={hasNewPosts}
+              onRefresh={handleRefreshFeed}
             />
           } />
           <Route path="/news" element={
             <NewsHubView
               posts={posts.filter(p => p.type === 'news')}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMorePosts}
+              isLoadingMore={isLoadingMore}
               user={currentUserData!}
               onVote={handleVote}
               onRepost={handleRepost}
@@ -1048,42 +1360,46 @@ const App: React.FC = () => {
               onAddComment={handleAddComment}
               currentUser={currentUserData!}
               users={users}
-              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToProfile={handleNavigateToProfile}
               onNavigateToPost={(id) => navigate(`/post/${id}`)}
               onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
               onDeletePost={handleDeletePost}
               chats={chats}
               followerUserIds={followerUserIds}
               onShareViaChat={handleSendMessageFromShare}
+              language={language}
+              hasNewContent={hasNewPosts}
+              onRefresh={handleRefreshFeed}
             />
           } />
           <Route path="/calendar" element={
             <CalendarView
               onNavigateToEvent={handleNavigateToEvent}
               onPromoteEvent={(ev) => {
-                setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://redsocial.app/u/${ev.creator_id}/e/${ev.id} #Evento`);
+                setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://red.novagob.org/u/${ev.creator_id}/e/${ev.id} #Evento`);
                 setPrefilledEvent(ev);
                 navigate('/feed');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               onSupportEvent={handleSupportEvent}
               onShareEvent={setSharingEvent}
               initialDate={targetCalendarDate}
+              language={language}
             />
           } />
-          <Route path="/messages" element={
+          <Route path="/messages/:chatId?" element={
             <MessagesView
               user={currentUserData!}
               chats={chats}
               posts={posts}
               users={users}
               onSendMessage={handleSendMessage}
-              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToProfile={handleNavigateToProfile}
               onViewPost={(pid) => navigate(`/post/${pid}`)}
               externalActiveId={activeChatUserId}
               onMarkChatAsRead={handleMarkChatAsRead}
               onNavigateToEvent={handleNavigateToEvent}
               globalEvents={globalEvents}
+              language={language}
             />
           } />
           <Route path="/notifications" element={
@@ -1093,10 +1409,39 @@ const App: React.FC = () => {
               onNotificationClick={(id) => { if (id) navigate(`/post/${id}`); }}
               onLoadMore={() => setNotificationsLimit(prev => prev + 10)}
               hasMore={hasMoreNotifications}
+              language={language}
+              onApproveUser={handleApproveUser}
+              onRejectUser={handleRejectUser}
             />
           } />
-          <Route path="/store" element={<StoreView user={currentUserData!} />} />
-          <Route path="/profile/:userId?" element={
+          <Route path="/store" element={<StoreView user={currentUserData!} language={language} />} />
+
+          <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => { sessionStorage.clear(); supabase.auth.signOut(); }} onViewChange={(v) => navigate(`/${v}`)} theme={theme} onThemeChange={setTheme} language={language} onLanguageChange={setLanguage} />} />
+          <Route path="/search" element={
+            <SearchRoute
+              posts={posts}
+              users={users}
+              onLike={(id) => handleVote(id, 'up')}
+              onVote={handleVote}
+              onRepost={handleRepost}
+              onAddComment={handleAddComment}
+              onDeletePost={handleDeletePost}
+              onViewChange={(v) => { if (v === 'profile') handleNavigateToProfile(currentUserData?.id || ''); else navigate(`/${v}`); }}
+              currentUser={currentUserData!}
+              followedUserIds={followedUserIds}
+              followerUserIds={followerUserIds}
+              onToggleFollow={handleToggleFollow}
+              onNavigateToProfile={handleNavigateToProfile}
+              onNavigateToPost={(id) => navigate(`/post/${id}`)}
+              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+              onNavigateToEvent={handleNavigateToEvent}
+              chats={chats}
+              onShareViaChat={handleSendMessageFromShare}
+              language={language}
+            />
+          } />
+          <Route path="/post/:postId" element={<PostDetailWrapper />} />
+          <Route path="/:username?" element={
             <ProfileRoute
               users={users}
               currentUserData={currentUserData}
@@ -1109,45 +1454,22 @@ const App: React.FC = () => {
               onToggleFollow={handleToggleFollow}
               onDeletePost={handleDeletePost}
               onNavigateToEvent={handleNavigateToEvent}
-              onStartChat={(tu) => { setActiveChatUserId(tu.id); navigate('/messages'); }}
+              onStartChat={(tu) => { navigate(`/messages/${tu.id}`); }}
               onAddPost={handleAddPost}
-              onPromoteEvent={(ev) => { setPrefilledPostContent(ev.description || `📢 ¡Evento organizado!\n\n${ev.title}\n\n#Evento`); setPrefilledEvent(ev); navigate('/feed'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              onPromoteEvent={(ev) => { setPrefilledPostContent(ev.description || `📢 ¡Evento organizado!\n\n${ev.title}\n\n#Evento`); setPrefilledEvent(ev); navigate('/feed'); }}
               onShareViaChat={handleSendMessageFromShare}
               focusedEventId={targetEventId}
               onClearFocusedEvent={() => setTargetEventId(null)}
               onSearchHashtag={(t) => { setSearchQuery(t); navigate(`/search?q=${t}`); }}
               onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
+              onNavigateToProfile={handleNavigateToProfile}
               onLike={(id) => handleVote(id, 'up')}
               onVote={handleVote}
               onAddComment={handleAddComment}
               globalEvents={globalEvents}
+              language={language}
             />
           } />
-          <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={(v) => navigate(`/${v}`)} theme={theme} onThemeChange={setTheme} />} />
-          <Route path="/search" element={
-            <SearchRoute
-              posts={posts}
-              users={users}
-              onLike={(id) => handleVote(id, 'up')}
-              onVote={handleVote}
-              onRepost={handleRepost}
-              onAddComment={handleAddComment}
-              onDeletePost={handleDeletePost}
-              onViewChange={(v) => { if (v === 'profile') navigate(`/profile/${currentUserData?.id}`); else navigate(`/${v}`); }}
-              currentUser={currentUserData!}
-              followedUserIds={followedUserIds}
-              followerUserIds={followerUserIds}
-              onToggleFollow={handleToggleFollow}
-              onNavigateToProfile={(id) => navigate(`/profile/${id}`)}
-              onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
-              onNavigateToEvent={handleNavigateToEvent}
-              chats={chats}
-              onShareViaChat={handleSendMessageFromShare}
-            />
-          } />
-          <Route path="/post/:postId" element={<PostDetailWrapper />} />
         </Routes>
       </Layout>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

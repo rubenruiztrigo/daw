@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, calculateNovas } from '../types';
-import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal } from 'lucide-react';
+import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck } from 'lucide-react';
 import { EditProfileModal } from './EditProfileModal';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { PreferencesModal } from './PreferencesModal';
@@ -14,6 +14,7 @@ import { ImageCropModal } from './ImageCropModal';
 import { LevelsListModal } from './LevelsListModal';
 import { getLevelInfo } from '../utils/gamificationUtils';
 import { supabase } from '../supabaseClient';
+import { Language, useTranslation } from '../utils/translations';
 
 type ProfileTab = 'posts' | 'news' | 'reposts' | 'events' | 'badges';
 
@@ -47,16 +48,18 @@ interface ProfileViewProps {
   followedUserIds?: Set<string>;
   onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
   globalEvents?: any[];
+  language: Language;
 }
 // ... (skip down to ShareModal usage) -> Actually I need to split this into two chunks (Interface and Usage) or use multi_replace.
 // Since they are far apart, I'll use multi_replace.
 
 // getStatusInfo logic removed and replaced by getLevelInfo from utils
 
-const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ user, onClose }) => {
+const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language: Language }> = ({ user, onClose, language }) => {
   const navigate = useNavigate();
+  const t = useTranslation(language);
   const novas = calculateNovas(user.badges);
-  const status = getLevelInfo(novas);
+  const status = getLevelInfo(novas, language);
   const StatusIcon = status.icon;
   const progress = status.nextThreshold
     ? Math.min(100, Math.max(0, ((novas - status.threshold) / (status.nextThreshold - status.threshold)) * 100))
@@ -72,13 +75,13 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
 
           <div>
             <h3 className={`text-3xl font-black ${status.color} tracking-tight`}>{status.rank}</h3>
-            <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mt-2">Nivel de Influencia NovaGob</p>
+            <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mt-2">{t('influence_level')}</p>
           </div>
 
           <div className="space-y-3">
             <div className="flex justify-between items-end px-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{novas} Novas</span>
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nivel {status.level}</span>
+              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{t('level_label', { level: status.level })}</span>
             </div>
             <div className="h-4 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden p-1 border border-slate-50 dark:border-zinc-900">
               <div
@@ -100,7 +103,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void }> = ({ u
               }}
               className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all active:scale-95"
             >
-              Recompensas
+              {t('rewards')}
             </button>
           </div>
         </div>
@@ -113,9 +116,11 @@ const CreateEventModal: React.FC<{
   userId: string,
   onClose: () => void,
   onSave: () => void,
-  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void
-}> = ({ userId, onClose, onSave, onAddPost }) => {
+  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void,
+  language: Language
+}> = ({ userId, onClose, onSave, onAddPost, language }) => {
   const [loading, setLoading] = useState(false);
+  const t = useTranslation(language);
   const [formData, setFormData] = useState({
     title: '',
     type: 'physical',
@@ -155,12 +160,12 @@ const CreateEventModal: React.FC<{
 
     if (!error && data) {
       if (shouldPromote && onAddPost) {
-        let typeTag = 'Presencial';
-        if (formData.type === 'online_course') typeTag = 'CursoOnline';
-        if (formData.type === 'meeting') typeTag = 'Reunion';
+        let typeTag = language === 'es' ? 'Presencial' : 'Physical';
+        if (formData.type === 'online_course') typeTag = language === 'es' ? 'CursoOnline' : 'OnlineCourse';
+        if (formData.type === 'meeting') typeTag = language === 'es' ? 'Reunion' : 'Meeting';
 
         await onAddPost(
-          `He organizado un nuevo evento: ${formData.title}. ¡Os espero a todos! #Evento #${typeTag}`,
+          t('event_promoted_msg', { title: formData.title }),
           'post',
           ['Evento', typeTag],
           undefined,
@@ -186,8 +191,8 @@ const CreateEventModal: React.FC<{
               <Calendar size={20} />
             </div>
             <div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white">Organizar Evento</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Define los detalles de tu evento</p>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('organize_event')}</h3>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">{t('event_details_desc')}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"><X size={24} /></button>
@@ -195,7 +200,7 @@ const CreateEventModal: React.FC<{
 
         <form onSubmit={(e) => e.preventDefault()} className="p-8 space-y-5">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Título del evento</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{t('event_title_label')}</label>
             <input
               required
               type="text"
@@ -207,15 +212,15 @@ const CreateEventModal: React.FC<{
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tipo de Evento</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{t('event_type_label')}</label>
             <select
               value={formData.type}
               onChange={e => setFormData({ ...formData, type: e.target.value })}
               className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all appearance-none"
             >
-              <option value="physical">Evento Presencial</option>
-              <option value="online_course">Curso Online</option>
-              <option value="meeting">Reunión</option>
+              <option value="physical">{t('event_physical')}</option>
+              <option value="online_course">{t('event_online')}</option>
+              <option value="meeting">{t('event_meeting')}</option>
             </select>
           </div>
 
@@ -286,7 +291,7 @@ const CreateEventModal: React.FC<{
                 onClick={onClose}
                 className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
               >
-                Cancelar
+                {t('cancel')}
               </button>
               <button
                 type="button"
@@ -295,7 +300,7 @@ const CreateEventModal: React.FC<{
                 className="flex-[1.5] py-4 border-2 border-blue-600 text-blue-600 dark:text-blue-400 rounded-2xl font-black text-sm hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
               >
                 <Check size={18} />
-                <span>Publicar</span>
+                <span>{t('publish')}</span>
               </button>
             </div>
             <button
@@ -304,10 +309,10 @@ const CreateEventModal: React.FC<{
               disabled={loading || !formData.title || !formData.date || !formData.time}
               className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <><Megaphone size={18} /><span>Publicar y Promocionar</span></>}
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <><Megaphone size={18} /><span>{t('publish_and_promote')}</span></>}
             </button>
             <p className="text-[10px] text-center text-slate-400 font-bold px-4">
-              "Publicar y Promocionar" creará el evento y generará automáticamente un post en el feed principal.
+              {t('promote_desc')}
             </p>
           </div>
         </form>
@@ -320,9 +325,10 @@ const CreateEventModal: React.FC<{
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts,
-  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = []
+  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = [], language
 }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const t = useTranslation(language);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
@@ -342,6 +348,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [showLevelsModal, setShowLevelsModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Persistence Logic for Profile
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state) {
+      if (location.state.tab) {
+        setActiveTab(location.state.tab);
+      }
+      if (location.state.openRanking) {
+        setShowRankingModal(true);
+      }
+      // Clear state to avoid reopening on refresh? 
+      // difficult in react-router without replacing history. 
+      // For now, it's fine.
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    const tabKey = `profile_tab_${user.id}`;
+
+    // If we have location state, skip session storage restoration for tab
+    if (!location.state?.tab) {
+      const savedTab = sessionStorage.getItem(tabKey) as ProfileTab;
+      if (savedTab) setActiveTab(savedTab);
+    }
+  }, [user.id, location.state]);
+
+
+
+  useEffect(() => {
+    sessionStorage.setItem(`profile_tab_${user.id}`, activeTab);
+  }, [activeTab, user.id]);
 
   useEffect(() => {
     if (focusedEventId) {
@@ -374,42 +413,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     fetchUserData();
     fetchUserEvents();
     fetchCommonFollowers();
-  }, [user.id, currentUser.id]);
+  }, [user.id, currentUser.id, followedUserIds]);
 
   const [commonFollowers, setCommonFollowers] = useState<any[]>([]);
 
   const fetchCommonFollowers = async () => {
-    if (followedUserIds.size === 0) return;
-
-    // Convert Set to Array for the IN query
-    const myFollowingArray = Array.from(followedUserIds);
-
-    // Fetch followers of the viewed user who are also in my 'following' list
+    // 1. Fetch followers of THIS profile (up to 50 to get a good sample)
     const { data } = await supabase
       .from('follows')
       .select('follower_id, profiles!follower_id(id, avatar)')
       .eq('followed_id', user.id)
-      .in('follower_id', myFollowingArray)
-      .limit(10); // Fetch a few to sort, display only 3
+      .neq('follower_id', currentUser.id)
+      .limit(50); // Increased limit to find mutuals
 
     if (data) {
-      const mapped = data.map((d: any) => ({
-        id: d.profiles.id,
-        avatar: d.profiles.avatar
-      }));
+      // 2. Filter: Keep only those who I FOLLOW (Mutuals)
+      // "Seguido por... [Personas que YO sigo] y que siguen a [Este Perfil]"
+      const mutuals = data
+        .map((d: any) => ({
+          id: d.profiles.id,
+          avatar: d.profiles.avatar
+        }))
+        .filter((follower: any) => followedUserIds.has(follower.id));
 
-      // Sort: Friends (mutual) first
-      // We know they are in followedUserIds (I follow them).
-      // If they are also in followerUserIds (They follow me), they are friends.
-      mapped.sort((a: any, b: any) => {
-        const aIsFriend = followerUserIds?.has(a.id) ? 1 : 0;
-        const bIsFriend = followerUserIds?.has(b.id) ? 1 : 0;
-        return bIsFriend - aIsFriend;
-      });
-
-      setCommonFollowers(mapped.slice(0, 3));
+      setCommonFollowers(mutuals.slice(0, 3));
     }
   };
+
+
 
   const fetchUserEvents = async () => {
     setLoadingEvents(true);
@@ -490,20 +521,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const novas = useMemo(() => calculateNovas(user.badges), [user.badges]);
   const status = useMemo(() => getLevelInfo(novas), [novas]);
 
-  const bannerColor = useMemo(() => {
+  const bannerStyle = useMemo(() => {
+    // Gold gradient only for levels HIGHER than 10 (if any)
+    if (status.level > 10) {
+      return {
+        background: 'linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%)',
+        border: '4px solid #000000',
+        borderTopLeftRadius: 'inherit',
+        borderTopRightRadius: 'inherit',
+        boxShadow: 'inset 0 0 15px rgba(0,0,0,0.1)'
+      };
+    }
+    // Scale now up to 10
+    // Level 10 = 10/10 = 100% color (Dark Purple)
+    // Level 9 = 9/10 = 90% color (Lighter)
     const ratio = Math.min(status.level / 10, 1);
-    const r = Math.round(255 + (147 - 255) * ratio);
-    const g = Math.round(255 + (98 - 255) * ratio);
-    const b = Math.round(255 + (227 - 255) * ratio);
-    return `rgb(${r}, ${g}, ${b})`;
+    const r = Math.round(255 + (156 - 255) * ratio);
+    const g = Math.round(255 + (36 - 255) * ratio);
+    const b = Math.round(255 + (188 - 255) * ratio);
+    return {
+      backgroundColor: `rgb(${r}, ${g}, ${b})`,
+      borderBottom: '1px solid currentColor',
+      borderColor: 'rgba(0,0,0,0.05)'
+    };
   }, [status.level]);
 
   const joinedDateFormatted = useMemo(() => {
     const rawDate = user.joinedDate || new Date().toISOString();
     const date = new Date(rawDate);
-    const month = date.toLocaleString('es-ES', { month: 'long' });
-    return `Se unió en ${month} de ${date.getFullYear()}`;
-  }, [user.joinedDate]);
+    const month = date.toLocaleString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long' });
+    return t('joined_date', { month, year: date.getFullYear() });
+  }, [user.joinedDate, language, t]);
 
   const userPosts = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'post'), [posts, user.id]);
   const userNews = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'news'), [posts, user.id]);
@@ -549,11 +597,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
-      <div className="bg-white dark:bg-[#111] rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800">
+    <div className="w-full max-w-[92vw] md:max-w-4xl mx-auto space-y-4 md:space-y-6 pb-12 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
+      <div className="bg-white dark:bg-[#111] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800 relative z-0">
         <div
-          className="h-32 md:h-48 relative overflow-hidden group/banner transition-all duration-700 border-b border-gray-50 dark:border-zinc-900 cursor-pointer"
-          style={{ backgroundColor: bannerColor }}
+          className="h-20 md:h-48 relative overflow-hidden group/banner transition-all duration-700 cursor-pointer"
+          style={bannerStyle}
           onClick={() => setShowLevelsModal(true)}
         >
           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
@@ -561,21 +609,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               Ver estatus Novagober
             </div>
           </div>
-          <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 text-white">
-            <Award size={14} className={bannerColor === 'rgb(255, 255, 255)' ? 'text-slate-400' : 'text-white'} />
-            <span className={`text-[10px] font-black uppercase tracking-widest ${bannerColor === 'rgb(255, 255, 255)' ? 'text-slate-400' : 'text-white'}`}>
-              Nivel Novagober: {status.level}
+          <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 text-slate-900">
+            <Award size={14} className="text-slate-900" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+              {t('influence_level')}: {status.level}
             </span>
           </div>
         </div>
 
-        <div className="px-4 md:px-10 pb-8 md:pb-10">
-          <div className="relative flex flex-col items-center text-center md:flex-row md:justify-between md:items-end md:text-left -mt-12 md:-mt-12 mb-6 md:mb-8 gap-4 md:gap-6">
+        <div className="px-4 md:px-10 pb-6 md:pb-10">
+          <div className="relative flex flex-col items-center text-center md:flex-row md:justify-between md:items-end md:text-left -mt-6 md:-mt-4 mb-4 md:mb-8 gap-3 md:gap-6">
             <div className="relative flex-shrink-0">
               <div className="group relative">
                 <img
                   src={user.avatar}
-                  className="w-24 h-24 md:w-44 md:h-44 rounded-2xl md:rounded-[2.5rem] border-4 md:border-8 border-white dark:border-zinc-800 object-cover transition-all cursor-pointer hover:opacity-95 active:scale-95"
+                  className="w-20 h-20 md:w-44 md:h-44 rounded-2xl md:rounded-[2.5rem] border-4 md:border-8 border-white dark:border-zinc-800 object-cover transition-all cursor-pointer hover:opacity-95 active:scale-95"
                   alt=""
                   onClick={handlePhotoClick}
                 />
@@ -600,7 +648,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className={`w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all ${isCurrentUser ? 'border-b border-gray-50 dark:border-zinc-900' : ''}`}
                     >
                       <Maximize2 size={18} className="text-blue-600" />
-                      <span>Ver imagen completa</span>
+                      <span>{t('view_full_image')}</span>
                     </button>
 
                     {isCurrentUser && (
@@ -609,7 +657,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all"
                       >
                         <Camera size={18} className="text-indigo-600" />
-                        <span>Cambiar foto de perfil</span>
+                        <span>{t('change_profile_photo')}</span>
                       </button>
                     )}
                   </div>
@@ -618,17 +666,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             {isCurrentUser && <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />}
 
-            <div className="flex-1 pt-1 md:pt-0 w-full overflow-hidden">
-              <div className="flex flex-col md:flex-row items-center gap-1 md:gap-3 mb-1 md:mb-2">
-                <h1 className="text-xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight break-words max-w-full">{user.name} {user.lastName}</h1>
+            <div className="flex-1 pt-1 md:pt-0 w-full min-w-0 text-center md:text-left relative z-20">
+              <div className="flex flex-col md:flex-row items-center gap-1 md:gap-3 mb-0.5 md:mb-2 justify-center md:justify-start">
+                <h1 className="text-lg md:text-4xl font-black text-gray-900 dark:text-white tracking-tight whitespace-nowrap flex items-center gap-1.5 relative z-20">
+                  {user.name} {user.lastName}
+                  {user.username === 'novagob' && (
+                    <BadgeCheck className="w-5 h-5 md:w-8 md:h-8 text-white fill-blue-500 shrink-0" />
+                  )}
+                </h1>
               </div>
               <div className="flex flex-col space-y-1 items-center md:items-start">
                 <div className="flex items-start md:items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-xs md:text-base flex-wrap justify-center md:justify-start w-full">
-                  <span className="break-words max-w-full leading-tight text-center md:text-left">{user.position} en {user.department}</span>
+                  <span className="break-words max-w-full leading-tight">{user.position} {user.username === 'novagob' ? 'de' : 'en'} {user.department}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 text-gray-400 dark:text-zinc-500 font-medium text-[10px] md:text-sm w-full">
-                  <div className="flex items-center space-x-1 shrink-0"><MapPin size={10} className="md:w-[14px] md:h-[14px]" /><span>{user.region}, {user.country}</span></div>
-                  <div className="flex items-center space-x-1 shrink-0"><Calendar size={10} className="md:w-[14px] md:h-[14px]" /><span>{joinedDateFormatted}</span></div>
+                  {user.username !== 'novagob' && (
+                    <div className="flex items-center space-x-1 shrink-0"><MapPin size={10} className="md:w-[14px] md:h-[14px]" /><span>{user.region}, {user.country}</span></div>
+                  )}
+                  <div className="flex items-center space-x-1 shrink-0"><Calendar size={10} className="md:w-[14px] md:h-[14px]" /><span>{user.username === 'novagob' ? "Se unió en enero de 2026" : joinedDateFormatted}</span></div>
                 </div>
               </div>
             </div>
@@ -637,11 +692,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="flex items-center justify-center md:justify-end space-x-6 w-full px-4 md:px-0">
                 <button onClick={() => setViewingUsersList('followers')} className="text-center md:text-right group">
                   <p className="text-base md:text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase">{user.followers}</p>
-                  <p className="text-[8px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">Seguidores</p>
+                  <p className="text-[8px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">{t('followers')}</p>
                 </button>
                 <button onClick={() => setViewingUsersList('following')} className="text-center md:text-right group">
                   <p className="text-base md:text-xl font-black text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase">{user.following}</p>
-                  <p className="text-[8px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">Siguiendo</p>
+                  <p className="text-[8px] md:text-[10px] text-gray-400 font-black uppercase tracking-widest">{t('following_label')}</p>
                 </button>
               </div>
 
@@ -649,7 +704,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {isCurrentUser ? (
                   <>
                     <button onClick={() => setIsShareModalOpen(true)} className="p-2 md:p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-xl md:rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shrink-0"><Share2 size={16} className="md:w-5 md:h-5" /></button>
-                    <button onClick={() => setIsEditModalOpen(true)} className="flex-1 md:flex-none bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-[100px] md:min-w-[140px] whitespace-nowrap"><Edit3 size={14} className="md:w-[18px] md:h-[18px]" /><span>Editar Perfil</span></button>
+                    <button onClick={() => setIsEditModalOpen(true)} className="bg-blue-600 text-white px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-sm hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[140px] whitespace-nowrap"><Edit3 size={12} className="md:w-[18px] md:h-[18px]" /><span>{t('edit_profile')}</span></button>
                   </>
                 ) : (
                   <>
@@ -657,13 +712,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button onClick={() => onStartChat?.(user)} className="p-2 md:p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-xl md:rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shrink-0"><MessageCircle size={16} className="md:w-5 md:h-5" /></button>
                     <button
                       onClick={() => onToggleFollow?.(user.id)}
-                      className={`flex-1 md:flex-none px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-[100px] md:min-w-[140px] whitespace-nowrap ${isFollowed && isFollower ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : isFollowed ? 'bg-slate-100 dark:bg-zinc-800 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                      className={`px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-sm transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[140px] whitespace-nowrap ${isFollowed && isFollower ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : isFollowed ? 'bg-slate-100 dark:bg-zinc-800 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                     >
-                      {isFollowed && isFollower ? <Check size={14} className="md:w-[18px] md:h-[18px]" /> : isFollowed ? <UserMinus size={14} className="md:w-[18px] md:h-[18px]" /> : <UserPlus size={14} className="md:w-[18px] md:h-[18px]" />}
+                      {isFollowed && isFollower ? <Check size={12} className="md:w-[18px] md:h-[18px]" /> : isFollowed ? <UserMinus size={12} className="md:w-[18px] md:h-[18px]" /> : <UserPlus size={12} className="md:w-[18px] md:h-[18px]" />}
                       <span>
-                        {isFollowed && isFollower ? 'Amigos' :
-                          isFollowed ? 'Siguiendo' :
-                            isFollower ? 'Seguir también' : 'Seguir'}
+                        {isFollowed && isFollower ? t('friends') :
+                          isFollowed ? t('following_label') :
+                            isFollower ? t('follow_also') : t('follow')}
                       </span>
                     </button>
                   </>
@@ -672,42 +727,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-8 mt-4">
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">Biografía profesional</h3>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-lg max-w-3xl whitespace-pre-wrap">{user.bio || "Sin biografía todavía."}</p>
+          <div className="space-y-6 mt-2">
+            <div className="space-y-3 flex flex-col items-center md:items-start text-center md:text-left w-full min-w-0">
+              <h3 className="text-[9px] md:text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">{t('professional_bio')}</h3>
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-sm md:text-lg max-w-full whitespace-pre-wrap break-words">{user.bio || t('no_bio')}</p>
             </div>
 
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">Intereses</h3>
-              <div className="flex flex-wrap gap-2 items-center">
-                {user.interests && user.interests.length > 0 ? (
-                  user.interests.map(interest => (
-                    <span key={interest} className="px-4 py-2 bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-black border border-blue-100 dark:border-blue-900/20">{interest}</span>
-                  ))
-                ) : (
-                  <span className="text-gray-400 italic text-sm font-medium">No hay intereses seleccionados.</span>
-                )}
-                {isCurrentUser && (
-                  <button
-                    onClick={() => setIsPreferencesModalOpen(true)}
-                    className="p-2 bg-slate-50 dark:bg-zinc-900 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all border border-dashed border-blue-200 dark:border-blue-800"
-                    title="Añadir o cambiar intereses"
-                  >
-                    <Plus size={14} />
-                  </button>
-                )}
+            {user.username !== 'novagob' && (
+              <div className="space-y-4 flex flex-col items-center md:items-start">
+                <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">{t('interests')}</h3>
+                <div className="flex flex-wrap gap-2 items-center justify-center md:justify-start">
+                  {user.interests && user.interests.length > 0 ? (
+                    user.interests.map(interest => (
+                      <span key={interest} className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl text-[10px] md:text-xs font-black border border-blue-100 dark:border-blue-900/20">{interest}</span>
+                    ))
+                  ) : (
+                    <span className="text-gray-400 italic text-sm font-medium">{t('no_interests')}</span>
+                  )}
+                  {isCurrentUser && (
+                    <button
+                      onClick={() => setIsPreferencesModalOpen(true)}
+                      className="p-2 bg-slate-50 dark:bg-zinc-900 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all border border-dashed border-blue-200 dark:border-blue-800"
+                      title="Añadir o cambiar intereses"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
 
-            {commonFollowers.length > 0 && (
+            {commonFollowers.length > 0 && !isCurrentUser && (
               <div
-                className="space-y-4 animate-in slide-in-from-bottom-2 duration-500 delay-100 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-900/50 p-3 -mx-3 rounded-2xl transition-all"
+                className="space-y-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-900/50 p-3 -mx-3 rounded-2xl transition-all"
                 onClick={() => setViewingUsersList('followers')}
               >
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center justify-center md:justify-start space-x-3">
                   <div className="flex -space-x-3">
                     {commonFollowers.map((follower) => (
                       <img
@@ -720,7 +777,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     ))}
                   </div>
                   <p className="text-xs text-gray-500 dark:text-zinc-500 font-bold">
-                    {commonFollowers.length === 1 ? 'Seguido por 1 conexión en común' : `Seguido por ${commonFollowers.length} conexiones en común`}
+                    {commonFollowers.length === 1 ? t('common_connections_singular') : t('common_connections_plural', { count: commonFollowers.length })}
                   </p>
                 </div>
               </div>
@@ -729,35 +786,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex space-x-6 md:space-x-10 border-b border-gray-100 dark:border-zinc-900 px-4 md:px-6 overflow-x-auto scrollbar-hide">
-          <button onClick={() => setActiveTab('posts')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'posts' ? 'text-blue-600 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
+      <div className="space-y-4 md:space-y-6 mx-0">
+        <div className="bg-white dark:bg-[#111] rounded-[1.5rem] md:rounded-[2rem] border border-gray-100 dark:border-zinc-800 p-1.5 md:p-2 flex space-x-1 md:space-x-4 overflow-x-auto scrollbar-hide">
+          <button onClick={() => setActiveTab('posts')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'posts' ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <LayoutGrid size={18} />
-            <span>Posts ({userPosts.length})</span>
-            {activeTab === 'posts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
+            <span className="font-bold text-sm">{t('posts')} ({userPosts.length})</span>
           </button>
-          <button onClick={() => setActiveTab('news')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'news' ? 'text-orange-500 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
+
+          <button onClick={() => setActiveTab('news')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'news' ? 'bg-orange-50 dark:bg-orange-900/10 text-orange-500' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Newspaper size={18} />
-            <span>Noticias ({userNews.length})</span>
-            {activeTab === 'news' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
+            <span className="font-bold text-sm">{t('news')} ({userNews.length})</span>
           </button>
-          <button onClick={() => setActiveTab('reposts')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'reposts' ? 'text-emerald-500 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
+
+          <button onClick={() => setActiveTab('reposts')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'reposts' ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-500' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Repeat size={18} />
-            <span>Reposts ({userRepostsList.length})</span>
-            {activeTab === 'reposts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
+            <span className="font-bold text-sm">{t('reposts')} ({userRepostsList.length})</span>
           </button>
-          <button onClick={() => setActiveTab('events')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'events' ? 'text-blue-500 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
+
+          <button onClick={() => setActiveTab('events')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'events' ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-500' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Calendar size={18} />
-            <span>Eventos {userEvents.length > 0 ? `(${userEvents.length})` : ''}</span>
-            {activeTab === 'events' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
+            <span className="font-bold text-sm">{t('calendar')} {userEvents.length > 0 ? `(${userEvents.length})` : ''}</span>
           </button>
-          <button onClick={() => setActiveTab('badges')} className={`pb-4 flex items-center space-x-2 transition-all relative whitespace-nowrap ${activeTab === 'badges' ? 'text-yellow-500 font-black' : 'text-gray-400 font-bold hover:text-gray-600'}`}>
+
+          <button onClick={() => setActiveTab('badges')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'badges' ? 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Medal size={18} />
-            <span>Insignias</span>
-            <span className="bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded-md text-[10px] ml-1">
-              ({user.badges ? user.badges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : 0})
-            </span>
-            {activeTab === 'badges' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-yellow-500 rounded-full animate-in slide-in-from-left-2 duration-300"></div>}
+            <span className="font-bold text-sm">{t('badges_label')} ({user.badges ? user.badges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : 0})</span>
           </button>
         </div>
 
@@ -766,7 +819,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             userPosts.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                 <LayoutGrid className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
-                <p className="text-slate-400 font-bold italic">No hay posts disponibles.</p>
+                <p className="text-slate-400 font-bold italic">{t('no_posts')}</p>
               </div>
             ) : userPosts.map(post => (
               <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} />
@@ -799,9 +852,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <Trophy size={20} />
                           </div>
                           <div className="text-left">
-                            <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm">Top Ranking Semanal</span>
+                            <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm flex items-center">
+                              {t('weekly_ranking_top')}
+                              <Clock className="ml-2 opacity-60" size={14} />
+                            </span>
                             <span className="text-[10px] text-yellow-600/70 dark:text-yellow-500/50 font-bold uppercase tracking-wide">
-                              Ver historial de insignias
+                              {t('view_badge_history')}
                             </span>
                           </div>
                         </div>
@@ -815,17 +871,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 return null;
               })()}
 
-              {showRankingModal && (
-                <RankingHistoryModal
-                  badges={user.badges || []}
-                  onClose={() => setShowRankingModal(false)}
-                />
-              )}
+
 
               {userNews.length === 0 ? (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                   <Newspaper className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
-                  <p className="text-slate-400 font-bold italic">No hay noticias registradas.</p>
+                  <p className="text-slate-400 font-bold italic">{t('no_news_registered')}</p>
                 </div>
               ) : (
                 userNews.map(news => (
@@ -839,7 +890,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             userRepostsList.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                 <Repeat className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
-                <p className="text-slate-400 font-bold italic">No hay republicaciones aún.</p>
+                <p className="text-slate-400 font-bold italic">{t('no_reposts')}</p>
               </div>
             ) : userRepostsList.map(post => (
               <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} />
@@ -856,16 +907,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div className="mx-auto w-16 h-16 bg-blue-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-4">
                       <Calendar className="text-blue-500" size={32} />
                     </div>
-                    <h4 className="text-slate-900 dark:text-white font-black mb-2">No hay eventos organizados</h4>
+                    <h4 className="text-slate-900 dark:text-white font-black mb-2">{language === 'es' ? 'No hay eventos organizados' : 'No events organized'}</h4>
                     <p className="text-slate-400 font-medium text-sm italic mb-8">
                       {isCurrentUser
-                        ? "Aún no has organizado ningún evento. ¡Sé el promotor del cambio en tu administración!"
-                        : "Este usuario aún no ha organizado ningún evento público."}
+                        ? (language === 'es' ? "Aún no has organizado ningún evento. ¡Sé el promotor del cambio en tu administración!" : "You haven't organized any events yet. Be the promoter of change in your administration!")
+                        : (language === 'es' ? "Este usuario aún no ha organizado ningún evento público." : "This user hasn't organized any public events yet.")}
                     </p>
                     {isCurrentUser && (
                       <button onClick={() => setIsCreateEventModalOpen(true)} className="inline-flex items-center space-x-2 px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95">
                         <Plus size={20} />
-                        <span>Crear Evento</span>
+                        <span>{t('organize_event')}</span>
                       </button>
                     )}
                   </>
@@ -874,10 +925,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             ) : (
               <div className="space-y-6">
                 <div className="flex items-center justify-between px-4">
-                  <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Eventos Organizados</h4>
+                  <h4 className="text-sm font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest">{language === 'es' ? 'Eventos Organizados' : 'Organized Events'}</h4>
                   {isCurrentUser && (
-                    <button onClick={() => setIsCreateEventModalOpen(true)} className="text-blue-600 text-xs font-black uppercase hover:underline flex items-center space-x-1">
-                      <Plus size={14} />
+                    <button onClick={() => setIsCreateEventModalOpen(true)} className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-xs md:text-sm hover:bg-purple-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-[100px] md:min-w-[140px] whitespace-nowrap">
+                      <Plus size={14} className="md:w-[18px] md:h-[18px]" />
                       <span>Nuevo Evento</span>
                     </button>
                   )}
@@ -896,7 +947,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       >
                         {isFocused && (
                           <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
-                            Evento Seleccionado
+                            {language === 'es' ? 'Evento Seleccionado' : 'Selected Event'}
                           </div>
                         )}
                         <div className="flex justify-between items-start mb-4 pr-12">
@@ -925,7 +976,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           <div className="flex items-center text-xs text-blue-600 font-bold">
                             <Users size={14} className="mr-2" />
                             <button onClick={() => { setViewingUsersList('event-supporters'); setViewingListId(event.id); }} className="hover:underline cursor-pointer">
-                              {event.attendees || 0} apoyos {(event.attendees || 0) < 2 && `(faltan ${2 - (event.attendees || 0)} para calendario)`}
+                              {t('supports', { count: event.attendees || 0 })} {(event.attendees || 0) < 2 && (language === 'es' ? `(faltan ${2 - (event.attendees || 0)} para calendario)` : `(need ${2 - (event.attendees || 0)} for calendar)`)}
                             </button>
                           </div>
                         </div>
@@ -944,7 +995,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               }`}
                           >
                             <Users size={14} />
-                            <span>{supportedEventIds.has(event.id) ? 'Apoyado' : 'Apoyar'}</span>
+                            <span>{supportedEventIds.has(event.id) ? (language === 'es' ? 'Apoyado' : 'Supported') : (language === 'es' ? 'Apoyar' : 'Support')}</span>
                           </button>
 
                           <button
@@ -952,7 +1003,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all flex items-center justify-center space-x-2"
                           >
                             <Megaphone size={14} />
-                            <span>Promocionar</span>
+                            <span>{language === 'es' ? 'Promocionar' : 'Promote'}</span>
                           </button>
 
                           <button
@@ -960,7 +1011,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             className="flex-1 py-3 bg-white dark:bg-zinc-800 text-slate-500 rounded-xl text-xs font-black hover:bg-slate-50 dark:hover:bg-zinc-700 transition-all flex items-center justify-center space-x-2 border border-slate-200 dark:border-zinc-700"
                           >
                             <Share2 size={14} />
-                            <span>Compartir</span>
+                            <span>{language === 'es' ? 'Compartir' : 'Share'}</span>
                           </button>
                         </div>
                       </div>
@@ -1000,7 +1051,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               return (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                   <Medal className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
-                  <p className="text-slate-400 font-bold italic">No hay insignias disponibles.</p>
+                  <p className="text-slate-400 font-bold italic">{language === 'es' ? 'No hay insignias disponibles.' : 'No badges available.'}</p>
                 </div>
               );
             }
@@ -1039,8 +1090,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )
       }
       {viewingUsersList && <UsersListModal type={viewingUsersList} userId={viewingListId || user.id} onClose={() => { setViewingUsersList(null); setViewingListId(null); }} onNavigate={(id) => onNavigateToProfile?.(id)} currentUserFollowedIds={followedUserIds} currentUserFollowerIds={followerUserIds} onToggleFollow={onToggleFollow} currentUserId={currentUser.id} />}
-      {isCreateEventModalOpen && <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} />}
-      {isShowStatusModalOpen && <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} />}
+      {isCreateEventModalOpen && <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} language={language} />}
+      {isShowStatusModalOpen && <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} language={language} />}
 
       {showLevelsModal && (
         <LevelsListModal
@@ -1063,6 +1114,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <ImageCropModal image={imageToCrop} onClose={() => setImageToCrop(null)} onSave={handleCropComplete} />
         )
       }
+      {showRankingModal && (
+        <RankingHistoryModal
+          badges={user.badges || []}
+          onClose={() => setShowRankingModal(false)}
+          mode="personal"
+        />
+      )}
     </div >
   );
 };

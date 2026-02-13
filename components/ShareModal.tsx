@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
 import { Post, User } from '../types';
 
@@ -30,11 +31,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [sentTo, setSentTo] = useState<string[]>([]);
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const shareUrl = sharedUser
-    ? `https://redsocial.app/u/${sharedUser.username || sharedUser.id}`
+    ? `https://red.novagob.org/${sharedUser.username || sharedUser.id}`
     : event
-      ? `https://redsocial.app/u/${event.creator_id}/e/${event.id}`
-      : `https://redsocial.app/p/${post?.id}`;
+      ? `https://red.novagob.org/u/${event.creator_id}/e/${event.id}`
+      : `https://red.novagob.org/p/${post?.id}`;
 
   const handleCopy = async () => {
     try {
@@ -100,13 +106,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     c.lastName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  return (
+  return ReactDOM.createPortal(
     <div
-      className="fixed inset-0 z-[170] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2.5rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-2xl"
+        className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2.5rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -217,6 +224,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">RedSocial Secure Link</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -30,6 +30,23 @@ async function inspect() {
     else if (news.length === 0) console.log("News table is empty.");
     else console.log("News columns:", Object.keys(news[0]));
 
+    console.log("\n--- Inserting Dummy Message ---");
+    const { data: insertData, error: insertError } = await supabase
+        .from('messages')
+        .insert([
+            { sender_id: '00000000-0000-0000-0000-000000000000', recipient_id: '00000000-0000-0000-0000-000000000000', text: 'Structure Check', created_at: new Date().toISOString() }
+        ])
+        .select();
+
+    if (insertError) {
+        console.error("Error inserting dummy message:", insertError);
+    } else {
+        console.log("Dummy message inserted successfully.");
+        console.log("messages columns:", Object.keys(insertData[0]));
+        // Cleanup
+        await supabase.from('messages').delete().eq('id', insertData[0].id);
+    }
+
     console.log("\n--- Inspecting 'news_votes' Table ---");
     const { data: votes, error: votesError } = await supabase
         .from('news_votes')

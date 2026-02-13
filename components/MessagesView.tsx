@@ -1,9 +1,10 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Send, Info, MessageSquare, Check, CheckCheck, Sparkles, X, Link as LinkIcon, Image as ImageIcon, Loader2, Calendar } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Search, Send, Info, MessageSquare, Check, CheckCheck, Sparkles, X, ArrowLeft, Link as LinkIcon, Image as ImageIcon, Loader2, Calendar } from 'lucide-react';
 import { User, Chat, Message, Post, CalendarEvent } from '../types';
-import { normalizeString } from '../utils/stringUtils';
+import { normalizeString, timeAgo } from '../utils/stringUtils';
 import { supabase } from '../supabaseClient';
+import { Language, useTranslation } from '../utils/translations';
 
 interface MessagesViewProps {
   user: User;
@@ -19,12 +20,17 @@ interface MessagesViewProps {
   externalActiveId?: string | null;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   globalEvents: CalendarEvent[];
+  language: Language;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
-  user, chats, posts, onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents
+  user, chats, posts, onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents, language
 }) => {
-  const [selectedId, setSelectedId] = useState<string | null>(externalActiveId || chats[0]?.id || null);
+  const { chatId } = useParams<{ chatId: string }>();
+  const navigate = useNavigate();
+  const selectedId = chatId || null;
+  const t = useTranslation(language);
+
   const [msg, setMsg] = useState('');
   const [chatSearchTerm, setChatSearchTerm] = useState('');
   const [temporaryParticipant, setTemporaryParticipant] = useState<User | null>(null);
@@ -37,13 +43,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !selectedId) return;
     const file = e.target.files[0];
-
-    // Limit size if needed, e.g. 5MB
     if (file.size > 5 * 1024 * 1024) {
-      alert("La imagen es demasiado grande (max 5MB)");
+      alert(t('image_too_large'));
       return;
     }
-
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
@@ -51,22 +54,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       shouldAutoScrollRef.current = true;
     };
     reader.readAsDataURL(file);
-
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
-  useEffect(() => {
-    if (externalActiveId) {
-      const existingChat = chats.find(c => c.id === externalActiveId);
-      if (existingChat) {
-        setSelectedId(externalActiveId);
-        setTemporaryParticipant(null);
-      } else {
-        // Si el chat no existe en la lista, buscar el perfil para mostrarlo como "Chat Nuevo"
-        fetchParticipantProfile(externalActiveId);
-      }
-    }
-  }, [externalActiveId, chats]);
 
   const fetchParticipantProfile = async (uid: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', uid).single();
@@ -83,7 +72,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         bio: data.bio || '',
         interests: data.interests || []
       });
-      setSelectedId(uid);
     }
   };
 
@@ -96,11 +84,28 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   useEffect(() => {
+    if (selectedId) {
+      const existingChat = chats.find(c => c.id === selectedId);
+      if (existingChat) {
+        setTemporaryParticipant(null);
+      } else {
+        fetchParticipantProfile(selectedId);
+      }
+    } else {
+      setTemporaryParticipant(null);
+    }
+  }, [selectedId, chats]);
+
+  useEffect(() => {
     if (shouldAutoScrollRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     if (selectedId) {
-      onMarkChatAsRead?.(selectedId);
+      const chat = chats.find(c => c.id === selectedId);
+      const hasUnread = chat?.messages.some(m => m.senderId === selectedId && !m.isRead);
+      if (hasUnread) {
+        onMarkChatAsRead?.(selectedId);
+      }
     }
   }, [selectedId, chats, onMarkChatAsRead]);
 
@@ -124,7 +129,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!msg.trim() || !selectedId) return;
-    shouldAutoScrollRef.current = true; // Forzar scroll al enviar mensaje propio
+    shouldAutoScrollRef.current = true;
     onSendMessage(selectedId, msg);
     setMsg('');
   };
@@ -134,50 +139,50 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [infoTab, setInfoTab] = useState<'multimedia' | 'enlaces'>('multimedia');
 
   const chatInfoData = useMemo(() => {
-    if (!selectedChat) return { media: [], links: [], sharedPosts: [], sharedProfiles: [], sharedEvents: [], searchResults: [] };
-
+    if (!selectedChat) return { media: [], sharedItems: [], searchResults: [] };
     const media: string[] = [];
-    const links: { text: string, url: string }[] = [];
-    const sharedPosts: Post[] = [];
-    const sharedProfiles: User[] = [];
-    const sharedEvents: CalendarEvent[] = [];
-
+    const sharedItems: { type: 'post' | 'profile' | 'event' | 'link', data: any, timestamp: string, id: string }[] = [];
     const searchResults = infoSearch.trim()
       ? selectedChat.messages.filter(m => normalizeString(m.text).includes(normalizeString(infoSearch)))
       : [];
 
     selectedChat.messages.forEach(m => {
-      // Extract images from text
       const imgRegex = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp))/gi;
       let match;
       while ((match = imgRegex.exec(m.text)) !== null) {
         media.push(match[0]);
       }
 
-      // Extract general links from text
-      const linkRegex = /(https?:\/\/[^\s]+)/gi;
-      let lMatch;
-      while ((lMatch = linkRegex.exec(m.text)) !== null) {
-        if (!lMatch[0].match(/\.(?:jpg|jpeg|png|gif|svg|webp)$/i)) {
-          links.push({ text: m.text, url: lMatch[0] });
-        }
-      }
-
-      // Extract shared objects
+      let sharedUrl = '';
       if (m.postId) {
         const post = posts.find(p => p.id === m.postId);
-        if (post) sharedPosts.push(post);
+        if (post) {
+          sharedItems.push({ type: 'post', data: post, timestamp: m.timestamp, id: `post-${post.id}-${m.id}` });
+        }
       }
       if (m.sharedProfile) {
-        sharedProfiles.push(m.sharedProfile);
+        sharedItems.push({ type: 'profile', data: m.sharedProfile, timestamp: m.timestamp, id: `profile-${m.sharedProfile.id}-${m.id}` });
       }
       if (m.sharedEvent || m.sharedEventId) {
         const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
-        if (event) sharedEvents.push(event);
+        if (event) {
+          sharedItems.push({ type: 'event', data: event, timestamp: m.timestamp, id: `event-${event.id}-${m.id}` });
+        }
+      }
+
+      const linkRegex = /(https?:\/\/[^\s]+)/gi;
+      let lMatch;
+      while ((lMatch = linkRegex.exec(m.text)) !== null) {
+        const foundUrl = lMatch[0];
+        if (!foundUrl.match(/\.(?:jpg|jpeg|png|gif|svg|webp)$/i) &&
+          !foundUrl.includes('redsocial.app') &&
+          !foundUrl.includes('red.novagob.org')) {
+          sharedItems.push({ type: 'link', data: { url: foundUrl, text: m.text }, timestamp: m.timestamp, id: `link-${m.id}-${lMatch.index}` });
+        }
       }
     });
-
-    return { media, links, sharedPosts, sharedProfiles, sharedEvents, searchResults };
+    sharedItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return { media, sharedItems, searchResults };
   }, [selectedChat, infoSearch, posts, globalEvents]);
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -185,8 +190,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const scrollToMessage = (msgId: string) => {
     setIsInfoOpen(false);
     setInfoSearch('');
-
-    // Give time for modal to close if needed, then scroll
     setTimeout(() => {
       const element = document.getElementById(`msg-${msgId}`);
       if (element) {
@@ -200,15 +203,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const participant = selectedChat?.participant || temporaryParticipant;
 
   return (
-    <div className="h-[calc(100vh-120px)] sm:h-[calc(100vh-180px)] bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row">
-      <div className={`w-full md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col ${selectedId ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-6 border-b border-gray-50 dark:border-zinc-900">
-          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">Mensajes</h2>
+    <div className={`h-[calc(100vh-64px)] sm:h-[calc(100vh-180px)] w-full max-w-[92vw] md:max-w-full mx-auto bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row ${selectedId ? '' : 'pb-16 md:pb-0'}`}>
+      <div className={`w-full md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col min-w-0 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
+        <div className="p-4 md:p-6 border-b border-gray-50 dark:border-zinc-900">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">{t('messages_title')}</h2>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input
               type="text"
-              placeholder="Buscar colega..."
+              placeholder={t('search_messages')}
               value={chatSearchTerm}
               onChange={(e) => setChatSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-xl text-sm outline-none font-medium"
@@ -218,70 +221,81 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         <div className="flex-1 overflow-y-auto">
           {temporaryParticipant && !chats.find(c => c.id === temporaryParticipant.id) && (
             <button
-              onClick={() => setSelectedId(temporaryParticipant.id)}
-              className={`w-full p-4 flex items-center space-x-3 bg-blue-50/30 dark:bg-zinc-800/30 border-r-4 border-blue-600`}
+              onClick={() => navigate(`/messages/${temporaryParticipant.id}`)}
+              className={`w-full max-w-full p-4 flex items-center space-x-3 bg-blue-50/30 dark:bg-zinc-800/30 border-r-4 border-blue-600 transition-all overflow-hidden`}
             >
-              <img src={temporaryParticipant.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="" />
-              <div className="flex-1 text-left min-w-0">
-                <div className="flex justify-between items-center mb-0.5">
-                  <span className="font-bold text-gray-900 dark:text-white text-sm truncate">{temporaryParticipant.name}</span>
-                  <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full font-black uppercase">Nuevo</span>
+              <img src={temporaryParticipant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
+              <div className="flex-1 text-left min-w-0 overflow-hidden">
+                <div className="flex justify-between items-center mb-0.5 gap-2">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm truncate min-w-0 flex-1">{temporaryParticipant.name}</span>
+                  <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full font-black uppercase shrink-0">{t('new_label')}</span>
                 </div>
-                <p className="text-xs text-blue-600 font-bold italic truncate">Escribe el primer mensaje...</p>
+                <p className="text-xs text-blue-600 font-bold italic truncate">{t('write_first_message')}</p>
               </div>
             </button>
           )}
-          {filteredChats.map(chat => (
-            <button
-              key={chat.id}
-              onClick={() => { setSelectedId(chat.id); setTemporaryParticipant(null); }}
-              className={`w-full p-4 flex items-center space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all ${selectedId === chat.id ? 'bg-blue-50/50 dark:bg-zinc-800/50 border-r-4 border-blue-600' : ''}`}
-            >
-              <img src={chat.participant.avatar} className="w-12 h-12 rounded-2xl object-cover" alt="" />
-              <div className="flex-1 text-left min-w-0">
-                <div className="flex justify-between items-center mb-0.5">
-                  <span className="font-bold text-gray-900 dark:text-white text-sm truncate">{chat.participant.name} {chat.participant.lastName}</span>
-                  <span className="text-[9px] text-gray-400 font-black uppercase ml-2 whitespace-nowrap">
-                    {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+          {filteredChats.map(chat => {
+            const lastMsg = chat.messages[chat.messages.length - 1];
+            const isMe = lastMsg?.senderId === user.id;
+            const isUnread = !isMe && !lastMsg?.isRead;
+
+            return (
+              <button
+                key={chat.id}
+                onClick={() => navigate(`/messages/${chat.id}`)}
+                className={`w-full max-w-full p-4 flex items-center space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all overflow-hidden ${selectedId === chat.id ? 'bg-blue-50/50 dark:bg-zinc-800/50 border-r-4 border-blue-600' : ''}`}
+              >
+                <img src={chat.participant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
+                <div className="flex-1 text-left min-w-0 overflow-hidden">
+                  <div className="flex justify-between items-center mb-0.5 gap-2">
+                    <span className="font-bold text-gray-900 dark:text-white text-sm truncate min-w-0 flex-1">{chat.participant.name} {chat.participant.lastName}</span>
+                    <span className="text-[9px] text-gray-400 font-black uppercase whitespace-nowrap shrink-0">
+                      {timeAgo(new Date(chat.timestamp).toISOString(), language)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className={`text-xs truncate ${isUnread ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 font-medium'}`}>
+                      {isMe ? (lastMsg?.isRead && (user.notificationSettings?.read_receipts !== false && chat.participant?.notificationSettings?.read_receipts !== false) ? t('visto') : t('enviado')) : chat.lastMessage}
+                    </p>
+                    {isUnread && <div className="w-2 h-2 bg-blue-600 rounded-full shrink-0 ml-2" />}
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 truncate font-medium">{chat.lastMessage}</p>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
           {chats.length === 0 && !temporaryParticipant && (
-            <div className="p-8 text-center">
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Sin conversaciones</p>
+            <div className="p-4 md:p-8 text-center">
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{t('no_conversations')}</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col bg-slate-50/30 dark:bg-black/20 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col min-h-0 bg-slate-50/30 dark:bg-black/20 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
         {participant ? (
           <>
-            <div className="p-4 bg-white dark:bg-[#111] border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
+            <div className="sticky top-0 z-20 p-4 bg-white dark:bg-[#111] border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
+              <div className="flex items-center space-x-3 flex-1 min-w-0 mr-2">
                 <button
-                  onClick={() => setSelectedId(null)}
-                  className="p-2 -ml-2 text-slate-400 hover:text-blue-600 md:hidden"
+                  onClick={() => navigate('/messages')}
+                  className="p-2 -ml-2 text-slate-400 hover:text-blue-600 md:hidden shrunk-0"
                 >
-                  <X size={20} />
+                  <ArrowLeft size={20} />
                 </button>
                 <img
                   src={participant.avatar}
-                  className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                  className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all shrink-0"
                   alt=""
                   onClick={() => participant.id && onNavigateToProfile?.(participant.id)}
                 />
                 <div
-                  className="cursor-pointer group"
+                  className="cursor-pointer group flex-1 min-w-0"
                   onClick={() => participant.id && onNavigateToProfile?.(participant.id)}
                 >
-                  <h3 className="font-bold text-gray-900 dark:text-white text-sm group-hover:text-blue-600 transition-colors">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm group-hover:text-blue-600 transition-colors truncate">
                     {participant.name} {participant.lastName || ''}
                   </h3>
-                  <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
+                  <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase tracking-tighter truncate">
                     {participant.position}
                   </div>
                 </div>
@@ -297,7 +311,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             <div
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth"
+              className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 md:space-y-6 scroll-smooth overscroll-contain"
             >
               {selectedChat ? selectedChat.messages.map((m, idx) => (
                 <div
@@ -311,7 +325,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         const sharedPost = posts.find(p => p.id === m.postId);
                         if (!sharedPost) return (
                           <div className={`p-4 rounded-2xl text-sm font-medium italic text-slate-500 bg-slate-100 dark:bg-zinc-800 ${m.senderId === user.id ? 'rounded-tr-none' : 'rounded-tl-none'}`}>
-                            Publicación no disponible
+                            {t('post_not_available')}
                           </div>
                         );
                         return (
@@ -334,8 +348,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                 </div>
                               )}
                               <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 p-2 rounded-lg">
-                                <span>Publicación</span>
-                                <span className="text-blue-600">Ver más</span>
+                                <span>{t('post')}</span>
+                                <span className="text-blue-600">{t('view_all')}</span>
                               </div>
                             </div>
                             {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
@@ -352,7 +366,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           <div className="min-w-0">
                             <p className="text-sm font-black text-gray-900 dark:text-white truncate">{m.sharedProfile.name} {m.sharedProfile.lastName}</p>
                             <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{m.sharedProfile.position}</p>
-                            <p className="text-[9px] text-blue-600 font-bold mt-1">Ver Perfil</p>
+                            <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_profile')}</p>
                           </div>
                         </div>
                         {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
@@ -360,7 +374,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     ) : (m.sharedEvent || (m.sharedEventId && globalEvents.find(e => e.id === m.sharedEventId))) ? (
                       (() => {
                         const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
-                        if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">Evento no disponible</div>;
+                        if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">{t('event_not_available')}</div>;
                         return (
                           <div
                             className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-blue-500/50 ${m.senderId === user.id ? 'bg-blue-50 dark:bg-blue-900/10 rounded-tr-none' : 'bg-white dark:bg-zinc-900 rounded-tl-none border border-slate-100 dark:border-zinc-800'}`}
@@ -373,7 +387,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               <div className="min-w-0">
                                 <p className="text-sm font-black text-gray-900 dark:text-white truncate">{event.title}</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{event.location} • {new Date(event.event_date).toLocaleDateString()}</p>
-                                <p className="text-[9px] text-blue-600 font-bold mt-1">Ver Evento</p>
+                                <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_event')}</p>
                               </div>
                             </div>
                             {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
@@ -381,13 +395,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         );
                       })()
                     ) : (
-                      <div className={`p-4 rounded-2xl text-sm font-medium transition-all duration-500 ${m.senderId === user.id ? (highlightedMessageId === m.id ? 'bg-blue-400 ring-4 ring-blue-200' : 'bg-blue-600') + ' text-white rounded-tr-none' : (highlightedMessageId === m.id ? 'bg-blue-50 dark:bg-blue-900/20 ring-4 ring-blue-100 dark:ring-blue-900/30' : 'bg-white dark:bg-zinc-900') + ' text-gray-800 dark:text-gray-200 rounded-tl-none border border-gray-100 dark:border-zinc-800'}`}>
+                      <div className={`p-3 md:p-4 rounded-2xl text-sm font-medium transition-all duration-500 break-words ${m.senderId === user.id ? (highlightedMessageId === m.id ? 'bg-blue-400 ring-4 ring-blue-200' : 'bg-blue-600') + ' text-white rounded-tr-none' : (highlightedMessageId === m.id ? 'bg-blue-50 dark:bg-blue-900/20 ring-4 ring-blue-100 dark:ring-blue-900/30' : 'bg-white dark:bg-zinc-900') + ' text-gray-800 dark:text-gray-200 rounded-tl-none border border-gray-100 dark:border-zinc-800'}`}>
                         {m.text.startsWith('data:image') || m.text.match(/\.(jpg|jpeg|png|gif|webp)$/i) || (m.text.startsWith('http') && m.text.match(/(https?:\/\/.*\.(?:png|jpg|jpeg|gif|webp))/i)) ? (
                           <div className="rounded-lg overflow-hidden">
                             <img src={m.text} alt="Shared image" className="max-w-full max-h-60 object-cover cursor-pointer" onClick={() => { const w = window.open(""); w?.document.write(`<img src="${m.text}" />`); }} />
                           </div>
                         ) : (
-                          m.text
+                          <>
+                            {m.text}
+                            {m.senderId === user.id && (
+                              <div className="flex items-center space-x-1 mt-1">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                  {m.isRead && (user.notificationSettings?.read_receipts !== false && selectedChat.participant?.notificationSettings?.read_receipts !== false) ? t('visto') : t('enviado')}
+                                </span>
+                                {(m.isRead && user.notificationSettings?.read_receipts !== false && selectedChat.participant?.notificationSettings?.read_receipts !== false)
+                                  ? <CheckCheck size={10} className="text-blue-500" />
+                                  : <Check size={10} className="text-gray-400" />}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -395,13 +421,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       <span className="text-[9px] text-slate-400 font-black uppercase">
                         {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      {m.senderId === user.id && (
-                        m.isRead ? (
-                          <CheckCheck size={12} className="text-blue-500" />
-                        ) : (
-                          <Check size={12} className="text-blue-500" />
-                        )
-                      )}
                     </div>
                   </div>
                 </div>
@@ -411,8 +430,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     <Sparkles size={40} />
                   </div>
                   <div>
-                    <h4 className="text-lg font-black text-gray-900 dark:text-white">Nueva Conversación</h4>
-                    <p className="text-sm text-gray-400 font-medium">Estás iniciando un chat con {participant.name}.</p>
+                    <h4 className="text-lg font-black text-gray-900 dark:text-white">{t('new_chat')}</h4>
+                    <p className="text-sm text-gray-400 font-medium">{t('start_chat_with', { name: participant.name })}</p>
                   </div>
                 </div>
               )}
@@ -446,7 +465,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       handleSend(e as any);
                     }
                   }}
-                  placeholder="Escribe un mensaje privado..."
+                  placeholder={t('write_private_message')}
                   className="flex-1 bg-transparent border-none px-4 py-2 text-sm font-medium outline-none focus:ring-0 dark:text-white"
                 />
                 <button
@@ -461,8 +480,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Selecciona un chat</h3>
-            <p className="text-slate-400 max-w-xs font-medium">Elige una conversación de la izquierda o inicia una nueva desde el perfil de un/a colega.</p>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">{t('select_chat')}</h3>
+            <p className="text-slate-400 max-w-xs font-medium">{t('select_chat_description')}</p>
           </div>
         )}
       </div>
@@ -471,7 +490,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2.5rem] overflow-hidden border border-white/20 dark:border-zinc-800 animate-in zoom-in-95 duration-300 flex flex-col max-h-[85vh]">
             <div className="p-6 border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
-              <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Info del chat</h3>
+              <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">{t('chat_info')}</h3>
               <button
                 onClick={() => { setIsInfoOpen(false); setInfoSearch(''); }}
                 className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-xl text-gray-400 hover:text-red-500 transition-all"
@@ -485,7 +504,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
                   type="text"
-                  placeholder="Buscar mensaje..."
+                  placeholder={t('search_messages')}
                   value={infoSearch}
                   onChange={(e) => setInfoSearch(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
@@ -496,7 +515,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
               {infoSearch.trim() ? (
                 <div className="p-4 space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Resultados de búsqueda</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">{t('search_messages')}</h4>
                   {chatInfoData.searchResults.length > 0 ? chatInfoData.searchResults.map((m, i) => (
                     <button
                       key={i}
@@ -507,7 +526,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       <span className="text-[9px] font-black text-blue-600 uppercase italic">{new Date(m.timestamp).toLocaleDateString()}</span>
                     </button>
                   )) : (
-                    <p className="text-center py-8 text-xs text-slate-400 font-bold italic">No se encontraron mensajes</p>
+                    <p className="text-center py-8 text-xs text-slate-400 font-bold italic">{t('no_users_found')}</p>
                   )}
                 </div>
               ) : (
@@ -517,13 +536,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       onClick={() => setInfoTab('multimedia')}
                       className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${infoTab === 'multimedia' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-blue-600'}`}
                     >
-                      Multimedia
+                      {t('multimedia')}
                     </button>
                     <button
                       onClick={() => setInfoTab('enlaces')}
                       className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${infoTab === 'enlaces' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-blue-600'}`}
                     >
-                      Enlaces
+                      {t('links')}
                     </button>
                   </div>
 
@@ -536,75 +555,93 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           </div>
                         )) : (
                           <div className="col-span-3 text-center py-20">
-                            <p className="text-xs text-slate-400 font-bold italic">No hay archivos multimedia</p>
+                            <p className="text-xs text-slate-400 font-bold italic">{t('no_media')}</p>
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="space-y-4 pb-6">
-                        {chatInfoData.sharedPosts.map((post, i) => (
-                          <div
-                            key={`post-${i}`}
-                            onClick={() => onViewPost?.(post.id)}
-                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
-                          >
-                            <div className="flex items-center space-x-2 mb-2">
-                              <img src={post.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
-                              <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{post.authorName}</p>
-                            </div>
-                            <p className="text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 font-medium">{post.content}</p>
-                            <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Ver Publicación</p>
-                          </div>
-                        ))}
-
-                        {chatInfoData.sharedProfiles.map((profile, i) => (
-                          <div
-                            key={`profile-${i}`}
-                            onClick={() => profile.id && onNavigateToProfile?.(profile.id)}
-                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all flex items-center space-x-3"
-                          >
-                            <img src={profile.avatar} className="w-10 h-10 rounded-xl object-cover" alt="" />
-                            <div className="min-w-0">
-                              <p className="text-xs font-black text-gray-900 dark:text-white truncate">{profile.name} {profile.lastName}</p>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase truncate">{profile.position}</p>
-                            </div>
-                          </div>
-                        ))}
-
-                        {chatInfoData.sharedEvents.map((event, i) => (
-                          <div
-                            key={`event-${i}`}
-                            onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
-                            className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
-                          >
-                            <div className="flex items-center space-x-3 mb-2">
-                              <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
-                                <Calendar size={14} />
+                        {chatInfoData.sharedItems.length > 0 ? chatInfoData.sharedItems.map((item) => {
+                          if (item.type === 'post') {
+                            const post = item.data as Post;
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => onViewPost?.(post.id)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
+                              >
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <img src={post.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{post.authorName}</p>
+                                    <span className="text-[9px] text-gray-400 font-medium block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 font-medium">{post.content}</p>
+                                <p className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">{t('view_post')}</p>
                               </div>
-                              <p className="text-xs font-black text-gray-900 dark:text-white truncate">{event.title}</p>
-                            </div>
-                            <p className="text-[9px] text-blue-600 font-bold">Ver Detalles</p>
+                            );
+                          } else if (item.type === 'profile') {
+                            const profile = item.data as User;
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => profile.id && onNavigateToProfile?.(profile.id)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all flex items-center space-x-3"
+                              >
+                                <img src={profile.avatar} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                                <div className="min-w-0">
+                                  <p className="text-xs font-black text-gray-900 dark:text-white truncate">{profile.name} {profile.lastName}</p>
+                                  <p className="text-[9px] text-slate-500 font-bold uppercase truncate">{profile.position}</p>
+                                  <span className="text-[9px] text-gray-400 font-medium mt-1 block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            );
+                          } else if (item.type === 'event') {
+                            const event = item.data as CalendarEvent;
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-gray-100 dark:border-zinc-800 cursor-pointer hover:border-blue-500 transition-all"
+                              >
+                                <div className="flex items-center space-x-3 mb-2">
+                                  <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
+                                    <Calendar size={14} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-black text-gray-900 dark:text-white truncate">{event.title}</p>
+                                    <span className="text-[9px] text-gray-400 font-medium block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                                <p className="text-[9px] text-blue-600 font-bold">{t('view_details')}</p>
+                              </div>
+                            );
+                          } else if (item.type === 'link') {
+                            const link = item.data as { url: string, text: string };
+                            const domain = new URL(link.url).hostname.replace('www.', '');
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => window.open(link.url, '_blank')}
+                                className="w-full p-3 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 text-left hover:border-blue-500 transition-all group"
+                              >
+                                <div className="flex items-center space-x-3 mb-1">
+                                  <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-500"><LinkIcon size={14} /></div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight truncate">{domain}</p>
+                                    <span className="text-[9px] text-gray-400 font-medium block">{new Date(item.timestamp).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                                <p className="text-xs font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600">{link.url}</p>
+                              </button>
+                            );
+                          }
+                          return null;
+                        }) : (
+                          <div className="text-center py-20">
+                            <p className="text-xs text-slate-400 font-bold italic">{t('no_links')}</p>
                           </div>
-                        ))}
-
-                        {chatInfoData.links.length > 0 ? chatInfoData.links.map((link, i) => (
-                          <button
-                            key={i}
-                            onClick={() => window.open(link.url, '_blank')}
-                            className="w-full p-4 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 text-left hover:border-blue-500 transition-all group"
-                          >
-                            <div className="flex items-center space-x-3 mb-1">
-                              <div className="p-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg text-blue-600"><LinkIcon size={14} /></div>
-                              <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate flex-1">Enlace compartido</p>
-                            </div>
-                            <p className="text-xs font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600">{link.url}</p>
-                          </button>
-                        )) : (
-                          chatInfoData.sharedPosts.length === 0 && chatInfoData.sharedProfiles.length === 0 && chatInfoData.sharedEvents.length === 0 && (
-                            <div className="text-center py-20">
-                              <p className="text-xs text-slate-400 font-bold italic">No hay enlaces compartidos</p>
-                            </div>
-                          )
                         )}
                       </div>
                     )}

@@ -19,6 +19,11 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   useEffect(() => {
     fetchUsers();
   }, [type, userId]);

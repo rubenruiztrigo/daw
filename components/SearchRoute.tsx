@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { SearchResultsView } from './SearchResultsView';
 import { Post, User, Chat } from '../types';
+import { Language } from '../utils/translations';
 
 interface SearchRouteProps {
     posts: Post[];
@@ -22,6 +23,7 @@ interface SearchRouteProps {
     followerUserIds: Set<string>;
     chats: Chat[];
     onShareViaChat: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void;
+    language: Language;
 }
 
 export const SearchRoute: React.FC<SearchRouteProps> = ({
@@ -42,7 +44,8 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
     followedUserIds,
     followerUserIds,
     chats,
-    onShareViaChat
+    onShareViaChat,
+    language
 }) => {
     const [searchParams] = useSearchParams();
     const query = searchParams.get('q') || '';
@@ -83,6 +86,7 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onNavigateToEvent={onNavigateToEvent}
             chats={chats}
             onShareViaChat={onShareViaChat}
+            language={language}
         />
     );
 };

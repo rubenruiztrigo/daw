@@ -11,6 +11,11 @@ interface EditProfileModalProps {
 }
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClose, onSave }) => {
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const jobCategories = ['Presidente', 'Directivo', 'Técnico', 'Administrativo'];
   const adminTypes = [
     'Administración central',

@@ -1,8 +1,10 @@
 
 import React, { useState } from 'react';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, Globe, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2, Medal, GraduationCap, Star, Trophy } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2, Medal, GraduationCap, Star, Trophy } from 'lucide-react';
 import { User, BADGE_CATALOG } from '../types';
 import { supabase } from '../supabaseClient';
+import { HelpChatBot } from './HelpChatBot';
+import { Language, useTranslation } from '../utils/translations';
 
 interface SettingsViewProps {
   user: User;
@@ -11,6 +13,8 @@ interface SettingsViewProps {
   onViewChange: (view: any) => void;
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
+  language: Language;
+  onLanguageChange: (lang: Language) => void;
 }
 
 const PrivacyPolicyContent = () => (
@@ -136,19 +140,19 @@ const PrivacyPolicyContent = () => (
   </div>
 );
 
-const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClose }) => {
+const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ user, t, onClose }) => {
   // Static definition of available badges for now
   // Centralized badge catalog is used here via import
   const allBadges = BADGE_CATALOG;
 
   const categories = [
-    { id: 'general', label: 'De Cuenta', icon: UserCircle },
-    { id: 'novas', label: 'Méritos NovaGob', icon: Star },
-    { id: 'congresos', label: 'Congresos (15 Novas)', icon: Calendar },
-    { id: 'premios', label: 'Premios (20 Novas)', icon: Medal },
-    { id: 'eventos', label: 'Eventos Especiales (15 Novas)', icon: GraduationCap },
-    { id: 'formacion', label: 'Formación (10 Novas)', icon: FileText },
-    { id: 'ranking', label: 'Ranking Semanal (5/3/1 Novas)', icon: Trophy }
+    { id: 'general', label: t('cat_general'), icon: UserCircle },
+    { id: 'novas', label: t('cat_novas'), icon: Star },
+    { id: 'congresos', label: t('cat_congresos'), icon: Calendar },
+    { id: 'premios', label: t('cat_premios'), icon: Medal },
+    { id: 'eventos', label: t('cat_eventos'), icon: GraduationCap },
+    { id: 'formacion', label: t('cat_formacion'), icon: FileText },
+    { id: 'ranking', label: t('cat_ranking'), icon: Trophy }
   ];
 
   // Check if user has badges (mapping by ID or checking if object exists)
@@ -162,8 +166,8 @@ const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClo
             <Medal size={24} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white">Mis Insignias</h3>
-            <p className="text-xs text-slate-500 font-medium">Reconocimientos y logros obtenidos</p>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('badges_title')}</h3>
+            <p className="text-xs text-slate-500 font-medium">{t('badges_desc')}</p>
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
@@ -184,7 +188,7 @@ const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClo
                 {catBadges.map(badge => {
                   const isUnlocked = userBadgeIds.has(badge.id);
                   return (
-                    <div key={badge.id} className={`p-5 rounded-3xl border transition-all ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 shadow-sm' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent opacity-60 grayscale'}`}>
+                    <div key={badge.id} className={`p-5 rounded-3xl border transition-all relative ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent opacity-60 grayscale'}`}>
                       <div className="flex items-start space-x-4">
                         <div className={`p-3 rounded-2xl ${isUnlocked ? badge.color : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
                           <Medal size={24} />
@@ -192,15 +196,18 @@ const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClo
                         <div className="flex-1">
                           <div className="flex justify-between items-center mb-1">
                             <h4 className="font-bold text-slate-900 dark:text-white">{badge.label}</h4>
-                            {isUnlocked ? (
-                              <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-black uppercase tracking-wide">Obtenido</span>
-                            ) : (
-                              <span className="text-[9px] bg-gray-200 text-gray-500 px-2 py-1 rounded-full font-black uppercase tracking-wide">Bloqueado</span>
-                            )}
+                            {isUnlocked && <CheckCircle2 size={16} className="text-blue-500" />}
                           </div>
                           <p className="text-xs text-slate-500 dark:text-gray-400 font-medium leading-relaxed">{badge.description}</p>
                         </div>
                       </div>
+
+                      {badge.value !== undefined && (
+                        <div className="absolute bottom-4 right-4 bg-slate-50 dark:bg-zinc-900/50 px-2 py-1 rounded-lg border border-slate-100 dark:border-zinc-800 flex items-center space-x-1.5">
+                          <span className="text-[11px] font-black text-blue-600 leading-none">{badge.value}</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">Novas</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -213,12 +220,15 @@ const BadgesList: React.FC<{ user: User, onClose: () => void }> = ({ user, onClo
   );
 };
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, onLogout, onViewChange, theme, onThemeChange }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, onLogout, onViewChange, theme, onThemeChange, language, onLanguageChange }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showAccessibility, setShowAccessibility] = useState(false);
   const [showPersonalData, setShowPersonalData] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showHelpChat, setShowHelpChat] = useState(false);
+  const t = useTranslation(language);
 
   const SettingItem = ({ icon: Icon, label, color = "text-slate-600 dark:text-gray-400", onClick }: { icon: any, label: string, color?: string, onClick?: () => void }) => (
     <button
@@ -238,42 +248,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center space-x-4 mb-4">
-        <button
-          onClick={() => onViewChange('feed')}
-          className="p-3 bg-white dark:bg-[#111] border border-slate-100 dark:border-zinc-800 rounded-2xl text-slate-400 hover:text-blue-600 transition-all"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        {/* Back button removed as requested */}
         <div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white">Configuración</h2>
-          <p className="text-slate-500 dark:text-gray-400 text-sm font-medium">Gestiona tu experiencia en la plataforma.</p>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('settings')}</h2>
         </div>
       </div>
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
-        <SettingItem icon={UserCircle} label="Datos Personales" onClick={() => setShowPersonalData(true)} />
-        <SettingItem icon={Medal} label="Insignias" onClick={() => setShowBadges(true)} />
-        <SettingItem icon={Wand2} label="Accesibilidad" onClick={() => setShowAccessibility(true)} />
-        <SettingItem icon={Bell} label="Notificaciones" />
-        <SettingItem icon={Lock} label="Privacidad y seguridad" />
-        <SettingItem icon={Globe} label="Idioma y región" />
-        <SettingItem icon={Smartphone} label="Dispositivos" />
+        <SettingItem icon={UserCircle} label={t('personal_data')} onClick={() => setShowPersonalData(true)} />
+        <SettingItem icon={Medal} label={t('badges')} onClick={() => setShowBadges(true)} />
+        <SettingItem icon={Wand2} label={t('accessibility')} onClick={() => setShowAccessibility(true)} />
+        <SettingItem icon={Bell} label={t('notifications')} onClick={() => setShowNotifications(true)} />
+        <SettingItem icon={Lock} label={t('privacy_security')} />
+        <SettingItem icon={Smartphone} label={t('devices')} />
       </div>
 
       {showBadges && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowBadges(false)}>
-          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
-            <BadgesList user={user} onClose={() => setShowBadges(false)} />
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <BadgesList user={user} t={t} onClose={() => setShowBadges(false)} />
+          </div>
+        </div>
+      )}
+
+      {showNotifications && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowNotifications(false)}>
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <NotificationSettingsForm user={user} t={t} onSave={(updated) => { onUpdateUser(updated); setShowNotifications(false); }} onClose={() => setShowNotifications(false)} />
           </div>
         </div>
       )}
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
-        <SettingItem icon={Shield} label="Centro de ayuda" />
-        <SettingItem icon={Eye} label="Política de privacidad" onClick={() => setShowPrivacyPolicy(true)} />
+        <SettingItem icon={Shield} label={t('help_center')} onClick={() => setShowHelpChat(true)} />
+        <SettingItem icon={Eye} label={t('privacy_policy')} onClick={() => setShowPrivacyPolicy(true)} />
         <SettingItem
           icon={LogOut}
-          label="Cerrar sesión"
+          label={t('logout')}
           color="text-red-500"
           onClick={() => setShowLogoutConfirm(true)}
         />
@@ -285,21 +296,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       {showPersonalData && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPersonalData(false)}>
-          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
-            <PersonalDataForm user={user} onSave={(updated) => { onUpdateUser(updated); setShowPersonalData(false); }} onClose={() => setShowPersonalData(false)} />
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <PersonalDataForm user={user} t={t} onSave={(updated) => { onUpdateUser(updated); setShowPersonalData(false); }} onClose={() => setShowPersonalData(false)} />
           </div>
         </div>
       )}
 
       {showPrivacyPolicy && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPrivacyPolicy(false)}>
-          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 flex flex-col max-h-[85vh] shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="px-8 py-6 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-blue-50 dark:bg-zinc-800 rounded-xl text-blue-600">
                   <Shield size={20} />
                 </div>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white">Privacidad y Protección de Datos</h3>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('privacy_policy_title')}</h3>
               </div>
               <button onClick={() => setShowPrivacyPolicy(false)} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
             </div>
@@ -311,7 +322,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 onClick={() => setShowPrivacyPolicy(false)}
                 className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
               >
-                Cerrar documento
+                {t('close_document')}
               </button>
             </div>
           </div>
@@ -320,15 +331,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       {showAccessibility && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowAccessibility(false)}>
-          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="p-8 space-y-6">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="text-xl font-black text-slate-900 dark:text-white">Accesibilidad</h3>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('accessibility')}</h3>
                 <button onClick={() => setShowAccessibility(false)} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-4">Selecciona el tema visual de la plataforma:</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-4">{t('select_theme')}</p>
 
                 <button
                   onClick={() => onThemeChange('light')}
@@ -336,7 +347,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 >
                   <div className="flex items-center space-x-3">
                     <Sun className={theme === 'light' ? 'text-blue-600' : 'text-gray-400'} size={20} />
-                    <span className={`font-bold ${theme === 'light' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>Modo claro</span>
+                    <span className={`font-bold ${theme === 'light' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>{t('theme_light')}</span>
                   </div>
                   {theme === 'light' && <Check size={18} className="text-blue-600" />}
                 </button>
@@ -347,9 +358,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 >
                   <div className="flex items-center space-x-3">
                     <Moon className={theme === 'dark' ? 'text-blue-600' : 'text-gray-400'} size={20} />
-                    <span className={`font-bold ${theme === 'dark' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>Modo oscuro</span>
+                    <span className={`font-bold ${theme === 'dark' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>{t('theme_dark')}</span>
                   </div>
                   {theme === 'dark' && <Check size={18} className="text-blue-600" />}
+                </button>
+              </div>
+
+              <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-zinc-900">
+                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-4">{t('select_language')}</p>
+
+                <button
+                  onClick={() => onLanguageChange('es')}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${language === 'es' ? 'border-blue-600 bg-blue-50/50 dark:bg-zinc-900/50' : 'border-slate-100 dark:border-zinc-800 hover:border-blue-200'}`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className={`font-bold ${language === 'es' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>Español</span>
+                  </div>
+                  {language === 'es' && <Check size={18} className="text-blue-600" />}
+                </button>
+
+                <button
+                  onClick={() => onLanguageChange('en')}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${language === 'en' ? 'border-blue-600 bg-blue-50/50 dark:bg-zinc-900/50' : 'border-slate-100 dark:border-zinc-800 hover:border-blue-200'}`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className={`font-bold ${language === 'en' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>English</span>
+                  </div>
+                  {language === 'en' && <Check size={18} className="text-blue-600" />}
                 </button>
               </div>
 
@@ -357,7 +392,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                 onClick={() => setShowAccessibility(false)}
                 className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95 mt-4"
               >
-                Listo
+                {t('done')}
               </button>
             </div>
           </div>
@@ -370,7 +405,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div
-            className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] overflow-hidden border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300"
+            className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] overflow-hidden border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-8 text-center space-y-6">
@@ -379,8 +414,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900 dark:text-white">¿Cerrar sesión?</h3>
-                <p className="text-sm text-slate-500 dark:text-gray-400 font-medium">¿Confirmas que deseas salir de tu cuenta institucional?</p>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('logout_confirm_title')}</h3>
+                <p className="text-sm text-slate-500 dark:text-gray-400 font-medium">{t('logout_confirm_desc')}</p>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -388,24 +423,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
                   onClick={() => { onLogout(); setShowLogoutConfirm(false); }}
                   className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm hover:bg-red-700 transition-all transform active:scale-95"
                 >
-                  Sí, cerrar sesión
+                  {t('yes_logout')}
                 </button>
                 <button
                   onClick={() => setShowLogoutConfirm(false)}
                   className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
                 >
-                  Cancelar
+                  {t('cancel')}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {showHelpChat && (
+        <HelpChatBot
+          userName={user.name}
+          onClose={() => setShowHelpChat(false)}
+        />
+      )}
     </div>
   );
 };
 
-const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => void, onClose: () => void }> = ({ user, onSave, onClose }) => {
+const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: User) => void, onClose: () => void }> = ({ user, t, onSave, onClose }) => {
   const [formData, setFormData] = useState({
     name: user.name || '',
     lastName: user.lastName || '',
@@ -431,13 +473,13 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
       // 1. Si el usuario intenta cambiar la contraseña
       if (newPassword || currentPassword || confirmPassword) {
         if (!currentPassword) {
-          throw new Error("Debes introducir tu contraseña actual.");
+          throw new Error(t('enter_current_password'));
         }
         if (newPassword !== confirmPassword) {
-          throw new Error("Las nuevas contraseñas no coinciden.");
+          throw new Error(t('passwords_dont_match'));
         }
         if (newPassword.length < 8) {
-          throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
+          throw new Error(t('password_min_length'));
         }
 
         // En Supabase Auth, para cambiar la contraseña necesitamos una sesión activa.
@@ -470,7 +512,7 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
           <div className="p-2 bg-blue-50 dark:bg-zinc-900 rounded-xl text-blue-600">
             <UserCircle size={24} />
           </div>
-          <h3 className="text-xl font-black text-slate-900 dark:text-white">Datos Personales</h3>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('personal_data')}</h3>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
       </div>
@@ -486,15 +528,15 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
         {passSuccess && (
           <div className="p-4 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs font-bold rounded-2xl border border-green-100 dark:border-green-900/30 flex items-center space-x-3 animate-in slide-in-from-top-2">
             <CheckCircle2 size={18} />
-            <span>¡Contraseña actualizada correctamente!</span>
+            <span>{t('password_updated_success')}</span>
           </div>
         )}
 
         <div className="space-y-5">
-          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">Información Básica</h4>
+          <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-1">{t('basic_info')}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('name_label')}</label>
               <input
                 type="text"
                 value={formData.name}
@@ -503,7 +545,7 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Apellidos</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('last_name_label')}</label>
               <input
                 type="text"
                 value={formData.lastName}
@@ -516,7 +558,7 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Fecha de nacimiento</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('birth_date_label')}</label>
               <div className="relative">
                 <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
@@ -529,7 +571,7 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Correo Institucional</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('institutional_email')}</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
@@ -546,18 +588,18 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
         <div className="space-y-5 pt-4 border-t border-slate-50 dark:border-zinc-900">
           <div className="flex items-center space-x-2">
             <Lock size={16} className="text-blue-500" />
-            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Seguridad y Acceso</h4>
+            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t('security_access')}</h4>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Contraseña Actual</label>
+            <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('current_password_label')}</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder={t('current_password_placeholder')}
                 className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
               />
             </div>
@@ -565,33 +607,33 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nueva Contraseña</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('new_password_label')}</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min. 8 caracteres"
+                  placeholder={t('new_password_placeholder')}
                   className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
                 />
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Confirmar Nueva Contraseña</label>
+              <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">{t('confirm_new_password_label')}</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repite la contraseña"
+                  placeholder={t('confirm_password_placeholder')}
                   className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
                 />
               </div>
             </div>
           </div>
-          <p className="text-[9px] text-slate-400 italic font-medium ml-1">Rellena estos campos solo si deseas actualizar tu contraseña de acceso.</p>
+          <p className="text-[9px] text-slate-400 italic font-medium ml-1">{t('password_change_hint')}</p>
         </div>
 
         <div className="pt-4 flex space-x-3 shrink-0">
@@ -600,17 +642,123 @@ const PersonalDataForm: React.FC<{ user: User, onSave: (updatedUser: User) => vo
             onClick={onClose}
             className="flex-1 py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
           >
-            Cancelar
+            {t('cancel')}
           </button>
           <button
             type="submit"
             disabled={isUpdating}
             className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
           >
-            {isUpdating ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Guardar cambios</span></>}
+            {isUpdating ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>{t('save_changes')}</span></>}
           </button>
         </div>
       </form>
+    </div>
+  );
+};
+
+const NotificationSettingsForm: React.FC<{ user: User, t: any, onSave: (updatedUser: User) => void, onClose: () => void }> = ({ user, t, onSave, onClose }) => {
+  const [settings, setSettings] = useState(user.notificationSettings || {
+    likes_post: true,
+    likes_news: true,
+    likes_comment: true,
+    comments_post: true,
+    comments_news: true,
+    replies: true,
+    follows: true,
+    event_supports: true,
+    reposts: true,
+    read_receipts: true
+  });
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const toggleSetting = (key: keyof typeof settings) => {
+    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    // Simulating save delay for UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+    onSave({ ...user, notificationSettings: settings });
+    setIsSaving(false);
+  };
+
+  const ToggleItem = ({ id, label, checked, onChange }: { id: string, label: string, checked: boolean, onChange: () => void }) => (
+    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all">
+      <span className="text-sm font-bold text-slate-700 dark:text-gray-300">{label}</span>
+      <button
+        onClick={onChange}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${checked ? 'bg-blue-600' : 'bg-slate-200 dark:bg-zinc-700'}`}
+      >
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full max-h-[85vh]">
+      <div className="p-8 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600">
+            <Bell size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('notification_settings')}</h3>
+            <p className="text-xs text-slate-500 font-medium">{t('notification_settings_desc')}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-8 scrollbar-hide space-y-8">
+        {/* Sección Posts */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{t('notif_cat_posts')}</h4>
+          <ToggleItem id="likes_post" label={t('notif_likes_post')} checked={settings.likes_post} onChange={() => toggleSetting('likes_post')} />
+          <ToggleItem id="comments_post" label={t('notif_comments_post')} checked={settings.comments_post} onChange={() => toggleSetting('comments_post')} />
+          <ToggleItem id="reposts" label={t('notif_reposts')} checked={settings.reposts} onChange={() => toggleSetting('reposts')} />
+        </div>
+
+        {/* Sección Noticias */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{t('notif_cat_news')}</h4>
+          <ToggleItem id="likes_news" label={t('notif_likes_news')} checked={settings.likes_news} onChange={() => toggleSetting('likes_news')} />
+          <ToggleItem id="comments_news" label={t('notif_comments_news')} checked={settings.comments_news} onChange={() => toggleSetting('comments_news')} />
+        </div>
+
+        {/* Sección Interacciones */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{t('notif_cat_interactions')}</h4>
+          <ToggleItem id="replies" label={t('notif_replies')} checked={settings.replies} onChange={() => toggleSetting('replies')} />
+          <ToggleItem id="likes_comment" label={t('notif_likes_comment')} checked={settings.likes_comment} onChange={() => toggleSetting('likes_comment')} />
+          <ToggleItem id="event_supports" label={t('notif_event_supports')} checked={settings.event_supports} onChange={() => toggleSetting('event_supports')} />
+          <ToggleItem id="read_receipts" label={t('notif_read_receipts')} checked={settings.read_receipts} onChange={() => toggleSetting('read_receipts')} />
+        </div>
+
+        {/* Sección Seguidores */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{t('notif_cat_followers')}</h4>
+          <ToggleItem id="follows" label={t('notif_follows')} checked={settings.follows} onChange={() => toggleSetting('follows')} />
+        </div>
+      </div>
+
+      <div className="p-8 bg-slate-50 dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 flex space-x-3">
+        <button
+          onClick={onClose}
+          className="flex-1 py-4 bg-white dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm border border-slate-100 dark:border-zinc-700 hover:bg-slate-50 transition-all"
+        >
+          {t('cancel')}
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
+        >
+          {isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>{t('save_changes')}</span></>}
+        </button>
+      </div>
     </div>
   );
 };

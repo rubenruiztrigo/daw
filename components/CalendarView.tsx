@@ -1,10 +1,10 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, Users, Sparkles, Plus, X, Check, Save, Loader2, ChevronDown, Megaphone, Share2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { CalendarEvent } from '../types';
 import { UsersListModal } from './UsersListModal';
+import { Language, useTranslation } from '../utils/translations';
 
 interface CalendarViewProps {
   onNavigateToEvent?: (userId: string, eventId: string) => void;
@@ -12,46 +12,42 @@ interface CalendarViewProps {
   onSupportEvent?: (event: CalendarEvent) => void;
   onShareEvent?: (event: CalendarEvent) => void;
   initialDate?: Date | null;
+  language: Language;
 }
 
 interface EventDisplay extends CalendarEvent {
   time: string;
 }
 
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
-
-const YEARS = [2024, 2025, 2026, 2027, 2028, 2029];
-export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, onPromoteEvent, onSupportEvent, onShareEvent, initialDate }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, onPromoteEvent, onSupportEvent, onShareEvent, initialDate, language }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const location = useLocation();
   const [events, setEvents] = useState<EventDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [viewingSupportersEventId, setViewingSupportersEventId] = useState<string | null>(null);
+  const t = useTranslation(language);
+
+  const MONTHS = useMemo(() => [
+    t('january'), t('february'), t('march'), t('april'), t('may'), t('june'),
+    t('july'), t('august'), t('september'), t('october'), t('november'), t('december')
+  ], [t]);
+
+  const YEARS = [2024, 2025, 2026, 2027, 2028, 2029];
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const selectedDay = currentDate.getDate();
 
-  // ... (existing effects)
-
-  // New effect to handle navigation state
   useEffect(() => {
     if (location.state?.date) {
-      // Parse the date string (YYYY-MM-DD) or ensure it's a valid date object
-      const newDate = new Date(location.state.date);
-      if (!isNaN(newDate.getTime())) {
-        // Fix: Ensure we are setting it to the correct local day, preventing timezone shifts
-        // Since input is usually YYYY-MM-DD string from database
-        const [year, month, day] = location.state.date.toString().split('-').map(Number);
-        if (year && month && day) {
-          setCurrentDate(new Date(year, month - 1, day));
-        } else {
-          setCurrentDate(newDate);
-        }
+      const parts = location.state.date.toString().split('-').map(Number);
+      if (parts.length === 3) {
+        const [year, month, day] = parts;
+        setCurrentDate(new Date(year, month - 1, day));
+      } else {
+        const newDate = new Date(location.state.date);
+        if (!isNaN(newDate.getTime())) setCurrentDate(newDate);
       }
     }
   }, [location.state]);
@@ -65,7 +61,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
   const fetchEvents = async () => {
     setLoading(true);
-    // Filtrar: solo eventos con al menos 2 apoyos aparecen en el calendario global
     const { data, error } = await supabase
       .from('user_events')
       .select('*')
@@ -94,10 +89,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
     const record: Record<string, EventDisplay[]> = {};
     events.forEach(ev => {
       const parts = ev.event_date.split('-');
-      // Aseguramos formato YYYY-MM-DD
       if (parts.length === 3) {
         const year = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1; // Meses en JS son 0-11
+        const month = parseInt(parts[1], 10) - 1;
         const day = parseInt(parts[2], 10);
         const key = `${year}-${month}-${day}`;
         if (!record[key]) record[key] = [];
@@ -136,9 +130,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
   const getTypeName = (type: string) => {
     switch (type) {
-      case 'physical': return 'Evento Presencial';
-      case 'online_course': return 'Curso Online';
-      case 'meeting': return 'Reunión';
+      case 'physical': return t('event_physical');
+      case 'online_course': return t('event_online');
+      case 'meeting': return t('event_meeting');
       default: return type;
     }
   };
@@ -160,7 +154,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                   {MONTHS[currentMonth]} {currentYear}
                   <ChevronDown size={24} className={`ml-2 text-blue-600 transition-transform duration-300 ${isSelectorOpen ? 'rotate-180' : ''}`} />
                 </h2>
-                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Agenda Comunitaria Red Social</p>
+                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">{t('community_agenda')}</p>
               </div>
             </button>
 
@@ -171,7 +165,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               >
                 <div className="space-y-6">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Seleccionar Mes</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t('select_month')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {MONTHS.map((m, idx) => (
                         <button
@@ -185,7 +179,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Seleccionar Año</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t('select_year')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {YEARS.map((y) => (
                         <button
@@ -211,14 +205,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-            <p className="text-gray-400 font-bold">Cargando agenda comunitaria...</p>
+            <p className="text-gray-400 font-bold">{t('loading_agenda')}</p>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-7 gap-4 text-center mb-6">
-              {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
-                <span key={d} className="text-[10px] font-black text-gray-300 dark:text-zinc-700 uppercase tracking-widest">{d}</span>
-              ))}
+              {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d, i) => {
+                const enDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+                return (
+                  <span key={i} className="text-[10px] font-black text-gray-300 dark:text-zinc-700 uppercase tracking-widest">{language === 'es' ? d : enDays[i]}</span>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-7 gap-2">
@@ -240,8 +237,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                       }`}
                   >
                     <span className="text-lg font-black">{day}</span>
-                    {hasEvents && !isSelected && (
-                      <div className="absolute bottom-2 w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                    {hasEvents && (
+                      <div className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full transition-all duration-300 ${isSelected ? 'bg-white ring-2 ring-white/20' : 'bg-blue-600 ring-2 ring-white/50 dark:ring-zinc-900/50'}`} />
                     )}
                   </button>
                 );
@@ -252,8 +249,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
         <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/20">
           <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold leading-relaxed">
-            💡 Nota: Solo los eventos con al menos 2 apoyos de la comunidad aparecen en el calendario global.
-            Organiza tus propios eventos desde tu perfil.
+            {t('calendar_note')}
           </p>
         </div>
       </div>
@@ -292,14 +288,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                       onClick={(e) => { e.stopPropagation(); setViewingSupportersEventId(event.id); }}
                       className="hover:underline cursor-pointer"
                     >
-                      {event.attendees} apoyos
+                      {t('supports', { count: event.attendees })}
                     </button>
                   </div>
                   <button
                     onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
                     className="w-full py-3 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-gray-100 transition-all"
                   >
-                    Ver detalles del evento
+                    {t('view_event_details')}
                   </button>
                 </div>
               </div>
@@ -307,7 +303,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
           ) : (
             <div className="bg-white dark:bg-[#111] p-10 rounded-[2rem] border border-dashed border-gray-200 dark:border-zinc-800 text-center">
               <CalendarIcon className="mx-auto text-gray-100 dark:text-zinc-900 mb-4" size={48} />
-              <p className="text-gray-400 font-bold italic text-sm">No hay eventos comunitarios confirmados para este día.</p>
+              <p className="text-gray-400 font-bold italic text-sm">{t('no_events_today')}</p>
             </div>
           )}
         </div>
@@ -318,7 +314,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
           type="event-supporters"
           userId={viewingSupportersEventId}
           onClose={() => setViewingSupportersEventId(null)}
-          onNavigate={(id) => onNavigateToEvent?.(id, '')} // Simple navigation to profile, eventId irrelevant for this call
+          onNavigate={(id) => onNavigateToEvent?.(id, '')}
         />
       )}
     </div>

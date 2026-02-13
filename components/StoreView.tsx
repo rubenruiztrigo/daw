@@ -1,14 +1,16 @@
-
 import React from 'react';
 import { ShoppingBag, Construction, Star } from 'lucide-react';
 import { User, calculateNovas } from '../types';
+import { Language, useTranslation } from '../utils/translations';
 
 interface StoreViewProps {
     user: User;
+    language: Language;
 }
 
-export const StoreView: React.FC<StoreViewProps> = ({ user }) => {
+export const StoreView: React.FC<StoreViewProps> = ({ user, language }) => {
     const points = calculateNovas(user.badges);
+    const t = useTranslation(language);
 
     return (
         <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
@@ -18,8 +20,8 @@ export const StoreView: React.FC<StoreViewProps> = ({ user }) => {
                         <ShoppingBag size={24} />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 dark:text-white">Recompensas NovaGob</h2>
-                        <p className="text-slate-500 dark:text-gray-400 text-sm font-medium">Desbloquea recompensas exclusivas al alcanzar nuevos hitos de Novas.</p>
+                        <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('rewards_title')}</h2>
+                        <p className="text-slate-500 dark:text-gray-400 text-sm font-medium">{t('rewards_description')}</p>
                     </div>
                 </div>
 
@@ -36,9 +38,9 @@ export const StoreView: React.FC<StoreViewProps> = ({ user }) => {
                 <div className="mx-auto w-20 h-20 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-6 text-slate-400">
                     <Construction size={40} />
                 </div>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Próximamente</h3>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">{t('coming_soon')}</h3>
                 <p className="text-slate-500 dark:text-gray-400 max-w-md mx-auto">
-                    Estamos diseñando las recompensas que se desbloquearán automáticamente al alcanzar diferentes niveles de prestigio (Novas) en la red.
+                    {t('coming_soon_description')}
                 </p>
             </div>
         </div>

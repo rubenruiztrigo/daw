@@ -3,6 +3,7 @@ import React from 'react';
 import { Post, User } from '../types';
 import { MessageSquare, ChevronUp, ChevronDown } from 'lucide-react';
 import { timeAgo } from '../utils/stringUtils';
+import { Language } from '../utils/translations';
 
 interface NewsCardProps {
   post: Post;
@@ -16,10 +17,11 @@ interface NewsCardProps {
   onNavigateToPost?: (postId: string) => void;
   onSearchHashtag?: (tag: string) => void;
   onPreviewImage?: (url: string) => void;
+  language: Language;
 }
 
 export const NewsCard: React.FC<NewsCardProps> = ({
-  post, onVote, onRepost, onAddComment, currentUser, followedUserIds, users, onNavigateToProfile, onNavigateToPost, onSearchHashtag, onPreviewImage
+  post, onVote, onRepost, onAddComment, currentUser, followedUserIds, users, onNavigateToProfile, onNavigateToPost, onSearchHashtag, onPreviewImage, language
 }) => {
   const handleNewsClick = () => {
     onNavigateToPost?.(post.id);
@@ -82,11 +84,11 @@ export const NewsCard: React.FC<NewsCardProps> = ({
               <span className="text-orange-600 text-[12px] font-bold">@{post.authorUsername}</span>
             </div>
             <span className="text-slate-400 text-[10px] uppercase font-bold text-right leading-tight">
-              {timeAgo(post.timestamp)}
+              {timeAgo(post.timestamp, language)}
             </span>
           </div>
           <p className="text-[10px] font-black mb-2 text-orange-600 uppercase tracking-widest">{post.authorPosition}</p>
-          <div className="text-slate-800 dark:text-gray-200 text-[15px] font-medium leading-relaxed mb-4 whitespace-pre-wrap">
+          <div className="text-slate-800 dark:text-gray-200 text-[15px] font-medium leading-relaxed mb-4 whitespace-pre-wrap break-words">
             {renderContent(post.content)}
           </div>
 
@@ -108,16 +110,16 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             </div>
 
             <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-2xl p-1 border border-slate-100 dark:border-zinc-800 ml-auto">
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-emerald-500'}`}>
                 <ChevronUp size={22} strokeWidth={3} />
               </button>
               <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.upvotes !== undefined
-                  ? (post.upvotes > 0 ? 'text-emerald-600' : 'text-slate-900 dark:text-white')
-                  : (post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white')
+                ? (post.upvotes > 0 ? 'text-emerald-600' : post.upvotes < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white')
+                : (post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white')
                 }`}>
                 {post.upvotes !== undefined ? post.upvotes : post.likes}
               </span>
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-orange-100 text-orange-600' : 'hover:bg-orange-50 dark:hover:bg-zinc-800 text-gray-400'}`}>
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-100 text-red-600' : 'hover:bg-red-50 dark:hover:bg-zinc-800 text-red-500'}`}>
                 <ChevronDown size={22} strokeWidth={3} />
               </button>
             </div>

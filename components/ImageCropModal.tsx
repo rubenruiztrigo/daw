@@ -11,6 +11,12 @@ interface ImageCropModalProps {
 export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, onSave }) => {
   const [crop, setCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0, renderedWidth: 0, renderedHeight: 0 });
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragAction, setDragAction] = useState<'move' | 'nw' | 'ne' | 'sw' | 'se' | null>(null);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
@@ -142,7 +148,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
       onTouchMove={handleMouseMove}
     >
       <div
-        className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white/10 max-h-[90vh]"
+        className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white/10 max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] shrink-0">
@@ -177,7 +183,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
 
             {/* Selection Box */}
             <div
-              className="absolute border-2 border-white shadow-sm cursor-move touch-none"
+              className="absolute border-2 border-white cursor-move touch-none"
               style={{
                 left: crop.x,
                 top: crop.y,
@@ -202,22 +208,22 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
 
               {/* Handles */}
               <div
-                className="absolute -top-2 -left-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-nw-resize z-20 shadow-lg"
+                className="absolute -top-2 -left-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-nw-resize z-20"
                 onMouseDown={(e) => handleMouseDown(e, 'nw')}
                 onTouchStart={(e) => handleMouseDown(e, 'nw')}
               />
               <div
-                className="absolute -top-2 -right-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-ne-resize z-20 shadow-lg"
+                className="absolute -top-2 -right-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-ne-resize z-20"
                 onMouseDown={(e) => handleMouseDown(e, 'ne')}
                 onTouchStart={(e) => handleMouseDown(e, 'ne')}
               />
               <div
-                className="absolute -bottom-2 -left-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-sw-resize z-20 shadow-lg"
+                className="absolute -bottom-2 -left-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-sw-resize z-20"
                 onMouseDown={(e) => handleMouseDown(e, 'sw')}
                 onTouchStart={(e) => handleMouseDown(e, 'sw')}
               />
               <div
-                className="absolute -bottom-2 -right-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-se-resize z-20 shadow-lg"
+                className="absolute -bottom-2 -right-2 w-5 h-5 border-2 border-white bg-blue-600 rounded-full cursor-se-resize z-20"
                 onMouseDown={(e) => handleMouseDown(e, 'se')}
                 onTouchStart={(e) => handleMouseDown(e, 'se')}
               />
@@ -234,7 +240,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
           </button>
           <button
             onClick={handleSave}
-            className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center justify-center space-x-2"
+            className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all flex items-center justify-center space-x-2"
           >
             <Check size={16} />
             <span>Guardar Foto</span>

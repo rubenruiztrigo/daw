@@ -12,7 +12,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
   const getIcon = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia');
     switch (type) {
-      case 'like': 
+      case 'like':
         if (isNews) {
           return <ChevronUp size={14} className="text-orange-500" strokeWidth={3} />;
         }
@@ -38,7 +38,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose}></div>
-      <div className="absolute right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-gray-100 py-4 z-50 animate-in fade-in zoom-in-95 duration-150 origin-top-right overflow-hidden flex flex-col max-h-[480px]">
+      <div className="absolute right-0 mt-3 w-80 bg-white rounded-3xl border border-gray-100 py-4 z-50 animate-in fade-in zoom-in-95 duration-150 origin-top-right overflow-hidden flex flex-col max-h-[480px]">
         <div className="px-6 pb-3 border-b border-gray-50 flex justify-between items-center">
           <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Notificaciones</h3>
           <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-full">
@@ -54,16 +54,16 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
             </div>
           ) : (
             notifications.map((n) => (
-              <div 
-                key={n.id} 
+              <div
+                key={n.id}
                 className={`px-6 py-4 flex space-x-3 hover:bg-gray-50 transition-all cursor-pointer relative group ${!n.isRead ? 'bg-blue-50/20' : ''}`}
               >
                 {!n.isRead && (
                   <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                 )}
                 <div className="relative flex-shrink-0">
-                  <img src={n.senderAvatar} className="w-10 h-10 rounded-xl object-cover shadow-sm" alt="" />
-                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white ${getBgColor(n.type, n.content)} shadow-sm`}>
+                  <img src={n.senderAvatar} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white ${getBgColor(n.type, n.content)}`}>
                     {getIcon(n.type, n.content)}
                   </div>
                 </div>
@@ -81,7 +81,7 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
         </div>
 
         <div className="px-6 pt-3 border-t border-gray-50">
-          <button 
+          <button
             className="w-full py-2 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 rounded-xl transition-all"
             onClick={onClose}
           >

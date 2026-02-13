@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProfileView } from './ProfileView';
 import { User, Post, Chat, CalendarEvent, Notification } from '../types';
+import { Language } from '../utils/translations';
 
 interface ProfileRouteProps {
     users: User[];
@@ -29,6 +30,7 @@ interface ProfileRouteProps {
     onAddComment: (postId: string, text: string) => void; // Added missing prop
     onPreviewImage?: (url: string) => void; // Added missing prop
     globalEvents?: any[];
+    language: Language;
 }
 
 export const ProfileRoute: React.FC<ProfileRouteProps> = ({
@@ -56,24 +58,23 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     onVote,
     onAddComment,
     onPreviewImage,
-    globalEvents = []
+    globalEvents = [],
+    language
 }) => {
-    const { userId } = useParams<{ userId: string }>();
+    const { username } = useParams<{ username: string }>();
     const navigate = useNavigate();
 
-    const targetUserId = userId || currentUserData?.id;
-
-    // Handle case where data might not be loaded yet
-    if (!targetUserId) {
-        return <div>Cargando perfil...</div>;
-    }
-
-    const targetUser = users.find(u => u.id === targetUserId) || (currentUserData?.id === targetUserId ? currentUserData : null);
+    // Find user by username or ID
+    const targetUser = users.find(u => u.username === username || u.id === username) ||
+        (currentUserData?.username === username || currentUserData?.id === username ? currentUserData : null) ||
+        (!username && currentUserData ? currentUserData : null);
 
     // Fallback if user not found (e.g. invalid URL)
     if (!targetUser) {
-        return <div className="p-10 text-center">Usuario no encontrado</div>;
+        return <div className="p-10 text-center text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Usuario no encontrado' : 'User not found'}</div>;
     }
+
+    const targetUserId = targetUser.id;
 
     // Derived state
     const isCurrentUser = targetUserId === currentUserData?.id;
@@ -111,6 +112,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onAddComment={onAddComment}
             onPreviewImage={onPreviewImage}
             globalEvents={globalEvents}
+            language={language}
         />
     );
 };

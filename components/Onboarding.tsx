@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
-import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw } from 'lucide-react';
+import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
@@ -137,6 +137,10 @@ const PrivacyPolicyContent = () => (
   </div>
 );
 
+import { notifyAdminNewUser } from '../utils/emailService';
+
+// ... existing imports ...
+
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -145,6 +149,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
   const [customAdminInput, setCustomAdminInput] = useState('');
   const [privacyAccepted, setPrivacyAccepted] = useState(true);
   const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [showPendingApprovalModal, setShowPendingApprovalModal] = useState(false);
+
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 
   const [formData, setFormData] = useState<Partial<UserType>>({
@@ -164,11 +175,58 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`
   });
 
+  const checkAvailability = async (): Promise<boolean> => {
+    setIsChecking(true);
+    setUsernameError(null);
+    setEmailError(null);
+    try {
+      let valid = true;
+
+      // Validate Username
+      if (formData.username) {
+        const { data: userByUsername } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', formData.username.toLowerCase())
+          .maybeSingle();
+
+        if (userByUsername) {
+          setUsernameError("Este nombre de usuario ya está en uso.");
+          valid = false;
+        }
+      }
+
+      // Validate Email
+      if (formData.email) {
+        const { data: userByEmail } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', formData.email.toLowerCase())
+          .maybeSingle();
+
+        if (userByEmail) {
+          setEmailError("Este correo electrónico ya está registrado.");
+          valid = false;
+        }
+      }
+
+      return valid;
+    } catch (error) {
+      console.error("Availability check failed:", error);
+      return false; // Fail safe
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
 
   const updateField = (field: keyof UserType, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'username') setUsernameError(null);
+    if (field === 'email') setEmailError(null);
+    if (field === 'password') setPasswordError(null);
   };
 
   const handleFinalize = async () => {
@@ -189,7 +247,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       name: formData.name,
       last_name: formData.lastName,
       username: formData.username,
-      avatar_url: formData.avatar,
+      // avatar_url: formData.avatar, // Removed: Column likely doesn't exist, causing 400
       position: formData.position,
       department: formData.department,
       job_category: finalJobCategory,
@@ -202,7 +260,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       bio: ''
     };
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    // Attempt registration
+    let authResponse = await supabase.auth.signUp({
       email: formData.email!,
       password: formData.password!,
       options: {
@@ -210,11 +269,46 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       }
     });
 
+    // Handle "User already registered" (Status 422) specifically for "Zombie" users (Auth exists, Profile missing)
+    if (authResponse.error?.status === 422 || authResponse.error?.message?.includes("already registered")) {
+      console.log("User already exists in Auth. Checking for Zombie state...");
+      // Try to sign in with the provided credentials
+      const signInResponse = await supabase.auth.signInWithPassword({
+        email: formData.email!,
+        password: formData.password!,
+      });
+
+      if (!signInResponse.error && signInResponse.data.session) {
+        // Check if profile exists (use try/catch to handle 406 gracefully if needed, though Select should be fine)
+        const { data: existingProfile, error: fetchProfileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', signInResponse.data.user.id)
+          .maybeSingle();
+
+        if (fetchProfileError) console.warn("Error checking profile existence:", JSON.stringify(fetchProfileError));
+
+        if (!existingProfile) {
+          console.log("Zombie user detected (Auth yes, Profile no). Proceeding to resurrect...");
+          // Verified: Usage of 'authResponse' as a mutable structure to mimic successful signup
+          authResponse = {
+            data: { user: signInResponse.data.user, session: signInResponse.data.session },
+            error: null
+          } as any;
+        }
+      }
+    }
+
+    const { data, error: signUpError } = authResponse;
+
     if (signUpError) {
+      console.error("SignUp Error:", signUpError);
       if (signUpError.message.toLowerCase().includes('rate limit') || signUpError.status === 429) {
-        setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada (y spam) para verificar tu cuenta o espera unos minutos antes de intentar de nuevo.");
+        setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada o espera unos minutos.");
+      } else if (signUpError.message.includes("User already registered") || signUpError.status === 422) {
+        setError("Error: El usuario o correo ya está registrado en el sistema. Si no recuerdas tu contraseña, intenta iniciar sesión o recuperarla.");
       } else {
-        setError(signUpError.message);
+        setError(`Error al crear la cuenta: ${signUpError.message}`);
       }
       setLoading(false);
       return;
@@ -222,40 +316,80 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
     // Check if session exists (Auto-login)
     if (data.session) {
-      // User is logged in, try to write profile to DB
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: data.user!.id,
-          ...profileData,
-          email: formData.email,
-          avatar: formData.avatar,
-          username: formData.username!.toLowerCase(),
-        });
+      try {
+        console.log("Session established. Proceeding to profile creation...");
+        // User is logged in, try to write profile to DB
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user!.id,
+            ...profileData,
+            email: formData.email,
+            avatar: formData.avatar,
+            username: formData.username!.toLowerCase(),
+            status: 'pending' // Enforce pending status
+          });
 
-      if (profileError) {
-        console.error("Error creating profile:", profileError);
-        // If it's not a critical error (like duplicate), we might still proceed or warn
-        setToast({ message: "Cuenta creada, pero hubo un error guardando el perfil. Por favor actualízalo tras entrar.", type: 'error' });
+        if (profileError) {
+          console.error("Error creating profile:", JSON.stringify(profileError));
+          setToast({ message: "Cuenta creada, pero hubo un error guardando el perfil. Contacta con soporte.", type: 'error' });
+        } else {
+          console.log("Profile created. Sending notifications...");
+
+          // Fetch ALL admins
+          const { data: adminUsers, error: adminFetchError } = await supabase
+            .from('profiles')
+            .select('id, email')
+            .eq('is_admin', true);
+
+          if (adminFetchError) console.error("Error fetching admins:", adminFetchError);
+
+          if (adminUsers && adminUsers.length > 0) {
+            console.log(`Found ${adminUsers.length} admins. Sending notifications...`);
+
+            // Send notifications to all admins in parallel
+            await Promise.all(adminUsers.map(async (admin) => {
+              // 1. Email Notification
+              if (admin.email) {
+                await notifyAdminNewUser(formData.username!, `${formData.name} ${formData.lastName}`, admin.email)
+                  .catch(err => console.error(`Email to ${admin.email} failed`, err));
+              }
+
+              // 2. In-App Notification
+              const { error: notifError } = await supabase.from('notifications').insert({
+                user_id: admin.id,
+                type: 'registration_request',
+                content: `El usuario ${formData.username} solicita registro.`,
+                sender_id: data.user!.id,
+                is_read: false
+              });
+
+              if (notifError) console.error(`Error notifying admin ${admin.id}:`, notifError);
+            }));
+          } else {
+            console.warn("No admins found to notify.");
+          }
+
+          console.log("Notifications sent. Showing modal.");
+          // Show pending modal instead of completing immediately
+          setShowPendingApprovalModal(true);
+        }
+      } catch (err: any) {
+        console.error("Critical error in registration finalization:", err);
+        setError("Ocurrió un error inesperado al finalizar el registro: " + (err.message || String(err)));
       }
     } else if (data.user) {
-      // User created but NOT logged in (Email confirmation likely required)
-      // We rely on metadata (already sent in options) and backend triggers if any.
-      // We cannot write to 'profiles' via RLS without a session usually.
       console.warn("User created but no session (Email verification?)");
-      alert("Registro completado. Por favor, verifica tu correo electrónico para activar la cuenta.");
+      alert("Registro completado. Por favor, verifica tu correo electrónico.");
     }
 
     setLoading(false);
-    onComplete();
   };
 
   const setToast = (props: { message: string, type: 'success' | 'error' | 'info' }) => {
-    // Simple console fallback if no toast context available in this component
     console.log(`[${props.type.toUpperCase()}] ${props.message}`);
     if (props.type === 'error') setError(props.message);
   };
-
 
   const isStepValid = () => {
     switch (step) {
@@ -270,8 +404,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     }
   };
 
+
+
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
       <div className="max-w-2xl w-full bg-white rounded-[40px] p-8 md:p-12 relative overflow-hidden border border-slate-100">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
           <div className="h-full bg-blue-600 transition-all duration-700 ease-in-out" style={{ width: `${((step - 1) / 5) * 100}%` }} />
@@ -308,8 +444,21 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de usuario</label>
                   <div className="relative">
                     <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input type="text" value={formData.username} onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="anagarcia" />
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
+                      onBlur={() => { if (formData.username) checkAvailability(); }}
+                      className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      placeholder="anagarcia"
+                    />
                   </div>
+                  {usernameError && (
+                    <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                      <AlertCircle size={12} />
+                      <span className="text-xs font-bold">{usernameError}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de nacimiento</label>
@@ -321,16 +470,35 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo institucional</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                  <input type="email" value={formData.email} onChange={e => updateField('email', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="nombre@gob.es" />
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={e => updateField('email', e.target.value)}
+                    onBlur={() => { if (formData.email) checkAvailability(); }}
+                    className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                    placeholder="nombre@gob.es"
+                  />
                 </div>
+                {emailError && (
+                  <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                    <AlertCircle size={12} />
+                    <span className="text-xs font-bold">{emailError}</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                  <input type="password" value={formData.password} onChange={e => updateField('password', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Mínimo 8 caracteres" />
+                  <input type="password" value={formData.password} onChange={e => updateField('password', e.target.value)} className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`} placeholder="Mínimo 8 caracteres" />
                 </div>
+                {passwordError && (
+                  <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                    <AlertCircle size={12} />
+                    <span className="text-xs font-bold">{passwordError}</span>
+                  </div>
+                )}
               </div>
 
               <div className="text-center pt-2">
@@ -522,59 +690,139 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             <span>{step === 1 ? 'Cancelar' : 'Atrás'}</span>
           </button>
           <button
-            onClick={() => step < 6 ? nextStep() : handleFinalize()}
-            disabled={!isStepValid() || loading}
-            className="flex-[2] py-4 rounded-[1.5rem] bg-blue-600 text-white font-black flex items-center justify-center space-x-2 hover:bg-blue-700 transition-all disabled:opacity-30 transform active:scale-95"
+            onClick={async () => {
+              // Manual validation check to provide feedback
+              if (!isStepValid()) {
+                if (step === 1) {
+                  if (!formData.name) setError("Por favor, introduce tu nombre.");
+                  else if (!formData.lastName) setError("Por favor, introduce tus apellidos.");
+                  else if (!formData.username) setError("Por favor, elige un nombre de usuario.");
+                  else if (!formData.birthDate) setError("Por favor, selecciona tu fecha de nacimiento.");
+                  else if (!formData.email) setError("Por favor, introduce tu correo institucional.");
+                  else if (!formData.password) setError("Por favor, crea una contraseña.");
+                  else setError("Por favor, completa todos los campos.");
+                } else if (step === 2) {
+                  setError("Por favor, selecciona una categoría profesional.");
+                } else if (step === 3) {
+                  setError("Por favor, selecciona un tipo de organización.");
+                } else if (step === 4) {
+                  setError("Por favor, completa tu puesto y organización.");
+                } else if (step === 5) {
+                  setError("Por favor, selecciona tu país y región.");
+                } else if (step === 6) {
+                  setError("Por favor, selecciona al menos 3 intereses.");
+                }
+                return;
+              }
+
+              if (step === 1) {
+                // strict validation
+                if (!formData.username || !formData.email || !formData.password || !formData.name || !formData.lastName) return;
+
+                let valid = true;
+
+                if (!validateEmail(formData.email)) {
+                  setEmailError("Correo electrónico no válido");
+                  valid = false;
+                }
+
+                if (formData.password.length < 8) {
+                  setPasswordError("La contraseña debe tener al menos 8 caracteres");
+                  valid = false;
+                }
+
+                if (!valid) return;
+
+                try {
+                  const isAvailable = await checkAvailability();
+                  if (isAvailable) nextStep();
+                } catch (err) {
+                  console.error("Availability check failed", err);
+                  setError("Error verificando disponibilidad. Inténtalo de nuevo.");
+                }
+              } else if (step < 6) {
+                nextStep();
+              } else {
+                handleFinalize();
+              }
+            }}
+            disabled={loading || isChecking} // Enable button even if invalid to show feedback
+            className={`flex-[2] py-4 rounded-[1.5rem] font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}
           >
-            {loading ? (
-              <Loader2 className="animate-spin" size={24} />
+            {loading || isChecking ? (
+              <Loader2 className="animate-spin text-white" size={24} />
             ) : (
               <>
-                <span>{step === 6 ? 'Completar registro' : 'Siguiente'}</span>
-                {step < 6 && <ArrowRight size={20} />}
+                <span className="text-white">{step === 6 ? 'Completar registro' : 'Siguiente'}</span>
+                {step < 6 && <ArrowRight size={20} className="text-white" />}
               </>
             )}
           </button>
         </div>
       </div>
 
-      {showPolicyOverlay && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
-          onClick={() => setShowPolicyOverlay(false)}
-        >
+      {
+        showPolicyOverlay && (
           <div
-            className="bg-white w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 border border-white"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+            onClick={() => setShowPolicyOverlay(false)}
           >
-            <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
-                  <ShieldCheck size={20} />
+            <div
+              className="bg-white w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 border border-white"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                    <ShieldCheck size={20} />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900">Política de Privacidad</h3>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900">Política de Privacidad</h3>
+                <button
+                  onClick={() => setShowPolicyOverlay(false)}
+                  className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all"
+                >
+                  <X size={20} />
+                </button>
               </div>
-              <button
-                onClick={() => setShowPolicyOverlay(false)}
-                className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-all"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
+                <PrivacyPolicyContent />
+              </div>
+              <div className="p-6 bg-slate-50 flex justify-center">
+                <button
+                  onClick={() => setShowPolicyOverlay(false)}
+                  className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
+                >
+                  He leído y acepto los términos
+                </button>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
-              <PrivacyPolicyContent />
-            </div>
-            <div className="p-6 bg-slate-50 flex justify-center">
+          </div>
+        )
+      }
+
+      {
+        showPendingApprovalModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95">
+              <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Clock size={32} />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mb-2">Solicitud enviada</h3>
+              <p className="text-slate-600 mb-6 leading-relaxed">
+                Tu registro ha sido completado con éxito. Ahora, un administrador debe revisar y aprobar tu solicitud.
+                Recibirás un correo electrónico cuando tu cuenta esté activa.
+              </p>
               <button
-                onClick={() => setShowPolicyOverlay(false)}
-                className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
+                onClick={onCancel} // Go back to landing/login
+                className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
               >
-                He leído y acepto los términos
+                Entendido
               </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };

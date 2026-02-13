@@ -11,6 +11,12 @@ interface LevelsListModalProps {
 export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, onClose }) => {
     const navigate = useNavigate();
     const [showAllLevels, setShowAllLevels] = React.useState(false);
+
+    React.useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = 'unset'; };
+    }, []);
+
     const currentStatus = getLevelInfo(currentNovas);
 
     // Calculate progress

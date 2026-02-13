@@ -20,6 +20,11 @@ interface PostDetailsModalProps {
 export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   post, onClose, onAddComment, onAddReply, onLike, onVote, onSearchHashtag, onNavigateToProfile, users = []
 }) => {
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -175,7 +180,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                             <button type="submit" disabled={!replyText.trim()} className="p-1.5 bg-blue-600 text-white rounded-lg"><Send size={14} /></button>
                           </form>
                           {mentionTarget === 'reply' && mentionSuggestions.length > 0 && (
-                            <div className="absolute left-0 bottom-full mb-2 w-56 bg-white dark:bg-[#1a1a1a] rounded-xl shadow-2xl border border-gray-100 dark:border-zinc-800 z-[170] overflow-hidden">
+                            <div className="absolute left-0 bottom-full mb-2 w-56 bg-white dark:bg-[#1a1a1a] rounded-xl border border-gray-100 dark:border-zinc-800 z-[170] overflow-hidden">
                               {mentionSuggestions.map(u => (
                                 <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/10 text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
                                   <img src={u.avatar} className="w-6 h-6 rounded-md object-cover" alt="" />

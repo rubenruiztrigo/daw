@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { User, MapPin, UserPlus, UserMinus, ArrowRight } from 'lucide-react';
 import { User as UserType } from '../types';
+import { Language, useTranslation } from '../utils/translations';
 
 interface UserInfoDropdownProps {
   userId: string;
@@ -12,6 +12,7 @@ interface UserInfoDropdownProps {
   onToggleFollow?: (userId: string) => void;
   users: UserType[];
   currentUserId?: string;
+  language: Language;
 }
 
 export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
@@ -22,9 +23,11 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
   isFollower,
   onToggleFollow,
   users,
-  currentUserId
+  currentUserId,
+  language
 }) => {
   const userInfo = users.find(u => u.id === userId);
+  const t = useTranslation(language);
 
   if (!userInfo) return null;
 
@@ -50,21 +53,21 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
         </div>
 
         <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 mb-4 font-medium leading-relaxed">
-          {userInfo.bio || "Sin biografía profesional todavía."}
+          {userInfo.bio || t('no_bio')}
         </p>
 
         <div className="flex items-center space-x-4 mb-5 pb-4 border-b border-slate-50 dark:border-zinc-900">
           <div className="flex flex-col">
             <span className="text-xs font-black text-slate-900 dark:text-white">{userInfo.followers}</span>
-            <span className="text-[8px] text-slate-400 dark:text-zinc-600 font-black uppercase tracking-tighter">Seguidores</span>
+            <span className="text-[8px] text-slate-400 dark:text-zinc-600 font-black uppercase tracking-tighter">{t('followers')}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-black text-slate-900 dark:text-white">{userInfo.following}</span>
-            <span className="text-[8px] text-slate-400 dark:text-zinc-600 font-black uppercase tracking-tighter">Siguiendo</span>
+            <span className="text-[8px] text-slate-400 dark:text-zinc-600 font-black uppercase tracking-tighter">{t('following_label')}</span>
           </div>
           <div className="flex items-center text-[10px] text-slate-400 dark:text-zinc-600 font-bold ml-auto">
             <MapPin size={10} className="mr-1" />
-            <span>{userInfo.country || 'España'}</span>
+            <span>{userInfo.country || (language === 'es' ? 'España' : 'Spain')}</span>
           </div>
         </div>
 
@@ -79,9 +82,9 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
             >
               {isFollowed ? <UserMinus size={12} /> : <UserPlus size={12} />}
               <span>
-                {isFollowed && isFollower ? 'Amigos' :
-                  isFollowed ? 'Siguiendo' :
-                    isFollower ? 'Seguir también' : 'Seguir'}
+                {isFollowed && isFollower ? t('friends') :
+                  isFollowed ? t('following_label') :
+                    isFollower ? t('follow_also') : t('follow')}
               </span>
             </button>
           )}
@@ -92,7 +95,7 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
             }}
             className={`${userId === currentUserId ? 'w-full' : 'flex-1'} py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-blue-700 transition-all flex items-center justify-center space-x-1`}
           >
-            <span>Ver Perfil</span>
+            <span>{t('view_profile')}</span>
             <ArrowRight size={10} />
           </button>
         </div>

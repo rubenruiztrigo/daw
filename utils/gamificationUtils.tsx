@@ -1,5 +1,6 @@
 import { Target, Zap, Megaphone, Briefcase, Award, Star, Medal, Trophy, Sparkles, Crown } from 'lucide-react';
 import React from 'react';
+import { Language, translations } from './translations';
 
 export interface LevelInfo {
     name: string;
@@ -24,7 +25,7 @@ export const LEVELS: LevelInfo[] = [
     { name: "SuperNova", threshold: 1000, desc: "El máximo honor. Leyenda viva de la administración pública.", color: "text-yellow-600", bg: "bg-yellow-100", icon: Crown }
 ];
 
-export const getLevelInfo = (novas: number) => {
+export const getLevelInfo = (novas: number, language: Language = 'es') => {
     let currentLvlIndex = 0;
     for (let i = LEVELS.length - 1; i >= 0; i--) {
         if (novas >= LEVELS[i].threshold) {
@@ -36,17 +37,25 @@ export const getLevelInfo = (novas: number) => {
     const lvl = LEVELS[currentLvlIndex];
     const nextLvl = LEVELS[currentLvlIndex + 1];
 
+    // Localized strings
+    const langKey = language as Language;
+    const nameKey = `level_${currentLvlIndex}_name` as keyof typeof translations['es'];
+    const descKey = `level_${currentLvlIndex}_desc` as keyof typeof translations['es'];
+
+    const rank = translations[langKey][nameKey] || lvl.name;
+    const desc = translations[langKey][descKey] || lvl.desc;
+
     return {
-        rank: lvl.name,
+        rank,
         color: lvl.color,
         bg: lvl.bg,
-        icon: lvl.icon, // Return component reference, not element
-        desc: lvl.desc,
+        icon: lvl.icon,
+        desc,
         level: currentLvlIndex,
         next: currentLvlIndex + 1,
         threshold: lvl.threshold,
         nextThreshold: nextLvl ? nextLvl.threshold : null,
-        currentLevelInfo: lvl,
+        currentLevelInfo: { ...lvl, name: rank, desc },
         nextLevelInfo: nextLvl
     };
 };
