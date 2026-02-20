@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag, ArrowUp, Menu, ArrowLeft } from 'lucide-react';
+import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag, ArrowUp, Menu, ArrowLeft, Monitor, Pin, Loader2, ChevronRight } from 'lucide-react';
 import { User as UserType, Notification, CalendarEvent, Post } from '../types';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
@@ -160,6 +160,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const getEventColor = (type: string) => {
     switch (type) {
       case 'physical': return 'bg-blue-500';
+      case 'online':
       case 'online_course': return 'bg-emerald-500';
       case 'meeting': return 'bg-orange-500';
       default: return 'bg-gray-500';
@@ -203,9 +204,9 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
-      <div className="max-w-[1440px] mx-auto flex relative min-h-screen">
+      <div className="w-full flex relative min-h-screen">
         {/* Sidebar Desktop */}
-        <aside className="w-64 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
+        <aside className="w-64 xl:w-80 2xl:w-96 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
           <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => navigate('/feed')}>
             <Logo />
             <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Red Social</span>
@@ -274,7 +275,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
         <div className="flex-1 min-w-0 flex flex-col transition-all duration-300">
           {/* Mobile Header */}
-          <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-40 h-16 transition-transform duration-300 ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
+          <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
             <div className="flex-shrink-0 cursor-pointer" onClick={() => navigate('/feed')}>
               <Logo />
             </div>
@@ -307,37 +308,47 @@ export const Layout: React.FC<LayoutProps> = ({
                     }
                   }}
                   onFocus={() => setShowAutocomplete(true)}
+                  onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
                   placeholder={t('search_placeholder')}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-zinc-900 dark:text-white border border-slate-100 dark:border-zinc-800 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-zinc-900 dark:text-white border border-slate-100 dark:border-zinc-800 rounded-xl text-xs font-bold focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-all"
                 />
                 {showAutocomplete && (
-                  <div className="fixed top-[4.5rem] left-5 right-5 bg-white dark:bg-[#111] rounded-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden max-h-[60vh] overflow-y-auto z-50 animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
+                  <div className="absolute top-[calc(100%+8px)] left-[-15%] right-[-15%] bg-white dark:bg-[#111] border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden z-[80] animate-in fade-in slide-in-from-top-1 duration-200 shadow-xl">
                     {!searchQuery ? (
-                      <div className="p-4">
-                        <div className="space-y-3">
-                          {trendingTags.length > 0 ? trendingTags.map(({ tag, count }) => (
-                            <button
-                              key={tag}
-                              onClick={() => {
-                                onSearchSubmit?.(`#${tag}`);
-                                setShowAutocomplete(false);
-                              }}
-                              className="w-full text-left cursor-pointer group flex items-center justify-between pr-2"
-                            >
-                              <div>
-                                <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">#{tag}</p>
-                                <p className="text-[10px] text-slate-400">{count} {count === 1 ? 'post' : 'posts'}</p>
-                              </div>
-                              <TrendingUp size={14} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
-                          )) : (
-                            <p className="text-xs text-slate-300 italic">{t('no_trends_today')}</p>
-                          )}
-                        </div>
+                      <div className="bg-white dark:bg-[#111]">
+                        {trendingTags.length > 0 ? (
+                          <div className="divide-y divide-slate-50 dark:divide-zinc-900">
+                            {trendingTags.map(({ tag, count }) => (
+                              <button
+                                key={tag}
+                                onClick={() => {
+                                  onSearchSubmit?.(`#${tag}`);
+                                  setShowAutocomplete(false);
+                                }}
+                                className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-900 transition-colors active:bg-slate-100 group"
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                                    <TrendingUp size={14} />
+                                  </div>
+                                  <div className="flex flex-col items-start leading-tight">
+                                    <span className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[140px]">#{tag}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{count} {count === 1 ? 'post' : 'posts'}</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center">
+                            <p className="text-[10px] text-slate-400 italic">{t('no_trends_today')}</p>
+                          </div>
+                        )}
                       </div>
                     ) : autocompleteLoading ? (
-                      <div className="p-4 text-center text-slate-400 text-xs">
-                        <span className="animate-pulse">{t('searching')}</span>
+                      <div className="p-8 text-center text-slate-400 text-xs text-[10px]">
+                        <Loader2 className="animate-spin mx-auto mb-2 text-blue-500" size={20} />
+                        <p className="animate-pulse">{t('searching')}</p>
                       </div>
                     ) : autocompleteResults.length > 0 ? (
                       <div>
@@ -365,7 +376,7 @@ export const Layout: React.FC<LayoutProps> = ({
                     )}
                   </div>
                 )}
-                {showAutocomplete && <div className="fixed inset-0 z-40" onClick={() => setShowAutocomplete(false)} />}
+                {showAutocomplete && <div className="fixed inset-0 z-[60]" onClick={() => setShowAutocomplete(false)} />}
               </form>
             </div>
 
@@ -395,7 +406,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
         {showSidebar && (
           <aside className="w-80 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-6 z-30 animate-in slide-in-from-right duration-300">
-            <div className="space-y-8 overflow-y-auto scrollbar-hide flex-1">
+            <div className="mb-6">
               <form onSubmit={handleSearchFormSubmit} className="relative w-full z-50">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
@@ -423,7 +434,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   }}
                   onFocus={() => { if (searchQuery.length >= 1) setShowAutocomplete(true); }}
                   placeholder={t('search_placeholder')}
-                  className="w-full pl-12 pr-4 py-3 bg-slate-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full pl-12 pr-4 py-3 bg-slate-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-all"
                 />
                 {showAutocomplete && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#111] rounded-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden max-h-80 overflow-y-auto z-50 animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl">
@@ -460,9 +471,15 @@ export const Layout: React.FC<LayoutProps> = ({
                 )}
                 {showAutocomplete && <div className="fixed inset-0 z-40" onClick={() => setShowAutocomplete(false)} />}
               </form>
+            </div>
+
+            <div className="space-y-8 overflow-y-auto scrollbar-hide flex-1">
 
               <div className="p-6 bg-slate-50 dark:bg-zinc-900/50 rounded-3xl border border-slate-100 dark:border-zinc-800">
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest mb-4">{t('trending')}</h3>
+                <div className="flex items-center space-x-2 mb-4">
+                  <TrendingUp size={18} className="text-blue-500" />
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('trending')}</h3>
+                </div>
                 <div className="space-y-4">
                   {trendingTags.length > 0 ? trendingTags.map(({ tag, count }) => (
                     <button
@@ -470,12 +487,8 @@ export const Layout: React.FC<LayoutProps> = ({
                       onClick={() => onSearchSubmit?.(`#${tag}`)}
                       className="w-full text-left cursor-pointer group"
                     >
-                      <div className="flex items-center space-x-2 text-[10px] text-slate-400 font-bold uppercase mb-0.5">
-                        <TrendingUp size={10} className="text-blue-500" />
-                        <span>{t('trending_on_novagob')}</span>
-                      </div>
                       <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">#{tag}</p>
-                      <p className="text-[10px] text-slate-400">{count} {count === 1 ? 'post' : 'posts'}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{count} {count === 1 ? 'post' : 'posts'}</p>
                     </button>
                   )) : (
                     <div className="text-center py-4">
@@ -503,15 +516,26 @@ export const Layout: React.FC<LayoutProps> = ({
                       <button
                         key={event.id}
                         onClick={() => navigate('/calendar', { state: { date: event.event_date } })}
-                        className="w-full text-left cursor-pointer group"
+                        className="w-full text-left cursor-pointer group p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:border-blue-200 dark:hover:border-blue-900/50"
                       >
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] text-slate-400 font-bold uppercase">{t(`event_${event.type}` as any) || event.type}</span>
-                          <span className={`text-[10px] font-bold uppercase ${diffDays <= 3 ? 'text-red-500' : 'text-slate-400'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors truncate">
+                            {event.title}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className="text-purple-600 dark:text-purple-400">
+                              {event.type === 'physical' ? <Pin size={12} /> : <Monitor size={12} />}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase">
+                              {t(`event_${event.type}` as any) || event.type}
+                            </span>
+                          </div>
+                          <span className={`text-[9px] font-black uppercase whitespace-nowrap ml-2 ${diffDays <= 3 ? 'text-red-500' : 'text-slate-400'}`}>
                             {getEventTimeLabel(event.event_date)}
                           </span>
                         </div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors truncate">{event.title}</p>
                       </button>
                     );
                   }) : (
@@ -525,7 +549,7 @@ export const Layout: React.FC<LayoutProps> = ({
       </div>
 
       {/* Mobile Nav */}
-      <nav className={`md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-slate-100 dark:border-zinc-900 flex justify-around pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] px-3 z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] transition-transform duration-300 ${scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'} ${location.pathname.startsWith('/messages/') && location.pathname.split('/').length > 2 ? 'hidden' : ''}`}>
+      <nav className={`md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-slate-100 dark:border-zinc-900 flex justify-around pt-3 pb-[calc(1rem+env(safe-area-inset-bottom,20px))] px-3 z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'} ${location.pathname.startsWith('/messages/') && location.pathname.split('/').length > 2 ? 'hidden' : ''}`}>
         {[
           { to: '/feed', icon: Home },
           { to: '/news', icon: Newspaper },

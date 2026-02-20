@@ -185,7 +185,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1000) {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400) {
         loadMoreResults();
       }
     };
@@ -230,7 +230,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
             placeholder={t('new_search')}
-            className="w-full pl-12 pr-12 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+            className="w-full pl-12 pr-12 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-all dark:text-white"
           />
           {localQuery && (
             <button

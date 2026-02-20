@@ -204,7 +204,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const participant = selectedChat?.participant || temporaryParticipant;
 
   return (
-    <div className={`h-[calc(100vh-64px)] sm:h-[calc(100vh-180px)] w-full max-w-[92vw] md:max-w-full mx-auto bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row ${selectedId ? '' : 'pb-16 md:pb-0'}`}>
+    <div className={`h-[calc(100vh-64px)] sm:h-[calc(100vh-180px)] w-full bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row ${selectedId ? '' : 'pb-16 md:pb-0'}`}>
       <div className={`w-full md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col min-w-0 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 md:p-6 border-b border-gray-50 dark:border-zinc-900">
           <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">{t('messages_title')}</h2>

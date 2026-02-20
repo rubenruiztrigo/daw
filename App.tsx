@@ -687,22 +687,11 @@ const App: React.FC = () => {
   const handleLoadMore = async () => {
     if (isLoadingMore || !hasMorePosts) return;
     setIsLoadingMore(true);
-    const nextOffset = feedOffset + 30; // Wait, strategy check.
-    // Initial: 0. Limit 30.
-    // Next: we want +15.
-    // So if current offset is 0, next should be 30. limit 15.
-    // Logic:
-    const limit = 15;
-    const currentCount = posts.length; // Approximate offset?
-    // Using explicit offset state is safer.
-    // Initial state: offset=0.
-    // LoadMore: offset = offset + (last_fetch_count?).
-    // Better: keep track of next offset.
-    // Initial: fetch(0, 30). setOffset(30).
-    // LoadMore: fetch(offset, 15). setOffset(offset + 15).
 
-    await fetchFeed(feedOffset, 15);
-    setFeedOffset(prev => prev + 15);
+    // Unified strategy: Load 10 items per scroll
+    const limit = 10;
+    await fetchFeed(feedOffset, limit);
+    setFeedOffset(prev => prev + limit);
     setIsLoadingMore(false);
   };
 
@@ -1578,7 +1567,7 @@ const App: React.FC = () => {
                     notifications={notifications}
                     onMarkAllRead={handleMarkAllNotificationsRead}
                     onNotificationClick={(id) => { if (id) navigate(`/post/${id}`); }}
-                    onLoadMore={() => setNotificationsLimit(prev => prev + 15)}
+                    onLoadMore={() => setNotificationsLimit(prev => prev + 10)}
                     hasMore={hasMoreNotifications}
                     language={language}
                     onApproveUser={handleApproveUser}

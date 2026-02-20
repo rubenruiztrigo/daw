@@ -13,7 +13,7 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language }) => {
     const t = useTranslation(language);
 
     return (
-        <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
+        <div className="w-full space-y-6 animate-in fade-in duration-500">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mb-8 text-center sm:text-left">
                 <div className="flex items-center space-x-4">
                     <div className="p-3 bg-pink-50 dark:bg-pink-900/20 rounded-2xl text-pink-600">

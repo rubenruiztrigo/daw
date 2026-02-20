@@ -3,7 +3,7 @@ export interface CalendarEvent {
   id: string;
   creator_id: string;
   title: string;
-  type: 'physical' | 'online_course' | 'meeting';
+  type: 'physical' | 'online';
   event_date: string;
   event_time: string;
   location: string;

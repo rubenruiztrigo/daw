@@ -48,7 +48,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   useEffect(() => {
     if (!onLoadMore) return;
     const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1000 && !isLoadingMore && hasMore) {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400 && !isLoadingMore && hasMore) {
         onLoadMore();
       }
     };
@@ -130,7 +130,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
   return (
     <div className="pb-20 pt-28 md:pt-0">
-      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-16 mb-4 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
+      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 mb-4 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
         <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
           <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
@@ -184,7 +184,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="max-w-2xl xl:max-w-3xl mx-auto space-y-4">
         {activeTab !== 'ranking' ? (
           <>
             <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800 overflow-hidden">
@@ -255,18 +255,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </div>
               )}
 
-              {hasMore ? (
-                <div className="flex justify-center pb-8 pt-4">
-                  <button
-                    onClick={onLoadMore}
-                    disabled={isLoadingMore}
-                    className="px-6 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-orange-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  >
-                    {isLoadingMore && <Loader2 className="animate-spin" size={16} />}
-                    <span>{isLoadingMore ? t('loading') : t('show_more')}</span>
-                  </button>
-                </div>
-              ) : null}
+
               {!hasMore && sortedNews.length > 0 && (
                 <div className="py-8 text-center text-gray-400 text-xs font-semibold uppercase tracking-widest opacity-50">
                   {language === 'es' ? 'Has llegado al final' : "You've reached the end"}

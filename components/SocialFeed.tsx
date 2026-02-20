@@ -66,7 +66,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
   useEffect(() => {
     if (!onLoadMore) return;
     const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1000 && !isLoadingMore && hasMore) {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400 && !isLoadingMore && hasMore) {
         onLoadMore();
       }
     };
@@ -218,7 +218,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
   return (
     <div className="pb-20 pt-28 md:pt-0">
-      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 mb-4 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
+      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 mb-4 transition-all duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
         <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
           <button onClick={() => setActiveTab('for-you')} className="flex-1 h-full text-sm font-bold relative group transition-all focus:outline-none">
             <span className={activeTab === 'for-you' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-zinc-600'}>{t('for_you')}</span>
@@ -232,7 +232,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl xl:max-w-3xl mx-auto">
 
         <div className="space-y-4">
           {hasNewContent && onRefresh && (
@@ -373,18 +373,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
               </div>
             )}
 
-            {hasMore && (
-              <div className="flex justify-center pb-8 pt-4">
-                <button
-                  onClick={onLoadMore}
-                  disabled={isLoadingMore}
-                  className="px-6 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                >
-                  {isLoadingMore && <Loader2 className="animate-spin" size={16} />}
-                  <span>{isLoadingMore ? t('loading') : t('show_more')}</span>
-                </button>
-              </div>
-            )}
+
             {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={onShareViaChat} currentUser={user} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
 
             {

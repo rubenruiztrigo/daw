@@ -129,7 +129,7 @@ const CreateEventModal: React.FC<{
   const t = useTranslation(language);
   const [formData, setFormData] = useState({
     title: '',
-    type: 'physical',
+    type: 'physical' as 'physical' | 'online',
     date: '',
     time: '',
     location: '',
@@ -168,8 +168,7 @@ const CreateEventModal: React.FC<{
     if (!error && data) {
       if (shouldPromote && onAddPost) {
         let typeTag = language === 'es' ? 'Presencial' : 'Physical';
-        if (formData.type === 'online_course') typeTag = language === 'es' ? 'CursoOnline' : 'OnlineCourse';
-        if (formData.type === 'meeting') typeTag = language === 'es' ? 'Reunion' : 'Meeting';
+        if (formData.type === 'online') typeTag = language === 'es' ? 'Online' : 'Online';
 
         await onAddPost(
           t('event_promoted_msg', { title: formData.title }),
@@ -191,7 +190,7 @@ const CreateEventModal: React.FC<{
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
-      <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg max-h-[85vh] flex flex-col rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-blue-600 text-white rounded-2xl">
@@ -205,7 +204,7 @@ const CreateEventModal: React.FC<{
           <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"><X size={24} /></button>
         </div>
 
-        <form onSubmit={(e) => e.preventDefault()} className="p-8 space-y-5">
+        <form onSubmit={(e) => e.preventDefault()} className="p-8 space-y-5 overflow-y-auto custom-scrollbar">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{t('event_title_label')}</label>
             <input
@@ -222,14 +221,30 @@ const CreateEventModal: React.FC<{
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{t('event_type_label')}</label>
             <select
               value={formData.type}
-              onChange={e => setFormData({ ...formData, type: e.target.value })}
+              onChange={e => setFormData({ ...formData, type: e.target.value as 'physical' | 'online' })}
               className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all appearance-none"
             >
               <option value="physical">{t('event_physical')}</option>
-              <option value="online_course">{t('event_online')}</option>
-              <option value="meeting">{t('event_meeting')}</option>
+              <option value="online">{t('event_online')}</option>
             </select>
           </div>
+
+          {formData.type === 'physical' && (
+            <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ubicación</label>
+              <div className="relative">
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input
+                  required
+                  type="text"
+                  placeholder="Ej. Sala de conferencias o Dirección"
+                  value={formData.location}
+                  onChange={e => setFormData({ ...formData, location: e.target.value })}
+                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -259,23 +274,6 @@ const CreateEventModal: React.FC<{
               </div>
             </div>
           </div>
-
-          {formData.type === 'physical' && (
-            <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
-              <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ubicación</label>
-              <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                <input
-                  required
-                  type="text"
-                  placeholder="Ej. Sala de conferencias o Dirección"
-                  value={formData.location}
-                  onChange={e => setFormData({ ...formData, location: e.target.value })}
-                  className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all"
-                />
-              </div>
-            </div>
-          )}
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descripción</label>
@@ -470,7 +468,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         id: ev.id,
         creator_id: ev.creator_id,
         title: ev.title,
-        type: ev.type as any,
+        type: (ev.type === 'online_course' || ev.type === 'meeting') ? 'online' : ev.type,
         event_date: ev.event_date,
         event_time: ev.event_time,
         location: ev.location,
@@ -620,8 +618,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!currentUser) return;
 
     let typeTag = 'Presencial';
-    if (event.type === 'online_course') typeTag = 'CursoOnline';
-    if (event.type === 'meeting') typeTag = 'Reunion';
+    if ((event.type as any) === 'online' || (event.type as any) === 'online_course') typeTag = 'Online';
 
     const content = `📢 ¡Os invito a participar en este evento que he organizado!\n\n${event.title}\n\n#Evento #${typeTag}`;
 
@@ -632,7 +629,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[92vw] md:max-w-4xl mx-auto space-y-4 md:space-y-6 pb-12 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
+    <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-4 md:space-y-6 pb-12 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
       <div className="bg-white dark:bg-[#111] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800 relative z-0">
         <div
           className="h-20 md:h-48 relative overflow-hidden group/banner transition-all duration-700 cursor-pointer"

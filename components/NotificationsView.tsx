@@ -38,6 +38,18 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
     }
   }, [unreadCount, onMarkAllRead]);
 
+  useEffect(() => {
+    if (!onLoadMore) return;
+    const handleScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400 && hasMore) {
+        onLoadMore();
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [onLoadMore, hasMore]);
+
+
   const getIcon = (type: string, content: string = "") => {
     const isNews = content.toLowerCase().includes('noticia') || content.toLowerCase().includes('news');
     const isEvent = content.toLowerCase().includes('evento') || content.toLowerCase().includes('event');
@@ -108,7 +120,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   });
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-x-hidden">
+    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-x-hidden">
       <div className="flex items-center mb-2 px-1">
         <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('notifications')}</h2>
       </div>
@@ -205,16 +217,16 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         )}
       </div>
 
-      {hasMore && filteredNotifications.length > 0 && (
+      {hasMore && (
         <div className="flex justify-center pb-8">
-          <button
-            onClick={onLoadMore}
-            className="px-6 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900 transition-all"
-          >
-            {t('show_more')}
-          </button>
+          <div className="flex items-center space-x-2 text-slate-400 font-bold animate-pulse">
+            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></span>
+            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+          </div>
         </div>
       )}
+
     </div>
   );
 };

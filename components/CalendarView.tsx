@@ -72,7 +72,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
         id: ev.id,
         creator_id: ev.creator_id,
         title: ev.title,
-        type: ev.type as any,
+        type: (ev.type === 'online_course' || ev.type === 'meeting') ? 'online' : ev.type,
         event_date: ev.event_date,
         event_time: ev.event_time,
         location: ev.location,
@@ -122,6 +122,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   const getTypeStyle = (type: string) => {
     switch (type) {
       case 'physical': return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'online':
       case 'online_course': return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400';
       case 'meeting': return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400';
       default: return 'bg-gray-100 text-gray-600';
@@ -131,6 +132,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   const getTypeName = (type: string) => {
     switch (type) {
       case 'physical': return t('event_physical');
+      case 'online':
       case 'online_course': return t('event_online');
       case 'meeting': return t('event_meeting');
       default: return type;
@@ -141,7 +143,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   const todaysEvents = mappedEventsByDate[dateKey] || [];
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-8 pb-20 animate-in fade-in duration-500 relative" onClick={() => setIsSelectorOpen(false)}>
+    <div className="w-full flex flex-col lg:flex-row gap-8 pb-20 animate-in fade-in duration-500 relative" onClick={() => setIsSelectorOpen(false)}>
       <div className="flex-1 bg-white dark:bg-[#111] p-8 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative overflow-visible">
         <div className="flex items-center justify-between mb-10">
           <div className="relative">
