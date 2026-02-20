@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Language } from './utils/translations';
 import { encryptMessage, decryptMessage } from './utils/encryption';
 import { notifyUserApproved, notifyUserRejected } from './utils/emailService';
@@ -25,6 +25,8 @@ import { supabase } from './supabaseClient';
 import { Loader2, X } from 'lucide-react';
 import { Toast } from './components/Toast';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
+import { PendingAccount } from './components/PendingAccount';
+import { RejectedAccount } from './components/RejectedAccount';
 
 type Theme = 'light' | 'dark';
 
@@ -37,6 +39,7 @@ const App: React.FC = () => {
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   // const [currentView, setCurrentView] = useState<AppView>('feed'); // Removed in favor of Router
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const currentUserDataRef = useRef<User | null>(null); // Added ref for realtime
   // const [viewingUserId, setViewingUserId] = useState<string | null>(null); // Handled by URL param
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -54,6 +57,16 @@ const App: React.FC = () => {
   const [processingReposts, setProcessingReposts] = useState<Set<string>>(new Set());
   const [processingFollows, setProcessingFollows] = useState<Set<string>>(new Set());
   const [processingVotes, setProcessingVotes] = useState<Set<string>>(new Set());
+  const [pinnedPosts, setPinnedPosts] = useState<Set<string>>(() => {
+    try {
+      const savedPins = localStorage.getItem('pinned_posts');
+      return savedPins ? new Set(JSON.parse(savedPins)) : new Set();
+    } catch (e) {
+      console.error("Error parsing pinned posts", e);
+      return new Set();
+    }
+  });
+
   const [sharingEvent, setSharingEvent] = useState<CalendarEvent | null>(null);
   const [sharingPost, setSharingPost] = useState<Post | null>(null);
 
@@ -116,22 +129,21 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       if (event === 'SIGNED_IN') {
-        // navigate('/feed'); // Removed to prevent redirect on tab focus
+        // let the useEffect for session/status handle navigation
       }
       if (event === 'PASSWORD_RECOVERY' || (session && (session as any).type === 'recovery')) {
-        setIsResettingPassword(true);
+        setIsResettingPassword(true); // Helper state, but we should rely on route
+        navigate('/recover-password');
+      }
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setCurrentUserData(null);
+        navigate('/login');
       }
     });
 
-    // Handle explicit route for password recovery (initial load)
-    if (window.location.pathname.includes('/recover-password')) {
-      setIsResettingPassword(true);
-      // No need to navigate here yet, the state will trigger the rendering
-      // Or better yet, we can navigate if we want to clean the URL later
-    }
-
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -145,6 +157,22 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('language', language);
   }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem('pinned_posts', JSON.stringify(Array.from(pinnedPosts)));
+  }, [pinnedPosts]);
+
+  const handleTogglePin = (postId: string) => {
+    setPinnedPosts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+      }
+      return newSet;
+    });
+  };
 
   useEffect(() => {
     if (session?.user && !isResettingPassword) {
@@ -197,9 +225,9 @@ const App: React.FC = () => {
               // Refresh profile on any change to own profile
               fetchUserProfile(session.user.id);
 
-              if (newProfile.status === 'active') {
+              if (newProfile.status === 'active' && currentUserDataRef.current?.status !== 'active') { // Modified line
                 setToast({ message: "¡Tu cuenta ha sido aprobada! Bienvenido.", type: 'success' });
-              } else if (newProfile.status === 'rejected') {
+              } else if (newProfile.status === 'rejected' && currentUserDataRef.current?.status !== 'rejected') { // Modified line
                 setToast({ message: "Tu cuenta ha sido rechazada.", type: 'error' });
               }
             }
@@ -214,6 +242,11 @@ const App: React.FC = () => {
     }
   }, [session, isResettingPassword]);
 
+  // Sync ref for realtime callback
+  useEffect(() => {
+    currentUserDataRef.current = currentUserData;
+  }, [currentUserData]);
+
   // Polling effect for pending users (Fallback for Realtime)
   useEffect(() => {
     let interval: any;
@@ -225,6 +258,7 @@ const App: React.FC = () => {
             console.log("Profile activated via Polling!");
             fetchUserProfile(session.user.id);
             setToast({ message: "¡Tu cuenta ha sido aprobada!", type: 'success' });
+            // Navigation handled by status effect below
           } else if (data && data.status === 'rejected') {
             fetchUserProfile(session.user.id);
           } else if (!data) {
@@ -236,6 +270,43 @@ const App: React.FC = () => {
     }
     return () => { if (interval) clearInterval(interval); };
   }, [session, currentUserData?.status]);
+
+  // Main Authentication & Status Routing Effect
+  useEffect(() => {
+    if (isLoadingAuth) return;
+
+    const currentPath = location.pathname;
+    const isPublicRoute = ['/login', '/register', '/recover-password'].includes(currentPath);
+
+    if (!session && !isPublicRoute) {
+      navigate('/login');
+      return;
+    }
+
+    if (session && isPublicRoute && !isResettingPassword) {
+      // If logged in and trying to access public auth routes, redirect to app
+      // But checking status first
+      if (currentUserData) {
+        if (currentUserData.status === 'pending') navigate('/account/pending');
+        else if (currentUserData.status === 'rejected') navigate('/account/rejected');
+        else navigate('/feed');
+      }
+      return;
+    }
+
+    if (session && currentUserData) {
+      if (currentUserData.status === 'pending' && currentPath !== '/account/pending') {
+        navigate('/account/pending');
+      } else if (currentUserData.status === 'rejected' && currentPath !== '/account/rejected') {
+        navigate('/account/rejected');
+      } else if (currentUserData.status === 'active') {
+        // Prevent active users from seeing status pages
+        if (currentPath === '/account/pending' || currentPath === '/account/rejected') {
+          navigate('/feed');
+        }
+      }
+    }
+  }, [session, currentUserData, isLoadingAuth, location.pathname, isResettingPassword, navigate]);
 
   const fetchUserProfile = async (uid: string) => {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
@@ -282,8 +353,11 @@ const App: React.FC = () => {
         birthDate: profile.birth_date,
         badges: filteredBadges.map(b => ({ id: b.badge_id, created_at: b.created_at })),
         notificationSettings: profile.notification_settings,
+        chatSettings: profile.chat_settings,
         status: profile.status,
-        isAdmin: profile.is_admin
+        isAdmin: profile.is_admin,
+        isOrganization: profile.is_organization,
+        organizationObjective: profile.organization_objective || (profile.is_organization ? profile.bio : '')
       });
     } else {
       console.log("Profile not found -> Rejected state");
@@ -337,7 +411,9 @@ const App: React.FC = () => {
         joinedDate: u.created_at,
         birthDate: u.birth_date,
         badges: badgesByUserId[u.id] || [],
-        notificationSettings: u.notification_settings
+        notificationSettings: u.notification_settings,
+        isOrganization: u.is_organization,
+        organizationObjective: u.organization_objective
       })));
     }
   };
@@ -454,13 +530,28 @@ const App: React.FC = () => {
         supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id),
         supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id),
         supabase.from('post_reposts').select('post_id').eq('user_id', session.user.id),
-        supabase.from('user_events').select('*'),
+        supabase.from('user_events').select('*').gte('attendees_count', 2),
         supabase.from('profiles').select('*'),
         supabase.from('comment_likes').select('comment_id').eq('user_id', session.user.id)
       ]);
 
       const profilesMap = new Map(); (profilesData || []).forEach(p => profilesMap.set(p.id, p));
       const eventsMap = new Map(); (globalEventsData || []).forEach(ev => eventsMap.set(ev.id, { id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count }));
+
+      // 1.5. Check for linked events that might be missing from the filtered globalEvents list (attendees >= 2)
+      // This is crucial for event promotion previews to work even if the event is new/has few attendees.
+      const linkedEventIds = new Set((postsData || []).map(p => p.linked_event_id).filter(Boolean));
+      const missingEventIds = Array.from(linkedEventIds).filter(id => !eventsMap.has(id));
+
+      if (missingEventIds.length > 0) {
+        const { data: missingEvents } = await supabase.from('user_events').select('*').in('id', missingEventIds);
+        if (missingEvents) {
+          missingEvents.forEach((ev: any) => {
+            // We add them to eventsMap for rendering, but NOT to globalEventsData state to keep the "Upcoming Events" list filtered.
+            eventsMap.set(ev.id, { id: ev.id, creator_id: ev.creator_id, title: ev.title, type: ev.type as any, event_date: ev.event_date, event_time: ev.event_time, location: ev.location, description: ev.description, attendees: ev.attendees_count });
+          });
+        }
+      }
 
       // 2. Collect IDs for related data fetching
       const postIds = (postsData || []).map(p => p.id);
@@ -748,30 +839,39 @@ const App: React.FC = () => {
   const handleUpdateUser = async (updatedUser: User) => {
     if (!session?.user) return;
     setCurrentUserData(updatedUser);
+
+    // For organizations, mapped 'bio' input to 'organizationObjective' in EditProfileModal
+    // But in SettingsView, we map it to 'organizationObjective'. 
+    // We should ensure we save to the correct column.
+
     const { error } = await supabase.from('profiles').update({
       name: updatedUser.name,
       last_name: updatedUser.lastName,
       username: updatedUser.username?.toLowerCase().trim(),
-      email: updatedUser.email,
-      birth_date: updatedUser.birthDate,
+      // email: updatedUser.email, // Removed to avoid schema issues if column missing or read-only
+      birth_date: updatedUser.birthDate || null, // Ensure empty string becomes null to avoid 400 error
       position: updatedUser.position,
       department: updatedUser.department,
       job_category: updatedUser.jobCategory,
       administration_type: updatedUser.administrationType,
-      role_description: updatedUser.roleDescription,
-      organization_name: updatedUser.organizationName,
+      // role_description: updatedUser.roleDescription, // Removed as it likely doesn't exist in DB
+      // organization_objective: ... (Already removed)
       country: updatedUser.country,
       region: updatedUser.region,
       bio: updatedUser.bio,
       interests: updatedUser.interests,
       avatar: updatedUser.avatar,
-      banner: updatedUser.banner,
-      banner_color: updatedUser.bannerColor,
+      // banner: updatedUser.banner, // Removed potential schema mismatch
+      // banner_color: updatedUser.bannerColor, // Removed potential schema mismatch
       notification_settings: updatedUser.notificationSettings,
       updated_at: new Date().toISOString()
     }).eq('id', session.user.id);
     if (!error) {
       await Promise.all([fetchUserProfile(session.user.id), fetchUsers(), fetchFeed()]);
+      setToast({ message: "Guardado", type: 'success' });
+    } else {
+      console.error("Error updating profile:", error);
+      setToast({ message: "Error al actualizar perfil", type: 'error' });
     }
   };
 
@@ -797,8 +897,32 @@ const App: React.FC = () => {
     const table = type === 'news' ? 'news' : 'posts';
     const payload: any = { author_id: session.user.id, content, tags, image_url: imageUrl || null, updated_at: new Date().toISOString() };
     if (type === 'post') { payload.doc_url = docUrl || null; payload.doc_name = docName || null; if (linkedEventId) payload.linked_event_id = linkedEventId; }
-    const { error } = await supabase.from(table).insert(payload);
-    if (error) console.error("Error al publicar:", error.message); else fetchFeed();
+    const { data: newPost, error } = await supabase.from(table).insert(payload).select().single();
+
+    if (error) {
+      console.error("Error al publicar:", error.message);
+    } else {
+      // Handle Mentions
+      const mentionMatches = content.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))]; // Remove @ and dedup
+
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({
+              user_id: mentionedUser.id,
+              sender_id: session.user.id,
+              type: 'mention',
+              content: `te ha mencionado en una publicación`,
+              post_id: newPost.id
+            });
+          }
+        }
+      }
+
+      fetchFeed();
+    }
   };
 
   const handleAddComment = async (postId: string, text: string) => {
@@ -811,6 +935,7 @@ const App: React.FC = () => {
     try {
       await supabase.from(table).insert({ [idField]: postId, author_id: session.user.id, text });
 
+      // Notify post author (if not self)
       if (post.authorId !== session.user.id) {
         await supabase.from('notifications').insert({
           user_id: post.authorId,
@@ -820,6 +945,28 @@ const App: React.FC = () => {
           post_id: postId
         });
       }
+
+      // Handle Mentions
+      const mentionMatches = text.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))];
+
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          // Don't notify if self-mention or if mentioned user is the post author (avoid double notification if they get a comment notif already? Actually mention is distinct)
+          // Let's notify even if post author, because it's a specific mention.
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({
+              user_id: mentionedUser.id,
+              sender_id: session.user.id,
+              type: 'mention',
+              content: `te ha mencionado en un comentario`,
+              post_id: postId
+            });
+          }
+        }
+      }
+
       fetchFeed();
     } catch (e: any) {
       console.error("Error adding comment:", e);
@@ -841,15 +988,18 @@ const App: React.FC = () => {
 
       // Buscar autor del comentario/respuesta para notificar
       let targetAuthorId: string | null = null;
+      let relatedPostId = selectedPostId; // Might need to ensure this is set correctly in context, usually it is when modal is open
+
       if (parentReplyId) {
         const { data: pr } = await supabase.from('comment_replies').select('author_id').eq('id', parentReplyId).single();
         targetAuthorId = pr?.author_id || null;
       } else {
-        const { data: pc } = await supabase.from('post_comments').select('author_id').eq('id', commentId).maybeSingle();
-        if (pc) targetAuthorId = pc.author_id;
+        const { data: pc } = await supabase.from('post_comments').select('author_id, post_id').eq('id', commentId).maybeSingle();
+        if (pc) { targetAuthorId = pc.author_id; relatedPostId = pc.post_id || relatedPostId; }
         else {
-          const { data: nc } = await supabase.from('news_comments').select('author_id').eq('id', commentId).maybeSingle();
+          const { data: nc } = await supabase.from('news_comments').select('author_id, news_id').eq('id', commentId).maybeSingle();
           targetAuthorId = nc?.author_id || null;
+          relatedPostId = nc?.news_id || relatedPostId;
         }
       }
 
@@ -857,10 +1007,29 @@ const App: React.FC = () => {
         await supabase.from('notifications').insert({
           user_id: targetAuthorId,
           sender_id: session.user.id,
-          type: 'comment',
+          type: 'comment', // Or 'reply' if we had it, but 'comment' is fine with "ha respondido" content
           content: `ha respondido a tu comentario`,
-          post_id: selectedPostId
+          post_id: relatedPostId
         });
+      }
+
+      // Handle Mentions
+      const mentionMatches = text.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))];
+
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({
+              user_id: mentionedUser.id,
+              sender_id: session.user.id,
+              type: 'mention',
+              content: `te ha mencionado en una respuesta`,
+              post_id: relatedPostId
+            });
+          }
+        }
       }
 
       setToast({ message: "Respuesta publicada correctamente.", type: 'success' });
@@ -1166,107 +1335,84 @@ const App: React.FC = () => {
     }
   };
 
-  if (isLoadingAuth || (!currentUserData && session && !isResettingPassword)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
-  if (isResettingPassword) return <PasswordRecover onComplete={() => { setIsResettingPassword(false); navigate('/'); }} />;
-  if (!session) { if (isRegistering) return <Onboarding onComplete={() => setIsRegistering(false)} onCancel={() => setIsRegistering(false)} />; return <Login onLogin={() => { navigate('/feed'); }} onRegister={() => setIsRegistering(true)} />; }
+  // Render Logic
+  if (isLoadingAuth) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
 
-  // Replace ProfileWrapper usage with ProfileRoute in routes
-  // This step will be done in the next call or by carefully targeting the lines.
-  // FIRST: Remove ProfileWrapper definition block completely.
-
-
-
-  // Removed SearchWrapper in favor of SearchRoute
-
-
-  const handleApproveUser = async (userId: string, notificationId: string) => {
+  const handleApproveUser = async (userId: string, notificationId?: string) => {
+    if (!session?.user) return;
     try {
       const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
       if (error) throw error;
 
-      const { data: userProfile } = await supabase.from('profiles').select('email').eq('id', userId).single();
-      if (userProfile?.email) await notifyUserApproved(userProfile.email);
+      if (notificationId) {
+        // Optimistic update for UI
+        const user = users.find(u => u.id === userId);
+        const name = user ? `${user.name} ${user.lastName || ''}`.trim() : 'Usuario';
+        const content = `Solicitud de ${name} aceptada`;
 
-      await supabase.from('notifications').delete().eq('id', notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        setNotifications(prev => prev.map(n =>
+          (n.senderId === userId && n.type === 'registration_request')
+            ? { ...n, content: content, isRead: true, type: 'system' }
+            : n
+        ));
+
+        // Call Secure RPC to update globally
+        const { error: rpcError } = await supabase.rpc('resolve_registration_request', {
+          target_user_id: userId,
+          request_status: 'active'
+        });
+
+        if (rpcError) throw rpcError;
+      }
+
       setToast({ message: "Usuario aprobado correctamente.", type: 'success' });
-    } catch (error) {
-      console.error("Error approving user:", error);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+      await fetchNotifications();
+    } catch (err: any) {
+      console.error("Error approving user:", err.message);
       setToast({ message: "Error al aprobar usuario.", type: 'error' });
     }
   };
 
-  const handleRejectUser = async (userId: string, notificationId: string) => {
+  const handleRejectUser = async (userId: string, notificationId?: string) => {
+    if (!session?.user) return;
     try {
-      // SOFT DELETE processing: Update status to rejected and clear username
-      const { data: userProfile } = await supabase.from('profiles').select('email').eq('id', userId).single();
-
-      // Update generic fields to clear PII if needed, but critical is status and username
-      const { error } = await supabase.from('profiles').update({
-        status: 'rejected',
-        username: null, // Clear username so it can be reused
-        updated_at: new Date().toISOString()
-      }).eq('id', userId);
-
+      const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', userId);
       if (error) throw error;
 
-      if (userProfile?.email) await notifyUserRejected(userProfile.email);
+      if (notificationId) {
+        // Optimistic update for UI
+        const user = users.find(u => u.id === userId);
+        const name = user ? `${user.name} ${user.lastName || ''}`.trim() : 'Usuario';
+        const content = `Solicitud de ${name} rechazada`;
 
-      await supabase.from('notifications').delete().eq('id', notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      setToast({ message: "Usuario rechazado (perfil conservado).", type: 'info' });
-    } catch (error) {
-      console.error("Error rejecting user:", error);
+        setNotifications(prev => prev.map(n =>
+          (n.senderId === userId && n.type === 'registration_request')
+            ? { ...n, content: content, isRead: true, type: 'system' }
+            : n
+        ));
+
+        // Call Secure RPC to update globally
+        const { error: rpcError } = await supabase.rpc('resolve_registration_request', {
+          target_user_id: userId,
+          request_status: 'rejected'
+        });
+
+        if (rpcError) throw rpcError;
+      }
+
+      setToast({ message: "Usuario rechazado.", type: 'success' });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
+      await fetchNotifications();
+    } catch (err: any) {
+      console.error("Error rejecting user:", err.message);
       setToast({ message: "Error al rechazar usuario.", type: 'error' });
     }
   };
 
-  if (session && currentUserData) {
-    if (currentUserData.status === 'pending') {
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-3xl p-8 text-center shadow-xl">
-            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Loader2 className="animate-spin" size={32} />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 mb-2">Cuenta en revisión</h2>
-            <p className="text-slate-600 mb-8">
-              Tu solicitud está pendiente de aprobación por el administrador.
-              Te notificaremos por correo electrónico cuando tu cuenta esté activa.
-            </p>
-            <button
-              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
-              className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors"
-            >
-              Cerrar sesión
-            </button>
-          </div>
-        </div>
-      );
-    }
+  // We remove the conditional returns regarding pending/rejected/auth here because we use Routes now.
+  // However, we still need to conditionally render the Layout only for app routes.
 
-    if (currentUserData.status === 'rejected') {
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-3xl p-8 text-center shadow-xl">
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <X size={32} />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 mb-2">Solicitud rechazada</h2>
-            <p className="text-slate-600 mb-8">
-              Tu solicitud de registro ha sido denegada por el administrador.
-            </p>
-            <button
-              onClick={() => supabase.auth.signOut().then(() => setSession(null))}
-              className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors"
-            >
-              Cerrar sesión
-            </button>
-          </div>
-        </div>
-      );
-    }
-  }
 
   const PostDetailWrapper = () => {
     const { postId } = useParams();
@@ -1286,7 +1432,7 @@ const App: React.FC = () => {
         onRepost={handleRepost}
         onNavigateToProfile={handleNavigateToProfile}
         onBack={() => navigate(-1)}
-        onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
+        onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)}
         users={users}
         onNavigateToEvent={handleNavigateToEvent}
         chats={chats}
@@ -1297,181 +1443,213 @@ const App: React.FC = () => {
     );
   };
 
+
+
+
+
+
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
-      <Layout
-        user={currentUserData!}
-        notifications={notifications}
-        globalEvents={globalEvents}
-        posts={posts}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onSearchSubmit={(q) => navigate(`/search?q=${q}`)}
-        onLogout={() => {
-          sessionStorage.clear(); // Clear all scroll/tab persistence on logout
-          supabase.auth.signOut();
-        }}
-        language={language}
-      >
-        <Routes>
-          <Route path="/" element={<Navigate to="/feed" replace />} />
-          <Route path="/feed" element={
-            <SocialFeed
-              posts={posts.filter(p => p.type === 'post')}
-              onLoadMore={handleLoadMore}
-              hasMore={hasMorePosts}
-              isLoadingMore={isLoadingMore}
-              user={currentUserData!}
-              onLike={(id) => handleVote(id, 'up')}
-              onVote={handleVote}
-              onRepost={handleRepost}
-              onAddPost={handleAddPost}
-              onAddComment={handleAddComment}
-              users={users}
-              onNavigateToProfile={handleNavigateToProfile}
-              followedUserIds={followedUserIds}
-              followerUserIds={followerUserIds}
-              onToggleFollow={handleToggleFollow}
-              onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
-              onDeletePost={handleDeletePost}
-              initialContent={prefilledPostContent}
-              prefilledEvent={prefilledEvent}
-              onClearInitialContent={() => { setPrefilledPostContent(null); setPrefilledEvent(null); }}
-              onViewCalendar={() => navigate('/calendar')}
-              onNavigateToEvent={handleNavigateToEvent}
-              chats={chats}
-              onShareViaChat={handleSendMessageFromShare}
-              language={language}
-              hasNewContent={hasNewPosts}
-              onRefresh={handleRefreshFeed}
-            />
-          } />
-          <Route path="/news" element={
-            <NewsHubView
-              posts={posts.filter(p => p.type === 'news')}
-              onLoadMore={handleLoadMore}
-              hasMore={hasMorePosts}
-              isLoadingMore={isLoadingMore}
-              user={currentUserData!}
-              onVote={handleVote}
-              onRepost={handleRepost}
-              onAddPost={handleAddPost}
-              onAddComment={handleAddComment}
-              currentUser={currentUserData!}
-              users={users}
-              onNavigateToProfile={handleNavigateToProfile}
-              onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
-              onDeletePost={handleDeletePost}
-              chats={chats}
-              followerUserIds={followerUserIds}
-              onShareViaChat={handleSendMessageFromShare}
-              language={language}
-              hasNewContent={hasNewPosts}
-              onRefresh={handleRefreshFeed}
-            />
-          } />
-          <Route path="/calendar" element={
-            <CalendarView
-              onNavigateToEvent={handleNavigateToEvent}
-              onPromoteEvent={(ev) => {
-                setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://red.novagob.org/u/${ev.creator_id}/e/${ev.id} #Evento`);
-                setPrefilledEvent(ev);
-                navigate('/feed');
-              }}
-              onSupportEvent={handleSupportEvent}
-              onShareEvent={setSharingEvent}
-              initialDate={targetCalendarDate}
-              language={language}
-            />
-          } />
-          <Route path="/messages/:chatId?" element={
-            <MessagesView
-              user={currentUserData!}
-              chats={chats}
-              posts={posts}
-              users={users}
-              onSendMessage={handleSendMessage}
-              onNavigateToProfile={handleNavigateToProfile}
-              onViewPost={(pid) => navigate(`/post/${pid}`)}
-              externalActiveId={activeChatUserId}
-              onMarkChatAsRead={handleMarkChatAsRead}
-              onNavigateToEvent={handleNavigateToEvent}
-              globalEvents={globalEvents}
-              language={language}
-            />
-          } />
-          <Route path="/notifications" element={
-            <NotificationsView
-              notifications={notifications}
-              onMarkAllRead={handleMarkAllNotificationsRead}
-              onNotificationClick={(id) => { if (id) navigate(`/post/${id}`); }}
-              onLoadMore={() => setNotificationsLimit(prev => prev + 10)}
-              hasMore={hasMoreNotifications}
-              language={language}
-              onApproveUser={handleApproveUser}
-              onRejectUser={handleRejectUser}
-            />
-          } />
-          <Route path="/store" element={<StoreView user={currentUserData!} language={language} />} />
+      <Routes>
+        <Route path="/login" element={<Login onLogin={() => { navigate('/feed'); }} onRegister={() => navigate('/register')} />} />
+        <Route path="/register" element={<Onboarding onComplete={() => navigate('/account/pending')} onCancel={() => navigate('/login')} />} />
+        <Route path="/recover-password" element={<PasswordRecover onComplete={() => navigate('/login')} />} />
 
-          <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => { sessionStorage.clear(); supabase.auth.signOut(); }} onViewChange={(v) => navigate(`/${v}`)} theme={theme} onThemeChange={setTheme} language={language} onLanguageChange={setLanguage} />} />
-          <Route path="/search" element={
-            <SearchRoute
-              posts={posts}
-              users={users}
-              onLike={(id) => handleVote(id, 'up')}
-              onVote={handleVote}
-              onRepost={handleRepost}
-              onAddComment={handleAddComment}
-              onDeletePost={handleDeletePost}
-              onViewChange={(v) => { if (v === 'profile') handleNavigateToProfile(currentUserData?.id || ''); else navigate(`/${v}`); }}
-              currentUser={currentUserData!}
-              followedUserIds={followedUserIds}
-              followerUserIds={followerUserIds}
-              onToggleFollow={handleToggleFollow}
-              onNavigateToProfile={handleNavigateToProfile}
-              onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onSearchHashtag={(t) => navigate(`/search?q=${t}`)}
-              onNavigateToEvent={handleNavigateToEvent}
-              chats={chats}
-              onShareViaChat={handleSendMessageFromShare}
-              language={language}
-            />
-          } />
-          <Route path="/post/:postId" element={<PostDetailWrapper />} />
-          <Route path="/:username?" element={
-            <ProfileRoute
-              users={users}
-              currentUserData={currentUserData}
-              posts={posts}
-              chats={chats}
-              followerUserIds={followerUserIds}
-              followedUserIds={followedUserIds}
-              onUpdateUser={handleUpdateUser}
-              onRepost={handleRepost}
-              onToggleFollow={handleToggleFollow}
-              onDeletePost={handleDeletePost}
-              onNavigateToEvent={handleNavigateToEvent}
-              onStartChat={(tu) => { navigate(`/messages/${tu.id}`); }}
-              onAddPost={handleAddPost}
-              onPromoteEvent={(ev) => { setPrefilledPostContent(ev.description || `📢 ¡Evento organizado!\n\n${ev.title}\n\n#Evento`); setPrefilledEvent(ev); navigate('/feed'); }}
-              onShareViaChat={handleSendMessageFromShare}
-              focusedEventId={targetEventId}
-              onClearFocusedEvent={() => setTargetEventId(null)}
-              onSearchHashtag={(t) => { setSearchQuery(t); navigate(`/search?q=${t}`); }}
-              onNavigateToPost={(id) => navigate(`/post/${id}`)}
-              onNavigateToProfile={handleNavigateToProfile}
-              onLike={(id) => handleVote(id, 'up')}
-              onVote={handleVote}
-              onAddComment={handleAddComment}
+        <Route path="/account/pending" element={
+          <PendingAccount onLogout={() => { supabase.auth.signOut(); navigate('/login'); }} />
+        } />
+        <Route path="/account/rejected" element={
+          <RejectedAccount onLogout={() => { supabase.auth.signOut(); navigate('/login'); }} />
+        } />
+
+        <Route path="/*" element={
+          (!session || !currentUserData) ? (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>
+          ) : (
+            <Layout
+              user={currentUserData!}
+              notifications={notifications}
               globalEvents={globalEvents}
+              posts={posts}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSearchSubmit={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)}
+              onLogout={() => {
+                sessionStorage.clear();
+                supabase.auth.signOut();
+                navigate('/login');
+              }}
               language={language}
-            />
-          } />
-        </Routes>
-      </Layout>
+              onRefresh={handleRefreshFeed}
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/feed" replace />} />
+                <Route path="/feed" element={
+                  <SocialFeed
+                    posts={posts.filter(p => p.type === 'post')}
+                    onLoadMore={handleLoadMore}
+                    hasMore={hasMorePosts}
+                    isLoadingMore={isLoadingMore}
+                    user={currentUserData!}
+                    onLike={(id) => handleVote(id, 'up')}
+                    onVote={handleVote}
+                    onRepost={handleRepost}
+                    onAddPost={handleAddPost}
+                    onAddComment={handleAddComment}
+                    users={users}
+                    onNavigateToProfile={handleNavigateToProfile}
+                    followedUserIds={followedUserIds}
+                    followerUserIds={followerUserIds}
+                    onToggleFollow={handleToggleFollow}
+                    onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)}
+                    onDeletePost={handleDeletePost}
+                    initialContent={prefilledPostContent}
+                    prefilledEvent={prefilledEvent}
+                    onClearInitialContent={() => { setPrefilledPostContent(null); setPrefilledEvent(null); }}
+                    onViewCalendar={() => navigate('/calendar')}
+                    onNavigateToEvent={handleNavigateToEvent}
+                    chats={chats}
+                    onShareViaChat={handleSendMessageFromShare}
+                    language={language}
+                    hasNewContent={hasNewPosts}
+                    onRefresh={handleRefreshFeed}
+                    pinnedPosts={pinnedPosts}
+                    onTogglePin={handleTogglePin}
+                  />
+                } />
+                <Route path="/news" element={
+                  <NewsHubView
+                    posts={posts.filter(p => p.type === 'news')}
+                    onLoadMore={handleLoadMore}
+                    hasMore={hasMorePosts}
+                    isLoadingMore={isLoadingMore}
+                    user={currentUserData!}
+                    onVote={handleVote}
+                    onRepost={handleRepost}
+                    onAddPost={handleAddPost}
+                    onAddComment={handleAddComment}
+                    currentUser={currentUserData!}
+                    users={users}
+                    onNavigateToProfile={handleNavigateToProfile}
+                    onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)}
+                    onDeletePost={handleDeletePost}
+                    chats={chats}
+                    followerUserIds={followerUserIds}
+                    onShareViaChat={handleSendMessageFromShare}
+                    language={language}
+                    hasNewContent={hasNewPosts}
+                    onRefresh={handleRefreshFeed}
+                  />
+                } />
+                <Route path="/calendar" element={
+                  <CalendarView
+                    onNavigateToEvent={handleNavigateToEvent}
+                    onPromoteEvent={(ev) => {
+                      setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://red.novagob.org/u/${ev.creator_id}/e/${ev.id} #Evento`);
+                      setPrefilledEvent(ev);
+                      navigate('/feed');
+                    }}
+                    onSupportEvent={handleSupportEvent}
+                    onShareEvent={setSharingEvent}
+                    initialDate={targetCalendarDate}
+                    language={language}
+                  />
+                } />
+                <Route path="/messages/:chatId?" element={
+                  <MessagesView
+                    user={currentUserData!}
+                    chats={chats}
+                    posts={posts}
+                    users={users}
+                    onSendMessage={handleSendMessage}
+                    onNavigateToProfile={handleNavigateToProfile}
+                    onViewPost={(pid) => navigate(`/post/${pid}`)}
+                    externalActiveId={activeChatUserId}
+                    onMarkChatAsRead={handleMarkChatAsRead}
+                    onNavigateToEvent={handleNavigateToEvent}
+                    globalEvents={globalEvents}
+                    language={language}
+                  />
+                } />
+                <Route path="/notifications" element={
+                  <NotificationsView
+                    notifications={notifications}
+                    onMarkAllRead={handleMarkAllNotificationsRead}
+                    onNotificationClick={(id) => { if (id) navigate(`/post/${id}`); }}
+                    onLoadMore={() => setNotificationsLimit(prev => prev + 15)}
+                    hasMore={hasMoreNotifications}
+                    language={language}
+                    onApproveUser={handleApproveUser}
+                    onRejectUser={handleRejectUser}
+                    currentUser={currentUserData!}
+                  />
+                } />
+                <Route path="/store" element={<StoreView user={currentUserData!} language={language} />} />
+
+                <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => { sessionStorage.clear(); supabase.auth.signOut(); navigate('/login'); }} onViewChange={(v) => navigate(`/${v}`)} theme={theme} onThemeChange={setTheme} language={language} onLanguageChange={setLanguage} />} />
+                <Route path="/search" element={
+                  <SearchRoute
+                    posts={posts}
+                    users={users}
+                    onLike={(id) => handleVote(id, 'up')}
+                    onVote={handleVote}
+                    onRepost={handleRepost}
+                    onAddComment={handleAddComment}
+                    onDeletePost={handleDeletePost}
+                    onViewChange={(v) => { if (v === 'profile') handleNavigateToProfile(currentUserData?.id || ''); else navigate(`/${v}`); }}
+                    currentUser={currentUserData!}
+                    followedUserIds={followedUserIds}
+                    followerUserIds={followerUserIds}
+                    onToggleFollow={handleToggleFollow}
+                    onNavigateToProfile={handleNavigateToProfile}
+                    onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)}
+                    onNavigateToEvent={handleNavigateToEvent}
+                    chats={chats}
+                    onShareViaChat={handleSendMessageFromShare}
+                    language={language}
+                  />
+                } />
+                <Route path="/post/:postId" element={<PostDetailWrapper />} />
+                <Route path="/:username" element={
+                  <ProfileRoute
+                    users={users}
+                    currentUserData={currentUserData}
+                    posts={posts}
+                    chats={chats}
+                    followerUserIds={followerUserIds}
+                    followedUserIds={followedUserIds}
+                    onUpdateUser={handleUpdateUser}
+                    onRepost={handleRepost}
+                    onToggleFollow={handleToggleFollow}
+                    onDeletePost={handleDeletePost}
+                    onNavigateToEvent={handleNavigateToEvent}
+                    onStartChat={(tu) => { navigate(`/messages/${tu.id}`); }}
+                    onAddPost={handleAddPost}
+                    onPromoteEvent={(ev) => { setPrefilledPostContent(ev.description || `📢 ¡Evento organizado!\n\n${ev.title}\n\n#Evento`); setPrefilledEvent(ev); navigate('/feed'); }}
+                    onShareViaChat={handleSendMessageFromShare}
+                    pinnedPosts={pinnedPosts}
+                    onTogglePin={handleTogglePin}
+                    focusedEventId={targetEventId}
+                    onClearFocusedEvent={() => setTargetEventId(null)}
+                    onSearchHashtag={(t) => { setSearchQuery(t); navigate(`/search?q=${encodeURIComponent(t)}`); }}
+                    onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onNavigateToProfile={handleNavigateToProfile}
+                    onLike={(id) => handleVote(id, 'up')}
+                    onVote={handleVote}
+                    onAddComment={handleAddComment}
+                    globalEvents={globalEvents}
+                    language={language}
+                  />
+                } />
+              </Routes>
+            </Layout>
+          )
+        } />
+      </Routes>
+
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={handleSendMessageFromShare} currentUser={currentUserData!} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
       {sharingEvent && <ShareModal event={sharingEvent} onClose={() => setSharingEvent(null)} onShare={handleSendMessageFromShare} currentUser={currentUserData!} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}

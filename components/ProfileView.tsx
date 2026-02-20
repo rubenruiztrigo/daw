@@ -1,5 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, calculateNovas } from '../types';
 import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck } from 'lucide-react';
@@ -49,6 +51,8 @@ interface ProfileViewProps {
   onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
   globalEvents?: any[];
   language: Language;
+  pinnedPosts?: Set<string>;
+  onTogglePin?: (postId: string) => void;
 }
 // ... (skip down to ShareModal usage) -> Actually I need to split this into two chunks (Interface and Usage) or use multi_replace.
 // Since they are far apart, I'll use multi_replace.
@@ -60,12 +64,13 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
   const t = useTranslation(language);
   const novas = calculateNovas(user.badges);
   const status = getLevelInfo(novas, language);
+  useScrollLock();
   const StatusIcon = status.icon;
   const progress = status.nextThreshold
     ? Math.min(100, Math.max(0, ((novas - status.threshold) / (status.nextThreshold - status.threshold)) * 100))
     : 100;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-md rounded-[3rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="p-10 text-center space-y-6">
@@ -108,7 +113,8 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
           </div>
         </div>
       </div>
-    </div >
+    </div >,
+    document.body
   );
 };
 
@@ -129,6 +135,7 @@ const CreateEventModal: React.FC<{
     location: '',
     description: ''
   });
+  useScrollLock();
 
   useEffect(() => {
     if (formData.type !== 'physical') {
@@ -182,7 +189,7 @@ const CreateEventModal: React.FC<{
     setLoading(false);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
@@ -317,17 +324,17 @@ const CreateEventModal: React.FC<{
           </div>
         </form>
       </div>
-
-
-    </div>
+    </div>,
+    document.body
   );
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts,
-  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = [], language
+  onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = [], language,
+  pinnedPosts = new Set(), onTogglePin
 }) => {
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const navigate = useNavigate();
   const t = useTranslation(language);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -383,14 +390,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }, [activeTab, user.id]);
 
   useEffect(() => {
-    if (focusedEventId) {
+    if (focusedEventId && userEvents.length > 0) {
       setActiveTab('events');
+      // Delay slightly to ensure rendering
+      setTimeout(() => {
+        const element = document.getElementById(`event-${focusedEventId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+
       const timer = setTimeout(() => {
         onClearFocusedEvent?.();
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [focusedEventId]);
+  }, [focusedEventId, userEvents]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -553,9 +568,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return t('joined_date', { month, year: date.getFullYear() });
   }, [user.joinedDate, language, t]);
 
-  const userPosts = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'post'), [posts, user.id]);
+  const userPosts = useMemo(() => {
+    const filtered = posts.filter(p => p.authorId === user.id && p.type === 'post');
+    return filtered.sort((a, b) => {
+      const aPinned = pinnedPosts.has(a.id);
+      const bPinned = pinnedPosts.has(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+  }, [posts, user.id, pinnedPosts]);
+
   const userNews = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'news'), [posts, user.id]);
-  const userRepostsList = useMemo(() => posts.filter(p => repostedPostIds.includes(p.id)), [posts, user.id, repostedPostIds]);
+
+  const userRepostsList = useMemo(() => {
+    const filtered = posts.filter(p => repostedPostIds.includes(p.id));
+    return filtered.sort((a, b) => {
+      const aPinned = pinnedPosts.has(a.id);
+      const bPinned = pinnedPosts.has(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+  }, [posts, user.id, repostedPostIds, pinnedPosts]);
 
   const handlePhotoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -668,7 +703,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             <div className="flex-1 pt-1 md:pt-0 w-full min-w-0 text-center md:text-left relative z-20">
               <div className="flex flex-col md:flex-row items-center gap-1 md:gap-3 mb-0.5 md:mb-2 justify-center md:justify-start">
-                <h1 className="text-lg md:text-4xl font-black text-gray-900 dark:text-white tracking-tight whitespace-nowrap flex items-center gap-1.5 relative z-20">
+                <h1 className="text-lg md:text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-tight flex flex-wrap items-center gap-1.5 relative z-20 justify-center md:justify-start text-center md:text-left">
                   {user.name} {user.lastName}
                   {user.username === 'novagob' && (
                     <BadgeCheck className="w-5 h-5 md:w-8 md:h-8 text-white fill-blue-500 shrink-0" />
@@ -676,9 +711,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </h1>
               </div>
               <div className="flex flex-col space-y-1 items-center md:items-start">
-                <div className="flex items-start md:items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-xs md:text-base flex-wrap justify-center md:justify-start w-full">
-                  <span className="break-words max-w-full leading-tight">{user.position} {user.username === 'novagob' ? 'de' : 'en'} {user.department}</span>
-                </div>
+                {!user.isOrganization && (
+                  <div className="flex items-start md:items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-xs md:text-base flex-wrap justify-center md:justify-start w-full">
+                    <span className="break-words max-w-full leading-tight">{user.position} {user.username === 'novagob' ? 'de' : 'en'} {user.department}</span>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 text-gray-400 dark:text-zinc-500 font-medium text-[10px] md:text-sm w-full">
                   {user.username !== 'novagob' && (
                     <div className="flex items-center space-x-1 shrink-0"><MapPin size={10} className="md:w-[14px] md:h-[14px]" /><span>{user.region}, {user.country}</span></div>
@@ -703,8 +740,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-3 w-full mt-4 md:mt-0">
                 {isCurrentUser ? (
                   <>
-                    <button onClick={() => setIsShareModalOpen(true)} className="p-2 md:p-3 bg-slate-50 dark:bg-zinc-900 text-slate-400 hover:text-blue-600 rounded-xl md:rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all shrink-0"><Share2 size={16} className="md:w-5 md:h-5" /></button>
-                    <button onClick={() => setIsEditModalOpen(true)} className="bg-blue-600 text-white px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-sm hover:bg-blue-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[140px] whitespace-nowrap"><Edit3 size={12} className="md:w-[18px] md:h-[18px]" /><span>{t('edit_profile')}</span></button>
+                    <button onClick={() => setIsShareModalOpen(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center min-w-fit whitespace-nowrap"><Share2 size={12} className="md:w-[14px] md:h-[14px]" /></button>
+                    <button onClick={() => navigate('/settings', { state: { openPersonalData: true } })} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
                   </>
                 ) : (
                   <>
@@ -733,29 +770,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-sm md:text-lg max-w-full whitespace-pre-wrap break-words">{user.bio || t('no_bio')}</p>
             </div>
 
-            {user.username !== 'novagob' && (
-              <div className="space-y-4 flex flex-col items-center md:items-start">
-                <h3 className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-widest px-1">{t('interests')}</h3>
-                <div className="flex flex-wrap gap-2 items-center justify-center md:justify-start">
-                  {user.interests && user.interests.length > 0 ? (
-                    user.interests.map(interest => (
-                      <span key={interest} className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl text-[10px] md:text-xs font-black border border-blue-100 dark:border-blue-900/20">{interest}</span>
-                    ))
-                  ) : (
-                    <span className="text-gray-400 italic text-sm font-medium">{t('no_interests')}</span>
-                  )}
-                  {isCurrentUser && (
-                    <button
-                      onClick={() => setIsPreferencesModalOpen(true)}
-                      className="p-2 bg-slate-50 dark:bg-zinc-900 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all border border-dashed border-blue-200 dark:border-blue-800"
-                      title="Añadir o cambiar intereses"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+
 
 
             {commonFollowers.length > 0 && !isCurrentUser && (
@@ -822,7 +837,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <p className="text-slate-400 font-bold italic">{t('no_posts')}</p>
               </div>
             ) : userPosts.map(post => (
-              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} />
+              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
             ))
           )}
 
@@ -893,7 +908,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <p className="text-slate-400 font-bold italic">{t('no_reposts')}</p>
               </div>
             ) : userRepostsList.map(post => (
-              <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} />
+              <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
             ))
           )}
 
@@ -1061,7 +1076,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {isEditModalOpen && <EditProfileModal user={user} onClose={() => setIsEditModalOpen(false)} onSave={onUpdateUser} />}
       {isPreferencesModalOpen && <PreferencesModal user={user} onClose={() => setIsPreferencesModalOpen(false)} onSave={onUpdateUser} />}
       {
         isShareModalOpen && (
@@ -1089,15 +1103,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           />
         )
       }
-      {viewingUsersList && <UsersListModal type={viewingUsersList} userId={viewingListId || user.id} onClose={() => { setViewingUsersList(null); setViewingListId(null); }} onNavigate={(id) => onNavigateToProfile?.(id)} currentUserFollowedIds={followedUserIds} currentUserFollowerIds={followerUserIds} onToggleFollow={onToggleFollow} currentUserId={currentUser.id} />}
-      {isCreateEventModalOpen && <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} language={language} />}
-      {isShowStatusModalOpen && <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} language={language} />}
+      {viewingUsersList && createPortal(
+        <UsersListModal type={viewingUsersList} userId={viewingListId || user.id} onClose={() => { setViewingUsersList(null); setViewingListId(null); }} onNavigate={(id) => onNavigateToProfile?.(id)} currentUserFollowedIds={followedUserIds} currentUserFollowerIds={followerUserIds} onToggleFollow={onToggleFollow} currentUserId={currentUser.id} />,
+        document.body
+      )}
+      {isCreateEventModalOpen && createPortal(
+        <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} language={language} />,
+        document.body
+      )}
+      {isShowStatusModalOpen && createPortal(
+        <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} language={language} />,
+        document.body
+      )}
 
-      {showLevelsModal && (
+      {showLevelsModal && createPortal(
         <LevelsListModal
           currentNovas={calculateNovas(user.badges)}
           onClose={() => setShowLevelsModal(false)}
-        />
+        />,
+        document.body
       )}
 
       {
@@ -1114,12 +1138,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <ImageCropModal image={imageToCrop} onClose={() => setImageToCrop(null)} onSave={handleCropComplete} />
         )
       }
-      {showRankingModal && (
+      {showRankingModal && createPortal(
         <RankingHistoryModal
           badges={user.badges || []}
           onClose={() => setShowRankingModal(false)}
           mode="personal"
-        />
+        />,
+        document.body
       )}
     </div >
   );

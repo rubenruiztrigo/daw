@@ -196,7 +196,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              onSearchHashtag?.(part.slice(1));
+              onSearchHashtag?.(part);
             }}
             className={`font-black hover:underline transition-all ${post.type === 'news' ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400'}`}
           >

@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, X, Bot, User, MessageCircle, AlertCircle, Loader2 } from 'lucide-react';
 import ReactDOM from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 interface Message {
     id: string;
@@ -16,6 +17,7 @@ interface HelpChatBotProps {
 }
 
 export const HelpChatBot: React.FC<HelpChatBotProps> = ({ onClose, userName }) => {
+    useScrollLock();
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -117,8 +119,8 @@ export const HelpChatBot: React.FC<HelpChatBotProps> = ({ onClose, userName }) =
                                     {m.sender === 'user' ? <User size={16} className="text-white" /> : <Bot size={16} className="text-blue-600" />}
                                 </div>
                                 <div className={`p-4 rounded-2xl text-sm font-medium ${m.sender === 'user'
-                                        ? 'bg-blue-600 text-white rounded-tr-none'
-                                        : 'bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 border border-slate-100 dark:border-zinc-700 rounded-tl-none'
+                                    ? 'bg-blue-600 text-white rounded-tr-none'
+                                    : 'bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 border border-slate-100 dark:border-zinc-700 rounded-tl-none'
                                     }`}>
                                     {m.text}
                                     <div className={`text-[9px] mt-1 font-bold uppercase tracking-wider opacity-50 ${m.sender === 'user' ? 'text-blue-100' : 'text-slate-400'}`}>

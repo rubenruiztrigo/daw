@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { Trash2 } from 'lucide-react';
 import { Language, useTranslation } from '../utils/translations';
 
@@ -13,14 +14,7 @@ interface DeleteConfirmationModalProps {
 export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ isOpen, onClose, onConfirm, language }) => {
     const t = useTranslation(language);
 
-    React.useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => { document.body.style.overflow = 'unset'; };
-    }, [isOpen]);
+    useScrollLock(isOpen);
 
     if (!isOpen) return null;
 

@@ -1,5 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Check } from 'lucide-react';
 
 interface ImageCropModalProps {
@@ -12,10 +14,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
   const [crop, setCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0, renderedWidth: 0, renderedHeight: 0 });
 
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, []);
+  useScrollLock();
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragAction, setDragAction] = useState<'move' | 'nw' | 'ne' | 'sw' | 'se' | null>(null);
@@ -139,7 +138,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
     onSave(canvas.toDataURL('image/jpeg', 0.95));
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300"
       onMouseUp={handleMouseUp}
@@ -247,6 +246,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({ image, onClose, 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, ImageIcon, Calendar, MapPin, Smile, User, Tag } from 'lucide-react';
 import { Language, useTranslation } from '../utils/translations';
 import { CalendarEvent, User as UserType } from '../types';
@@ -30,6 +32,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const t = useTranslation(language);
+
+    useScrollLock(isOpen);
 
     useEffect(() => {
         if (isOpen) {
@@ -74,7 +78,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-[#111] w-full sm:max-w-lg h-auto max-h-[80vh] sm:h-auto sm:rounded-[2rem] rounded-t-[2rem] shadow-xl flex flex-col animate-in slide-in-from-bottom-10 duration-300">
 
@@ -216,6 +220,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

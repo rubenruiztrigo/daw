@@ -72,9 +72,9 @@ export const BADGE_CATALOG: Badge[] = [
   { id: 'training_advanced', label: 'Curso Avanzado', description: 'Completó la formación avanzada.', color: 'bg-violet-100 text-violet-600 border-violet-200', category: 'formacion', value: 15 },
 
   // Ranking Semanal
-  { id: 'ranking_top1', label: 'Top 1 Semanal', description: 'Primer lugar en el ranking semanal.', color: 'bg-yellow-100 text-yellow-600 border-yellow-200', category: 'ranking', value: 5 },
-  { id: 'ranking_top2', label: 'Top 2 Semanal', description: 'Segundo lugar en el ranking semanal.', color: 'bg-slate-200 text-slate-500 border-slate-300', category: 'ranking', value: 3 },
-  { id: 'ranking_top3', label: 'Top 3 Semanal', description: 'Tercer lugar en el ranking semanal.', color: 'bg-orange-100 text-orange-700 border-orange-200', category: 'ranking', value: 1 },
+  { id: 'ranking_top1', label: 'TOP 1', description: 'Primer lugar en el ranking semanal.', color: 'bg-yellow-100 text-yellow-600 border-yellow-200', category: 'ranking', value: 5 },
+  { id: 'ranking_top2', label: 'TOP 2', description: 'Segundo lugar en el ranking semanal.', color: 'bg-slate-200 text-slate-500 border-slate-300', category: 'ranking', value: 3 },
+  { id: 'ranking_top3', label: 'TOP 3', description: 'Tercer lugar en el ranking semanal.', color: 'bg-orange-100 text-orange-700 border-orange-200', category: 'ranking', value: 1 },
   { id: 'legendary_contributor', label: 'Leyenda de la Red', description: 'Nivel legendario alcanzado por contribuciones excepcionales.', color: 'bg-rose-100 text-rose-600 border-rose-200', category: 'novas', value: 1000 },
 ];
 
@@ -135,6 +135,8 @@ export interface User {
   region?: string;
   roleDescription?: string;
   organizationName?: string;
+  organizationObjective?: string;
+  isOrganization?: boolean;
   isAdmin?: boolean;
   status?: 'pending' | 'active' | 'rejected';
   avatar: string;
@@ -156,7 +158,13 @@ export interface User {
     follows: boolean;
     event_supports: boolean;
     reposts: boolean;
-    read_receipts: boolean;
+    mentions: boolean;
+  };
+  chatSettings?: {
+    senderColor: string;
+    receiverColor: string;
+    backgroundColor: string;
+    readReceipts: boolean;
   };
 }
 

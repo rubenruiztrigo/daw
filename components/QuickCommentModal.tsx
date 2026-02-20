@@ -1,5 +1,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Send, AtSign } from 'lucide-react';
 import { Post, User } from '../types';
 
@@ -11,10 +13,7 @@ interface QuickCommentModalProps {
 }
 
 export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onClose, onAddComment, users }) => {
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, []);
+  useScrollLock();
 
   const [text, setText] = useState('');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -67,7 +66,7 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#111] w-full max-w-lg rounded-[2rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 flex justify-between items-center">
@@ -121,6 +120,7 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

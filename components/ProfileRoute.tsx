@@ -31,6 +31,8 @@ interface ProfileRouteProps {
     onPreviewImage?: (url: string) => void; // Added missing prop
     globalEvents?: any[];
     language: Language;
+    pinnedPosts?: Set<string>;
+    onTogglePin?: (postId: string) => void;
 }
 
 export const ProfileRoute: React.FC<ProfileRouteProps> = ({
@@ -59,7 +61,9 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     onAddComment,
     onPreviewImage,
     globalEvents = [],
-    language
+    language,
+    pinnedPosts,
+    onTogglePin
 }) => {
     const { username } = useParams<{ username: string }>();
     const navigate = useNavigate();
@@ -113,6 +117,8 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onPreviewImage={onPreviewImage}
             globalEvents={globalEvents}
             language={language}
+            pinnedPosts={pinnedPosts}
+            onTogglePin={onTogglePin}
         />
     );
 };

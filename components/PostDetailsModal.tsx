@@ -1,5 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Reply } from 'lucide-react';
 import { Post, Comment, User } from '../types';
 import { timeAgo } from '../utils/stringUtils';
@@ -20,10 +22,7 @@ interface PostDetailsModalProps {
 export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   post, onClose, onAddComment, onAddReply, onLike, onVote, onSearchHashtag, onNavigateToProfile, users = []
 }) => {
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, []);
+  useScrollLock();
 
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -109,7 +108,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
     });
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-8 py-4 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
@@ -233,6 +232,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

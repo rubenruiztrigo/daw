@@ -1,5 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Users, ArrowRight, Loader2, UserPlus, UserMinus, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { User } from '../types';
@@ -19,10 +21,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, []);
+  useScrollLock();
 
   useEffect(() => {
     fetchUsers();
@@ -92,7 +91,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
       onClick={onClose}
@@ -194,6 +193,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
           <span className="text-[9px] font-black text-slate-300 dark:text-zinc-600 uppercase tracking-widest">Comunidad Profesional Red Social de NovaGob</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

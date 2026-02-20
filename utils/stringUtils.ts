@@ -41,3 +41,26 @@ export const timeAgo = (date: string | number | Date, lang: 'es' | 'en' = 'es'):
   }
   return lang === 'es' ? 'hace unos instantes' : 'a moment ago';
 };
+
+export const extractFirstUrl = (text: string): string | null => {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const match = text.match(urlRegex);
+  return match ? match[0] : null;
+};
+
+export const isExternalUrl = (url: string): boolean => {
+  if (!url) return false;
+  const internalDomains = [
+    'redsocial.app',
+    'red.novagob.org',
+    'localhost',
+    '127.0.0.1'
+  ];
+  try {
+    const domain = new URL(url).hostname.toLowerCase();
+    return !internalDomains.some(d => domain.includes(d));
+  } catch {
+    return false;
+  }
+};

@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
 import { Post, User } from '../types';
 
@@ -31,10 +32,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [sentTo, setSentTo] = useState<string[]>([]);
 
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, []);
+  useScrollLock();
 
   const shareUrl = sharedUser
     ? `https://red.novagob.org/${sharedUser.username || sharedUser.id}`
@@ -72,8 +70,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   const handleSend = (contact: User) => {
     if (onShare) {
-      const type = sharedUser ? 'un perfil' : event ? 'un evento' : 'una publicación';
-      const message = `Te he compartido ${type}: ${shareUrl}`;
+      const message = ""; // Send empty text so only the card is shown
       onShare(contact.id, message, post?.id, sharedUser?.id, event?.id);
     }
     setSentTo([...sentTo, contact.id]);
@@ -122,7 +119,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             <div className={`p-2 rounded-xl ${sharedUser ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
               {sharedUser ? <UserIcon size={20} /> : event ? <Calendar size={20} /> : <Send size={20} />}
             </div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white whitespace-nowrap">
               {sharedUser ? 'Compartir Perfil' : event ? 'Compartir Evento' : 'Compartir Publicación'}
             </h3>
           </div>
@@ -219,10 +216,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50/50 dark:bg-zinc-900/50 border-t border-slate-50 dark:border-zinc-900 flex items-center justify-center space-x-2">
-          <LinkIcon size={12} className="text-slate-300" />
-          <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">RedSocial Secure Link</span>
-        </div>
+
       </div>
     </div>,
     document.body

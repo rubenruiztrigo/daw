@@ -46,7 +46,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              onSearchHashtag?.(part.slice(1));
+              onSearchHashtag?.(part);
             }}
             className="text-orange-600 dark:text-orange-400 font-black hover:underline transition-all"
           >

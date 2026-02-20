@@ -1,8 +1,10 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
-import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw, AlertCircle, Eye, EyeOff, MapPin, Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
@@ -138,27 +140,61 @@ const PrivacyPolicyContent = () => (
 );
 
 import { notifyAdminNewUser } from '../utils/emailService';
+import { ImageCropModal } from './ImageCropModal'; // Import ImageCropModal
 
 // ... existing imports ...
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // Start at 0 for selection/privacy
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customJobInput, setCustomJobInput] = useState('');
   const [customAdminInput, setCustomAdminInput] = useState('');
-  const [privacyAccepted, setPrivacyAccepted] = useState(true);
+  const [privacyAccepted, setPrivacyAccepted] = useState(true); // Default to true to skip initial privacy screen
   const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [showPendingApprovalModal, setShowPendingApprovalModal] = useState(false);
+  useScrollLock(showPolicyOverlay || showPendingApprovalModal);
+
+  const [registrationType, setRegistrationType] = useState<'personal' | 'organization' | null>(null);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Image Cropping State
+  const [showImageCropModal, setShowImageCropModal] = useState(false);
+  const [imageCropSrc, setImageCropSrc] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        setError("La imagen es demasiado grande (máx 5MB)");
+        return;
+      }
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        setImageCropSrc(reader.result?.toString() || null);
+        setShowImageCropModal(true);
+        // Reset input so same file can be selected again if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      });
+      reader.readAsDataURL(file);
+    }
+  };
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 
-  const [formData, setFormData] = useState<Partial<UserType>>({
+  // ... (imports remain the same)
+
+  // ...
+
+  const [formData, setFormData] = useState<Partial<UserType> & { organizationName?: string }>({
     name: '',
     lastName: '',
     username: '',
@@ -172,7 +208,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     country: 'España',
     region: '',
     interests: [],
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`
+    avatar: '/default_avatar.png', // Changed default avatar
+    organizationName: '',
+    bio: ''
   });
 
   const checkAvailability = async (): Promise<boolean> => {
@@ -244,8 +282,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
     // Ensure all data is snake_case for the database
     const profileData = {
-      name: formData.name,
-      last_name: formData.lastName,
+      name: registrationType === 'organization' ? formData.organizationName : formData.name,
+      last_name: registrationType === 'organization' ? '' : formData.lastName,
       username: formData.username,
       // avatar_url: formData.avatar, // Removed: Column likely doesn't exist, causing 400
       position: formData.position,
@@ -256,8 +294,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       region: formData.region,
       interests: formData.interests,
       birth_date: formData.birthDate || null, // Ensure empty string becomes null
+      is_organization: registrationType === 'organization',
       // Extra fields if needed for future
-      bio: ''
+      // Map Organization Objective to Bio column
+      bio: formData.bio || '',
+      // organization_objective: formData.organizationObjective || '' // Removed to use 'bio' column
     };
 
     // Attempt registration
@@ -306,6 +347,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       if (signUpError.message.toLowerCase().includes('rate limit') || signUpError.status === 429) {
         setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada o espera unos minutos.");
       } else if (signUpError.message.includes("User already registered") || signUpError.status === 422) {
+        setStep(1); // Go back to input step to show error
         setError("Error: El usuario o correo ya está registrado en el sistema. Si no recuerdas tu contraseña, intenta iniciar sesión o recuperarla.");
       } else {
         setError(`Error al crear la cuenta: ${signUpError.message}`);
@@ -392,14 +434,51 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
   };
 
   const isStepValid = () => {
+    if (step === 0) return true;
+
+    if (registrationType === 'organization') {
+      if (step === 1) {
+        return !!(
+          formData.organizationName &&
+          formData.bio &&
+          formData.username &&
+          formData.email &&
+          formData.password &&
+          confirmPassword &&
+          formData.password === confirmPassword &&
+          formData.country &&
+          formData.region &&
+          !usernameError &&
+          !emailError &&
+          !passwordError
+        );
+      } else if (step === 2) {
+        return (formData.interests?.length || 0) >= 1;
+      } else if (step === 3) {
+        return true; // Profile photo optional
+      }
+    }
+
     switch (step) {
-      case 0: return privacyAccepted;
-      case 1: return !!(formData.name && formData.lastName && formData.username && formData.email && formData.password && formData.birthDate);
+      case 1: return !!(
+        formData.name &&
+        formData.lastName &&
+        formData.username &&
+        formData.email &&
+        formData.password &&
+        formData.birthDate &&
+        confirmPassword &&
+        formData.password === confirmPassword &&
+        !usernameError &&
+        !emailError &&
+        !passwordError
+      );
       case 2: return formData.jobCategory === 'Otro' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
       case 4: return !!(formData.position && formData.department);
       case 5: return !!(formData.country && formData.region);
-      case 6: return (formData.interests?.length || 0) >= 3;
+      case 6: return (formData.interests?.length || 0) >= 1;
+      case 7: return true; // Profile photo is optional (has default)
       default: return false;
     }
   };
@@ -410,7 +489,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
       <div className="max-w-2xl w-full bg-white rounded-[40px] p-8 md:p-12 relative overflow-hidden border border-slate-100">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
-          <div className="h-full bg-blue-600 transition-all duration-700 ease-in-out" style={{ width: `${((step - 1) / 5) * 100}%` }} />
+          <div
+            className="h-full bg-blue-600 transition-all duration-700 ease-in-out"
+            style={{
+              width: `${((step - 1) / (registrationType === 'organization' ? 3 : 7)) * 100}%`
+            }}
+          />
         </div>
 
         {error && (
@@ -421,11 +505,60 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
         )}
 
         <div className="mb-10 min-h-[520px] flex flex-col justify-center">
-          {step === 1 && (
+
+          {/* ACCOUNT SELECTION - NOW THE FIRST SCREEN */}
+          {step === 0 && registrationType === null && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="text-center">
+                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Selecciona el tipo de cuenta</h2>
+                <p className="text-slate-500 font-medium">Elige cómo quieres participar en la red</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <button
+                  onClick={() => { setRegistrationType('personal'); setStep(1); }}
+                  className="p-8 rounded-[2.5rem] border-2 border-slate-100 bg-white hover:border-blue-500 hover:bg-blue-50/50 transition-all group text-left relative overflow-hidden"
+                >
+                  <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <UserIcon size={32} />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2">Cuenta Personal</h3>
+                  <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                    Para profesionales del sector público que quieren conectar, aprender y compartir.
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => { setRegistrationType('organization'); setStep(1); }}
+                  className="p-8 rounded-[2.5rem] border-2 border-slate-100 bg-white hover:border-purple-500 hover:bg-purple-50/50 transition-all group text-left relative overflow-hidden"
+                >
+                  <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <Building size={32} />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2">Cuenta Organización</h3>
+                  <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                    Para instituciones y entidades que desean tener presencia oficial en la red.
+                  </p>
+                </button>
+              </div>
+
+              {/* Implicit Privacy Acceptance */}
+              <div className="text-center">
+                <button
+                  onClick={() => setShowPolicyOverlay(true)}
+                  className="text-xs text-slate-400 font-medium hover:text-blue-500 hover:underline transition-colors"
+                >
+                  Al continuar, aceptas nuestra Política de Privacidad
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* PERSONAL FLOW */}
+          {registrationType === 'personal' && step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight">Crea tu cuenta</h2>
-                <p className="text-slate-500 font-medium mt-2">Introduce tus datos fundamentales para empezar</p>
+                <p className="text-slate-500 font-medium mt-2">Datos personales</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -487,32 +620,58 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                  <input type="password" value={formData.password} onChange={e => updateField('password', e.target.value)} className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`} placeholder="Mínimo 8 caracteres" />
-                </div>
-                {passwordError && (
-                  <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
-                    <AlertCircle size={12} />
-                    <span className="text-xs font-bold">{passwordError}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={e => updateField('password', e.target.value)}
+                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      placeholder="Mínimo 8 caracteres"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
-                )}
-              </div>
-
-              <div className="text-center pt-2">
-                <button
-                  onClick={() => setShowPolicyOverlay(true)}
-                  className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors underline decoration-slate-200 underline-offset-4"
-                >
-                  Protección y políticas de privacidad
-                </button>
+                  {passwordError && (
+                    <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                      <AlertCircle size={12} />
+                      <span className="text-xs font-bold">{passwordError}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      placeholder="Repite la contraseña"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {step === 2 && (
+          {registrationType === 'personal' && step === 2 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de puesto que desempeñas</h2>
@@ -549,7 +708,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             </div>
           )}
 
-          {step === 3 && (
+          {registrationType === 'personal' && step === 3 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de organización</h2>
@@ -593,7 +752,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             </div>
           )}
 
-          {step === 4 && (
+          {registrationType === 'personal' && step === 4 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tu puesto actual</h2>
@@ -618,7 +777,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             </div>
           )}
 
-          {step === 5 && (
+          {registrationType === 'personal' && step === 5 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tu ubicación</h2>
@@ -652,11 +811,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             </div>
           )}
 
-          {step === 6 && (
+          {registrationType === 'personal' && step === 6 && (
             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tus intereses</h2>
-                <p className="text-slate-500 font-medium mt-2">Elige al menos 3 temas para personalizar tu feed</p>
+                <p className="text-slate-500 font-medium mt-2">Elige al menos 1 tema para personalizar tu feed</p>
               </div>
               <div className="flex flex-wrap gap-2.5 justify-center">
                 {PUBLIC_INTERESTS.map(topic => {
@@ -676,6 +835,277 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 })}
               </div>
             </div>
+
+          )}
+
+          {registrationType === 'personal' && step === 7 && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 text-center">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Foto de perfil</h2>
+                <p className="text-slate-500 font-medium mt-2">Añade una foto para que te reconozcan</p>
+              </div>
+
+              <div className="flex flex-col items-center justify-center space-y-6">
+                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
+                    <img
+                      src={formData.avatar}
+                      alt="Avatar Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera className="text-white" size={32} />
+                    </div>
+                  </div>
+                  <div className="absolute bottom-2 right-2 p-3 bg-blue-600 text-white rounded-full shadow-lg transform group-hover:scale-110 transition-transform">
+                    <Pencil size={18} />
+                  </div>
+                </div>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                />
+
+                <p className="text-xs text-slate-400 font-medium max-w-xs">
+                  Haz clic en la imagen para subir una nueva foto. Recomendamos una imagen cuadrada de al menos 400x400px.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ORGANIZATION FLOW */}
+          {registrationType === 'organization' && step === 1 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="text-center mb-6">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Crea tu cuenta de Organización</h2>
+                <p className="text-slate-500 font-medium mt-2">Registra tu entidad en NovaGob</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de tu organización</label>
+                  <div className="relative">
+                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input
+                      type="text"
+                      value={formData.organizationName}
+                      onChange={e => updateField('organizationName', e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Ej. Ayuntamiento de..."
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Biografía</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={160}
+                      value={formData.bio || ''}
+                      onChange={e => updateField('bio', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Ej. Descripción de la entidad..."
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                      {(formData.bio?.length || 0)}/160
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">País</label>
+                    <div className="relative">
+                      <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <select
+                        value={formData.country}
+                        onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
+                      >
+                        <option value="">Selecciona...</option>
+                        {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Región</label>
+                    <div className="relative">
+                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <select
+                        value={formData.region}
+                        onChange={e => updateField('region', e.target.value)}
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
+                        disabled={!formData.country}
+                      >
+                        <option value="">Selecciona...</option>
+                        {formData.country && COUNTRIES_DATA[formData.country]?.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de usuario</label>
+                    <div className="relative">
+                      <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input
+                        type="text"
+                        value={formData.username}
+                        onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
+                        onBlur={() => { if (formData.username) checkAvailability(); }}
+                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        placeholder="ayuntamientex"
+                      />
+                    </div>
+                    {usernameError && (
+                      <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                        <AlertCircle size={12} />
+                        <span className="text-xs font-bold">{usernameError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo electrónico</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={e => updateField('email', e.target.value)}
+                        onBlur={() => { if (formData.email) checkAvailability(); }}
+                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        placeholder="contacto@organizacion.com"
+                      />
+                    </div>
+                    {emailError && (
+                      <div className="flex items-center space-x-1 mt-1 ml-1 text-red-500 animate-in slide-in-from-top-1">
+                        <AlertCircle size={12} />
+                        <span className="text-xs font-bold">{emailError}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={e => updateField('password', e.target.value)}
+                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        placeholder="Mínimo 8 caracteres"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        placeholder="Repite la contraseña"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {registrationType === 'organization' && step === 2 && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Intereses de la organización</h2>
+                <p className="text-slate-500 font-medium mt-2">Selecciona temas relevantes para tu entidad</p>
+              </div>
+              <div className="flex flex-wrap gap-2.5 justify-center">
+                {PUBLIC_INTERESTS.map(topic => {
+                  const isSelected = formData.interests?.includes(topic);
+                  return (
+                    <button
+                      key={topic}
+                      onClick={() => {
+                        const current = formData.interests || [];
+                        updateField('interests', isSelected ? current.filter(i => i !== topic) : [...current, topic]);
+                      }}
+                      className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:border-purple-100'}`}
+                    >
+                      {topic}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {registrationType === 'organization' && step === 3 && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 text-center">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Logo de la organización</h2>
+                <p className="text-slate-500 font-medium mt-2">Sube el escudo o logotipo oficial</p>
+              </div>
+
+              <div className="flex flex-col items-center justify-center space-y-6">
+                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
+                    <img
+                      src={formData.avatar}
+                      alt="Avatar Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera className="text-white" size={32} />
+                    </div>
+                  </div>
+                  <div className="absolute bottom-2 right-2 p-3 bg-purple-600 text-white rounded-full shadow-lg transform group-hover:scale-110 transition-transform">
+                    <Pencil size={18} />
+                  </div>
+                </div>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                />
+
+                <p className="text-xs text-slate-400 font-medium max-w-xs">
+                  Haz clic en la imagen para subir una nueva foto. Recomendamos una imagen cuadrada de al menos 400x400px.
+                </p>
+              </div>
+            </div>
           )}
 
 
@@ -683,86 +1113,144 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
         <div className="flex gap-4">
           <button
-            onClick={step === 1 ? onCancel : prevStep}
+            onClick={() => {
+              if (step === 0 && registrationType !== null) {
+                setRegistrationType(null); // Go back to selection
+              } else if (step === 1 && registrationType === 'organization') {
+                setRegistrationType(null); setStep(0); // Back from org form
+              } else if (step === 1) {
+                if (registrationType === 'personal') {
+                  setRegistrationType(null); setStep(0);
+                } else {
+                  onCancel();
+                }
+              } else if (step === 0) {
+                onCancel();
+              } else {
+                prevStep();
+              }
+            }}
             className="flex-1 py-4 rounded-[1.5rem] bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
           >
             <ArrowLeft size={20} />
-            <span>{step === 1 ? 'Cancelar' : 'Atrás'}</span>
+            <span>{(step === 0 && registrationType === null) ? 'Cancelar' : 'Atrás'}</span>
           </button>
-          <button
-            onClick={async () => {
-              // Manual validation check to provide feedback
-              if (!isStepValid()) {
-                if (step === 1) {
-                  if (!formData.name) setError("Por favor, introduce tu nombre.");
-                  else if (!formData.lastName) setError("Por favor, introduce tus apellidos.");
-                  else if (!formData.username) setError("Por favor, elige un nombre de usuario.");
-                  else if (!formData.birthDate) setError("Por favor, selecciona tu fecha de nacimiento.");
-                  else if (!formData.email) setError("Por favor, introduce tu correo institucional.");
-                  else if (!formData.password) setError("Por favor, crea una contraseña.");
-                  else setError("Por favor, completa todos los campos.");
-                } else if (step === 2) {
-                  setError("Por favor, selecciona una categoría profesional.");
-                } else if (step === 3) {
-                  setError("Por favor, selecciona un tipo de organización.");
-                } else if (step === 4) {
-                  setError("Por favor, completa tu puesto y organización.");
-                } else if (step === 5) {
-                  setError("Por favor, selecciona tu país y región.");
-                } else if (step === 6) {
-                  setError("Por favor, selecciona al menos 3 intereses.");
+
+          {(registrationType !== null || (step === 0 && !privacyAccepted)) && (
+            <button
+              onClick={async () => {
+                // Validaciones manuales
+                if (!isStepValid()) {
+                  if (step === 0 && !privacyAccepted) {
+                    // No action needed really, button shouldn't show or be clickable if handled right, 
+                    // but we show "Ver política" button instead above.
+                  } else if (registrationType === 'personal') {
+                    if (step === 1) {
+                      if (!formData.name) setError("Por favor, introduce tu nombre.");
+                      else if (!formData.lastName) setError("Por favor, introduce tus apellidos.");
+                      else if (!formData.username) setError("Por favor, elige un nombre de usuario.");
+                      else if (!formData.birthDate) setError("Por favor, selecciona tu fecha de nacimiento.");
+                      else if (!formData.email) setError("Por favor, introduce tu correo institucional.");
+                      else if (!formData.password) setError("Por favor, crea una contraseña.");
+                      else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
+                      else setError("Por favor, completa todos los campos.");
+                    } else if (step === 2) {
+                      setError("Por favor, selecciona una categoría profesional.");
+                    } else if (step === 3) {
+                      setError("Por favor, selecciona un tipo de organización.");
+                    } else if (step === 4) {
+                      setError("Por favor, completa tu puesto y organización.");
+                    } else if (step === 5) {
+                      setError("Por favor, selecciona tu país y región.");
+                    } else if (step === 6) {
+                      setError("Por favor, selecciona al menos 1 interés.");
+                    }
+                  } else if (registrationType === 'organization') {
+                    if (!formData.organizationName) setError("Introduce el nombre de la organización.");
+                    else if (!formData.bio) setError("Introduce el objetivo principal.");
+                    else if (!formData.username) setError("Elige un nombre de usuario.");
+                    else if (!formData.email) setError("Introduce el correo electrónico.");
+                    else if (!formData.password) setError("Crea una contraseña.");
+                    else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
+                  }
+                  return;
                 }
-                return;
-              }
 
-              if (step === 1) {
-                // strict validation
-                if (!formData.username || !formData.email || !formData.password || !formData.name || !formData.lastName) return;
+                if (step === 1 && registrationType === 'personal') {
+                  // Personal Step 1 Logic
+                  let valid = true;
+                  if (!validateEmail(formData.email || '')) {
+                    setEmailError("Correo electrónico no válido"); valid = false;
+                  }
+                  if ((formData.password || '').length < 8) {
+                    setPasswordError("Mínimo 8 caracteres"); valid = false;
+                  }
+                  if (formData.password !== confirmPassword) {
+                    setError("Las contraseñas no coinciden"); valid = false;
+                  }
 
-                let valid = true;
+                  if (!valid) return;
 
-                if (!validateEmail(formData.email)) {
-                  setEmailError("Correo electrónico no válido");
-                  valid = false;
+                  try {
+                    const isAvailable = await checkAvailability();
+                    if (isAvailable) nextStep();
+                  } catch (err) { setError("Error al verificar disponibilidad."); }
+
+                } else if (registrationType === 'personal' && step < 7) {
+                  nextStep();
+                } else if (registrationType === 'personal' && step === 7) {
+                  handleFinalize();
+                } else if (registrationType === 'organization') {
+
+                  if (step === 1) {
+                    let valid = true;
+                    if (!validateEmail(formData.email || '')) {
+                      setEmailError("Correo no válido"); valid = false;
+                    }
+                    if ((formData.password || '').length < 8) {
+                      setPasswordError("Mínimo 8 caracteres"); valid = false;
+                    }
+                    if (formData.password !== confirmPassword) {
+                      setError("Las contraseñas no coinciden"); valid = false;
+                    }
+
+                    if (!valid) return;
+
+                    try {
+                      const isAvailable = await checkAvailability();
+                      if (isAvailable) nextStep();
+                    } catch (err) { setError("Error al verificar disponibilidad."); }
+                  } else if (step < 3) {
+                    nextStep();
+                  } else {
+                    handleFinalize();
+                  }
                 }
-
-                if (formData.password.length < 8) {
-                  setPasswordError("La contraseña debe tener al menos 8 caracteres");
-                  valid = false;
-                }
-
-                if (!valid) return;
-
-                try {
-                  const isAvailable = await checkAvailability();
-                  if (isAvailable) nextStep();
-                } catch (err) {
-                  console.error("Availability check failed", err);
-                  setError("Error verificando disponibilidad. Inténtalo de nuevo.");
-                }
-              } else if (step < 6) {
-                nextStep();
-              } else {
-                handleFinalize();
-              }
-            }}
-            disabled={loading || isChecking} // Enable button even if invalid to show feedback
-            className={`flex-[2] py-4 rounded-[1.5rem] font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}
-          >
-            {loading || isChecking ? (
-              <Loader2 className="animate-spin text-white" size={24} />
-            ) : (
-              <>
-                <span className="text-white">{step === 6 ? 'Completar registro' : 'Siguiente'}</span>
-                {step < 6 && <ArrowRight size={20} className="text-white" />}
-              </>
-            )}
-          </button>
+              }}
+              disabled={loading || isChecking}
+              className={`flex-[2] py-4 rounded-[1.5rem] font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : (registrationType === 'organization' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700') + ' text-white shadow-lg'}`}
+            >
+              {loading || isChecking ? (
+                <Loader2 className="animate-spin text-white" size={24} />
+              ) : (
+                <>
+                  <span className="text-white">
+                    {registrationType === 'organization' ? (step === 3 ? 'Crear cuenta' : 'Siguiente') : (step === 7 ? 'Completar registro' : 'Siguiente')}
+                  </span>
+                  {!((registrationType === 'organization' && step === 3) || (registrationType === 'personal' && step === 7)) && <ArrowRight size={20} className="text-white" />}
+                </>
+              )}
+            </button>
+          )}
+          {step === 0 && !!privacyAccepted && registrationType === null && (
+            // Hidden next button in selection screen, forcing choice
+            null
+          )}
         </div>
       </div>
 
       {
-        showPolicyOverlay && (
+        showPolicyOverlay && createPortal(
           <div
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
             onClick={() => setShowPolicyOverlay(false)}
@@ -790,19 +1278,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
               <div className="p-6 bg-slate-50 flex justify-center">
                 <button
-                  onClick={() => setShowPolicyOverlay(false)}
+                  onClick={() => { setPrivacyAccepted(true); setShowPolicyOverlay(false); setStep(0); }}
                   className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
                 >
                   He leído y acepto los términos
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )
       }
 
       {
-        showPendingApprovalModal && (
+        showPendingApprovalModal && createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
             <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95">
               <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -814,13 +1303,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 Recibirás un correo electrónico cuando tu cuenta esté activa.
               </p>
               <button
-                onClick={onCancel} // Go back to landing/login
+                onClick={onCancel}
                 className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
               >
                 Entendido
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
+        )
+      }
+      {
+        showImageCropModal && imageCropSrc && (
+          <ImageCropModal
+            image={imageCropSrc}
+            onClose={() => setShowImageCropModal(false)}
+            onSave={(croppedImage) => {
+              updateField('avatar', croppedImage);
+              setShowImageCropModal(false);
+            }}
+          />
         )
       }
     </div >

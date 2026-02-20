@@ -6,6 +6,7 @@ import { NewsCard } from './NewsCard';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { CreatePostModal } from './CreatePostModal';
 import { Language, useTranslation } from '../utils/translations';
+import { useScrollDirection } from '../hooks/useScrollDirection';
 
 interface NewsHubViewProps {
   posts: Post[];
@@ -38,9 +39,11 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   posts, user, onVote, onRepost, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = [],
   onLoadMore, hasMore = false, isLoadingMore = false, chats, onShareViaChat, followerUserIds, language, hasNewContent = false, onRefresh
 }) => {
+  // ... inside component ...
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<NewsTab>('latest');
   const t = useTranslation(language);
+  const scrollDirection = useScrollDirection();
 
   useEffect(() => {
     if (!onLoadMore) return;
@@ -70,13 +73,22 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
   const sortedNews = useMemo(() => {
     let filtered = [...posts];
-    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+    const now = new Date();
+
+    // Day bounds: 00:00:00.000 to 23:59:59.999
+    const startOfDayDate = new Date(now);
+    startOfDayDate.setHours(0, 0, 0, 0);
+    const startOfDay = startOfDayDate.getTime();
+
+    const endOfDayDate = new Date(now);
+    endOfDayDate.setHours(23, 59, 59, 999);
+    const endOfDay = endOfDayDate.getTime();
 
     if (activeTab === 'latest') {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      const startOfDay = now.getTime();
-      const recent = filtered.filter(n => new Date(n.timestamp).getTime() >= startOfDay);
+      const recent = filtered.filter(n => {
+        const t = new Date(n.timestamp).getTime();
+        return t >= startOfDay && t <= endOfDay;
+      });
       return recent.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
 
@@ -86,7 +98,6 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     };
 
     if (activeTab === 'ranking') {
-      const now = new Date();
       const day = now.getDay();
       const daysSinceMonday = (day + 6) % 7;
       const mondayStart = new Date(now);
@@ -107,7 +118,10 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
     if (activeTab === 'popular') {
       return filtered
-        .filter(n => new Date(n.timestamp).getTime() > twentyFourHoursAgo)
+        .filter(n => {
+          const t = new Date(n.timestamp).getTime();
+          return t >= startOfDay && t <= endOfDay;
+        })
         .sort((a, b) => (getUpvotes(b) + b.comments) - (getUpvotes(a) + a.comments));
     }
 
@@ -115,32 +129,34 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   }, [posts, activeTab]);
 
   return (
-    <div className="pb-20">
-      <div className="sticky top-0 z-20 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 flex items-center justify-between px-0 mb-4 h-16 -mx-3 sm:-mx-4 md:-mx-8 -mt-3 sm:-mt-4 md:-mt-8 transition-all duration-300 relative">
-        <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[12px] md:text-sm font-bold relative group transition-all focus:outline-none">
-          <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
-          {activeTab === 'latest' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
-        </button>
-        <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-        <button onClick={() => setActiveTab('popular')} className="flex-1 h-full text-[12px] md:text-sm font-bold relative group transition-all focus:outline-none">
-          <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('most_relevant')}</span>
-          {activeTab === 'popular' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
-        </button>
-        <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-        <button onClick={() => setActiveTab('ranking')} className="flex-1 h-full text-[12px] md:text-sm font-bold relative group transition-all focus:outline-none">
-          <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('top_ranking')}</span>
-          {activeTab === 'ranking' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
-        </button>
-
-        <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-
-        <div className="px-2 flex items-center justify-center">
-          <button
-            onClick={() => setShowHistory(true)}
-            className="p-2 text-orange-600 bg-orange-50/80 dark:bg-orange-900/20 backdrop-blur-sm rounded-xl transition-transform group hover:bg-orange-500 hover:text-white dark:hover:bg-orange-500 border border-orange-100 dark:border-orange-900/30 hover:border-orange-400 active:scale-90"
-          >
-            <Trophy size={16} className="transition-transform group-hover:rotate-12" />
+    <div className="pb-20 pt-28 md:pt-0">
+      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-16 mb-4 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
+        <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
+          <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+            <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
+            {activeTab === 'latest' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
           </button>
+          <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
+          <button onClick={() => setActiveTab('popular')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+            <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('most_relevant')}</span>
+            {activeTab === 'popular' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
+          </button>
+          <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
+          <button onClick={() => setActiveTab('ranking')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+            <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('top_ranking')}</span>
+            {activeTab === 'ranking' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
+          </button>
+
+          <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
+
+          <div className="px-2 flex items-center justify-center">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="p-2 text-orange-600 bg-orange-50/80 dark:bg-orange-900/20 backdrop-blur-sm rounded-xl transition-transform group hover:bg-orange-500 hover:text-white dark:hover:bg-orange-500 border border-orange-100 dark:border-orange-900/30 hover:border-orange-400 active:scale-90"
+            >
+              <Trophy size={16} className="transition-transform group-hover:rotate-12" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -151,7 +167,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
           mode="global_only"
           onNavigateToProfile={() => {
             setShowHistory(false);
-            navigate('/profile', { state: { tab: 'news', openRanking: true } });
+            navigate(`/${currentUser.username}`, { state: { tab: 'news', openRanking: true } });
           }}
         />
       )}
@@ -239,11 +255,18 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </div>
               )}
 
-              {isLoadingMore && (
-                <div className="py-6 flex justify-center">
-                  <Loader2 className="animate-spin text-orange-600" size={24} />
+              {hasMore ? (
+                <div className="flex justify-center pb-8 pt-4">
+                  <button
+                    onClick={onLoadMore}
+                    disabled={isLoadingMore}
+                    className="px-6 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400 hover:border-orange-200 dark:hover:border-orange-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  >
+                    {isLoadingMore && <Loader2 className="animate-spin" size={16} />}
+                    <span>{isLoadingMore ? t('loading') : t('show_more')}</span>
+                  </button>
                 </div>
-              )}
+              ) : null}
               {!hasMore && sortedNews.length > 0 && (
                 <div className="py-8 text-center text-gray-400 text-xs font-semibold uppercase tracking-widest opacity-50">
                   {language === 'es' ? 'Has llegado al final' : "You've reached the end"}

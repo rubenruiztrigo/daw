@@ -1,4 +1,6 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate } from 'react-router-dom';
 import { X, CheckCircle2, Lock, Gift, ChevronRight } from 'lucide-react';
 import { LEVELS, getLevelInfo } from '../utils/gamificationUtils';
@@ -12,10 +14,7 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
     const navigate = useNavigate();
     const [showAllLevels, setShowAllLevels] = React.useState(false);
 
-    React.useEffect(() => {
-        document.body.style.overflow = 'hidden';
-        return () => { document.body.style.overflow = 'unset'; };
-    }, []);
+    useScrollLock();
 
     const currentStatus = getLevelInfo(currentNovas);
 
@@ -26,7 +25,7 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
         ? Math.min(100, Math.max(0, ((currentNovas - currentThreshold) / (nextThreshold - currentThreshold)) * 100))
         : 100;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
             <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
 
@@ -144,6 +143,7 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

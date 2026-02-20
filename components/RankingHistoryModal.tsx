@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Trophy, Medal, Calendar, User as UserIcon, Loader2, ChevronRight, Clock } from 'lucide-react';
 import { Badge, BADGE_CATALOG, User } from '../types';
 import { supabase } from '../supabaseClient';
@@ -26,6 +27,7 @@ interface Winner {
 export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges, onClose, mode = 'full', onNavigateToProfile }) => {
     // If global_only, force global. If personal, force personal. Default full -> global.
     const [activeTab, setActiveTab] = useState<'global' | 'personal'>(mode === 'personal' ? 'personal' : 'global');
+    useScrollLock();
     const [winners, setWinners] = useState<Winner[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -146,10 +148,10 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-slate-900 dark:text-white">
-                                {mode === 'personal' ? 'Historial Ranking Semanal' : 'Ranking Semanal'}
+                                {mode === 'personal' ? 'Historial Ranking Semanal' : 'Ganadores de la semana pasada'}
                             </h3>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                {mode === 'personal' ? 'Total de insignias recibidas' : 'Top 3 NovaGobers'}
+                                {mode === 'personal' ? 'Total de insignias recibidas' : ''}
                             </p>
                         </div>
                     </div>
@@ -189,10 +191,6 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                             </div>
                         ) : winners.length > 0 ? (
                             <div className="space-y-4">
-                                <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/20 mb-6">
-                                    <h4 className="text-sm font-black text-orange-800 dark:text-orange-200 uppercase tracking-tight mb-1">Ganadores de la semana pasada</h4>
-                                    <p className="text-xs text-orange-600/80 dark:text-orange-400/80 font-medium">Estos usuarios obtuvieron la insignia Top Semanal por su influencia.</p>
-                                </div>
                                 {winners.map((winner, index) => {
                                     const badgeInfo = BADGE_CATALOG.find(b => b.id === winner.badgeId);
                                     if (!badgeInfo) return null;
@@ -210,12 +208,11 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center space-x-2">
                                                     <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate">{winner.user.name} {winner.user.lastName}</h4>
-                                                    {winner.badgeId === 'ranking_top1' && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-black">TOP 1</span>}
                                                 </div>
                                                 <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium truncate">{winner.user.position}</p>
                                             </div>
                                             <div className="flex flex-col items-end">
-                                                <span className={`text-xs font-black px-2 py-1 rounded-lg ${badgeInfo.color} bg-opacity-10 opacity-75`}>
+                                                <span className={`text-[10px] font-black px-2 py-1 border rounded-md ${badgeInfo.color} bg-opacity-20`}>
                                                     {badgeInfo.label}
                                                 </span>
                                             </div>
@@ -234,11 +231,11 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                                 onClose();
                                             }
                                         }}
-                                        className="w-full py-4 rounded-2xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20 text-orange-600 dark:text-orange-400 font-black text-sm uppercase tracking-widest hover:bg-orange-100 dark:hover:bg-orange-900/20 transition-all flex items-center justify-center space-x-2 group active:scale-[0.98]"
+                                        className="w-auto px-6 py-2 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/20 text-orange-600 dark:text-orange-400 font-bold text-xs uppercase tracking-wider hover:bg-orange-100 dark:hover:bg-orange-900/20 transition-all flex items-center justify-center space-x-2 group active:scale-[0.98] mx-auto"
                                     >
-                                        <Clock size={18} />
+                                        <Clock size={14} />
                                         <span>Ver mi historial de ranking</span>
-                                        <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                        <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                     </button>
                                 </div>
                             </div>
@@ -311,17 +308,18 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                                         );
                                                     }
 
+                                                    const rankNum = badge.id === 'ranking_top1' ? 1 : badge.id === 'ranking_top2' ? 2 : 3;
+
                                                     return (
                                                         <div key={`${badge.id}-${index}`} className="flex items-center p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                                             <div className={`p-3 rounded-xl ${badgeInfo.color} mr-4`}>
                                                                 <Medal size={24} />
                                                             </div>
                                                             <div className="flex-1">
-                                                                <h4 className="font-bold text-slate-900 dark:text-white text-base">{badgeInfo.label}</h4>
                                                                 {dateDisplay}
                                                             </div>
-                                                            <div className="text-2xl font-black text-slate-200 dark:text-zinc-800">
-                                                                #{index + 1}
+                                                            <div className="text-2xl font-black text-slate-400 dark:text-zinc-600">
+                                                                #{rankNum}
                                                             </div>
                                                         </div>
                                                     );

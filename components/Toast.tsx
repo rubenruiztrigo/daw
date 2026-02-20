@@ -26,7 +26,7 @@ export const Toast: React.FC<ToastProps> = ({ message, type = 'success', onClose
   };
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border border-white/20 ${styles[type]} transform transition-all duration-300 ease-in-out hover:scale-105`}>
+    <div className={`fixed bottom-6 right-6 z-[300] flex items-center gap-3 px-4 py-3 rounded-lg border border-white/20 ${styles[type]} transform transition-all duration-300 ease-in-out hover:scale-105`}>
       {icons[type]}
       <span className="font-medium text-sm">{message}</span>
       <button onClick={onClose} className="ml-2 p-1 hover:bg-white/20 rounded-full transition-colors">
