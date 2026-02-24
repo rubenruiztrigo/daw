@@ -374,7 +374,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
         if (profileError) {
           console.error("Error creating profile:", JSON.stringify(profileError));
-          setToast({ message: "Cuenta creada, pero hubo un error guardando el perfil. Contacta con soporte.", type: 'error' });
+          setError("Cuenta creada, pero hubo un error guardando el perfil. Contacta con soporte.");
         } else {
           console.log("Profile created. Sending notifications...");
 
@@ -428,10 +428,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     setLoading(false);
   };
 
-  const setToast = (props: { message: string, type: 'success' | 'error' | 'info' }) => {
-    console.log(`[${props.type.toUpperCase()}] ${props.message}`);
-    if (props.type === 'error') setError(props.message);
-  };
 
   const isStepValid = () => {
     if (step === 0) return true;

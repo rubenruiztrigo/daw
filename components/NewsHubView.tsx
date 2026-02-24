@@ -269,13 +269,27 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               <Trophy className="text-orange-500" size={24} />
               <h3 className="text-xl font-black text-gray-900 dark:text-white">{t('top_ranking')}</h3>
             </div>
-            {sortedNews.map((post, index) => (
-              <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
-                <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
-                <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
-                <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.upvotes !== undefined ? post.upvotes : post.likes}</span></div>
+            {sortedNews.length > 0 ? (
+              sortedNews.map((post, index) => (
+                <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
+                  <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
+                  <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
+                  <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.upvotes !== undefined ? post.upvotes : post.likes}</span></div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
+                <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
+                  <Trophy className="text-orange-500" size={32} />
+                </div>
+                <h4 className="text-slate-900 dark:text-white font-black mb-2">
+                  {t('no_ranking_news')}
+                </h4>
+                <p className="text-slate-400 font-medium text-sm italic">
+                  {t('no_ranking_news_description')}
+                </p>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>

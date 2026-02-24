@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Post, User, CalendarEvent } from '../types';
-import { ImageIcon, Clapperboard, Smile, X, Users, Sparkles, Plus, AtSign, Calendar, MapPin, Loader2, ChevronUp, RefreshCw } from 'lucide-react';
+import { ImageIcon, Clapperboard, Smile, X, Users, Sparkles, Plus, AtSign, Calendar, MapPin, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { PostCard } from './PostCard';
 import { ShareModal } from './ShareModal';
@@ -52,16 +52,9 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const t = useTranslation(language);
-  const [showScrollTop, setShowScrollTop] = useState(false);
   const scrollDirection = useScrollDirection();
 
-  useEffect(() => {
-    const handleScrollVisibility = () => {
-      setShowScrollTop(window.scrollY > 2000);
-    };
-    window.addEventListener('scroll', handleScrollVisibility);
-    return () => window.removeEventListener('scroll', handleScrollVisibility);
-  }, []);
+
 
   useEffect(() => {
     if (!onLoadMore) return;
@@ -95,6 +88,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
         .from('user_events')
         .select('*')
         .eq('creator_id', user.id)
+        .gte('event_date', new Date().toISOString().split('T')[0])
         .order('event_date', { ascending: true });
 
       if (data) {
@@ -376,17 +370,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
             {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={onShareViaChat} currentUser={user} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
 
-            {
-              showScrollTop && (
-                <button
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="hidden md:block fixed bottom-24 right-4 md:right-6 lg:right-[20.25rem] lg:left-auto p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 z-[9999] group"
-                  title={t('back_to_top')}
-                >
-                  <ChevronUp size={18} strokeWidth={3} className="group-hover:-translate-y-0.5 transition-transform" />
-                </button>
-              )
-            }
+
 
             <button
               onClick={() => setIsCreateModalOpen(true)}

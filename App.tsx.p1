@@ -1,0 +1,239 @@
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Language, useTranslation } from './utils/translations';
+import { encryptMessage, decryptMessage } from './utils/encryption';
+import { notifyUserApproved, notifyUserRejected } from './utils/emailService';
+import { Layout } from './components/Layout';
+import { SocialFeed } from './components/SocialFeed';
+import { ProfileView } from './components/ProfileView';
+import { ProfileRoute } from './components/ProfileRoute';
+import { MessagesView } from './components/MessagesView';
+import { NewsHubView } from './components/NewsHubView';
+import { CalendarView } from './components/CalendarView';
+import { SearchResultsView } from './components/SearchResultsView';
+import { SearchRoute } from './components/SearchRoute';
+import { SettingsView } from './components/SettingsView';
+import { Onboarding } from './components/Onboarding';
+import { ShareModal } from './components/ShareModal';
+import { StoreView } from './components/StoreView';
+import { Login } from './components/Login';
+import { PasswordRecover } from './components/PasswordRecover';
+import { NotificationsView } from './components/NotificationsView';
+import { FullPostView } from './components/FullPostView';
+import { User, Post, Chat, Message, Notification, Comment, AppView, CommentReply, CalendarEvent, BADGE_CATALOG } from './types';
+import { supabase } from './supabaseClient';
+import { Loader2, X } from 'lucide-react';
+import { Toast } from './components/Toast';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
+import { PendingAccount } from './components/PendingAccount';
+import { RejectedAccount } from './components/RejectedAccount';
+
+type Theme = 'light' | 'dark';
+
+const App: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [session, setSession] = useState<any>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [currentUserData, setCurrentUserData] = useState<User | null>(null);
+  const currentUserDataRef = useRef<User | null>(null);
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [previousView, setPreviousView] = useState<string>('/feed');
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [globalEvents, setGlobalEvents] = useState<CalendarEvent[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'light');
+  const [language, setLanguage] = useState<Language>(() => (localStorage.getItem('language') as Language) || 'es');
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const [processingReposts, setProcessingReposts] = useState<Set<string>>(new Set());
+  const [processingFollows, setProcessingFollows] = useState<Set<string>>(new Set());
+  const [processingVotes, setProcessingVotes] = useState<Set<string>>(new Set());
+  const [pinnedPosts, setPinnedPosts] = useState<Set<string>>(() => {
+    try {
+      const savedPins = localStorage.getItem('pinned_posts');
+      return savedPins ? new Set(JSON.parse(savedPins)) : new Set();
+    } catch (e) {
+      console.error('Error parsing pinned posts', e);
+      return new Set();
+    }
+  });
+
+  const [sharingEvent, setSharingEvent] = useState<CalendarEvent | null>(null);
+  const [sharingPost, setSharingPost] = useState<Post | null>(null);
+  const [prefilledPostContent, setPrefilledPostContent] = useState<string | null>(null);
+  const [prefilledEvent, setPrefilledEvent] = useState<CalendarEvent | null>(null);
+  const [targetEventId, setTargetEventId] = useState<string | null>(null);
+  const [targetCalendarDate, setTargetCalendarDate] = useState<Date | null>(null);
+  const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
+  const [followerUserIds, setFollowerUserIds] = useState<Set<string>>(new Set());
+  const [notificationsLimit, setNotificationsLimit] = useState(15);
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(true);
+  const [hasNewPosts, setHasNewPosts] = useState(false);
+  const t = useTranslation(language);
+
+  const handleRefreshFeed = async () => {
+    setIsLoadingMore(true);
+    await fetchFeed(0, 30);
+    setHasNewPosts(false);
+    setFeedOffset(30);
+    setIsLoadingMore(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const currentPath = location.pathname;
+    const savedPosition = sessionStorage.getItem('scroll_' + currentPath);
+    if (savedPosition) {
+      setTimeout(() => {
+        window.scrollTo({ top: parseInt(savedPosition, 10), behavior: 'instant' });
+      }, 0);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+    return () => {
+      sessionStorage.setItem('scroll_' + currentPath, window.scrollY.toString());
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/search')) {
+      setSearchQuery('');
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsLoadingAuth(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      if (event === 'PASSWORD_RECOVERY' || (session && (session as any).type === 'recovery')) {
+        setIsResettingPassword(true);
+        navigate('/recover-password');
+      }
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setCurrentUserData(null);
+        navigate('/login');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('language', language);
+  }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem('pinned_posts', JSON.stringify(Array.from(pinnedPosts)));
+  }, [pinnedPosts]);
+
+  const handleTogglePin = (postId: string) => {
+    setPinnedPosts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+      }
+      return newSet;
+    });
+  };
+
+  useEffect(() => {
+    if (session?.user && !isResettingPassword) {
+      supabase.rpc('assign_weekly_ranking_badges').then(({ error }) => {
+        if (error) console.error('Error checking ranking rewards:', error);
+      });
+      fetchUserProfile(session.user.id);
+      fetchUsers();
+      fetchFeed(0, 30);
+      setFeedOffset(30);
+      fetchFollows();
+      fetchChats();
+      fetchNotifications();
+      fetchGlobalEvents();
+
+      const channel = supabase
+        .channel('app_realtime_main')
+        .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+          if ((payload.table === 'posts' || payload.table === 'news') && payload.eventType === 'INSERT') {
+            const newRecord = payload.new as any;
+            if (newRecord && newRecord.author_id !== session.user.id) {
+              setHasNewPosts(true);
+            }
+          } else if (payload.table === 'messages') {
+            fetchChats();
+          }
+        })
+        .subscribe();
+
+      const profileChannel = supabase
+        .channel('public:profiles:' + session.user.id)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: 'id=eq.' + session.user.id
+        }, (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setCurrentUserData({ id: session.user.id, status: 'rejected' } as any);
+          } else {
+            const newProfile = payload.new as any;
+            if (newProfile) {
+              fetchUserProfile(session.user.id);
+              if (newProfile.status === 'active' && currentUserDataRef.current?.status !== 'active') {
+                setToast({ message: '¡Tu cuenta ha sido aprobada! Bienvenido.', type: 'success' });
+              } else if (newProfile.status === 'rejected' && currentUserDataRef.current?.status !== 'rejected') {
+                setToast({ message: 'Tu cuenta ha sido rechazada.', type: 'error' });
+              }
+            }
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+        supabase.removeChannel(profileChannel);
+      };
+    }
+  }, [session, isResettingPassword]);
+
+  useEffect(() => {
+    currentUserDataRef.current = currentUserData;
+  }, [currentUserData]);
+
+  useEffect(() => {
+    let interval: any;
+    if (session?.user && currentUserData?.status === 'pending') {
+      interval = setInterval(() => {
+        supabase.from('profiles').select('status').eq('id', session.user.id).maybeSingle().then(({ data }) => {
+          if (data && data.status === 'active') {
+            fetchUserProfile(session.user.id);
+            setToast({ message: '¡Tu cuenta ha sido aprobada!', type: 'success' });
+          } else if (data && data.status === 'rejected') {
+            fetchUserProfile(session.user.id);
+          }
+        });
+      }, 3000);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [session, currentUserData?.status]);
+    

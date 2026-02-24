@@ -1,0 +1,176 @@
+
+  const fetchUserProfile = async (userId: string) => {
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (profile) {
+      const formatted: User = {
+        id: profile.id,
+        name: profile.name,
+        lastName: profile.last_name,
+        username: profile.username,
+        email: profile.email,
+        position: profile.position,
+        department: profile.department,
+        jobCategory: profile.job_category,
+        administrationType: profile.administration_type,
+        roleDescription: profile.role_description,
+        organizationName: profile.organization_name,
+        organizationObjective: profile.organization_objective,
+        avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+        banner: profile.banner,
+        bannerColor: profile.banner_color,
+        bio: profile.bio,
+        interests: profile.interests || [],
+        followers: profile.followers_count || 0,
+        following: profile.following_count || 0,
+        country: profile.country,
+        region: profile.region,
+        joinedDate: profile.created_at,
+        birthDate: profile.birth_date,
+        notificationSettings: profile.notification_settings,
+        status: profile.status,
+        isAdmin: profile.is_admin,
+        isOrganization: profile.is_organization
+      };
+      if (userId === session?.user?.id) {
+        setCurrentUserData(formatted);
+      }
+      return formatted;
+    }
+    return null;
+  };
+
+  const fetchUsers = async () => {
+    const { data: profiles } = await supabase.from('profiles').select('id, name, last_name, username, avatar, position, department, job_category, administration_type, role_description, organization_name, banner, banner_color, bio, interests, followers_count, following_count, country, region, created_at, birth_date, notification_settings, status, is_admin, is_organization, organization_objective');
+    const { data: allBadges } = await supabase.from('user_badges').select('user_id, badge_id, created_at');
+    if (profiles) {
+      const badgesByUserId = (allBadges || []).reduce((acc: any, curr: any) => {
+        if (!acc[curr.user_id]) acc[curr.user_id] = [];
+        acc[curr.user_id].push({ id: curr.badge_id, created_at: curr.created_at });
+        return acc;
+      }, {});
+      setUsers(profiles.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        lastName: u.last_name,
+        username: u.username,
+        position: u.position,
+        department: u.department,
+        jobCategory: u.job_category,
+        administrationType: u.administration_type,
+        roleDescription: u.role_description,
+        organizationName: u.organization_name,
+        organizationObjective: u.organization_objective,
+        avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+        banner: u.banner,
+        bannerColor: u.banner_color,
+        bio: u.bio,
+        interests: u.interests || [],
+        followers: u.followers_count || 0,
+        following: u.following_count || 0,
+        country: u.country,
+        region: u.region,
+        joinedDate: u.created_at,
+        status: u.status,
+        isAdmin: u.is_admin,
+        isOrganization: u.is_organization,
+        badges: badgesByUserId[u.id] || []
+      })));
+    }
+  };
+
+  const fetchFollows = async () => {
+    if (!session?.user) return;
+    const { data: following } = await supabase.from('follows').select('followed_id').eq('follower_id', session.user.id);
+    const { data: followers } = await supabase.from('follows').select('follower_id').eq('followed_id', session.user.id);
+    setFollowedUserIds(new Set(following?.map(f => f.followed_id) || []));
+    setFollowerUserIds(new Set(followers?.map(f => f.follower_id) || []));
+  };
+
+  const fetchChats = async () => {
+    if (!session?.user) return;
+    const { data: rawMessages, error } = await supabase
+      .from('messages')
+      .select('*, sender:profiles!sender_id(*), recipient:profiles!recipient_id(*)')
+      .or(`sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`)
+      .order('created_at', { ascending: false })
+      .limit(300);
+    if (error) { console.error('Error fetch chats:', error); return; }
+    if (rawMessages) {
+      const chatGroups = new Map<string, Chat>();
+      rawMessages.forEach((m: any) => {
+        const isSender = m.sender_id === session.user.id;
+        const otherId = isSender ? m.recipient_id : m.sender_id;
+        const otherProfile = isSender ? m.recipient : m.sender;
+        if (!chatGroups.has(otherId)) {
+          chatGroups.set(otherId, {
+            id: otherId,
+            participant: {
+              id: otherId,
+              name: otherProfile?.name || 'Usuario',
+              lastName: otherProfile?.last_name || '',
+              username: otherProfile?.username,
+              avatar: otherProfile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherId}`,
+              position: otherProfile?.position,
+              department: otherProfile?.department
+            },
+            messages: [],
+            lastMessage: '',
+            timestamp: new Date(m.created_at)
+          });
+        }
+        const chat = chatGroups.get(otherId)!;
+        const text = decryptMessage(m.text || '');
+        const isDataUrl = text.startsWith('data:image/');
+        const displayLabel = isDataUrl ? (language === 'es' ? 'Imagen' : 'Image') : text;
+        const messageObj: Message = {
+          id: m.id,
+          senderId: m.sender_id,
+          recipientId: m.recipient_id,
+          text: decryptMessage(m.text || ''),
+          timestamp: new Date(m.created_at),
+          isRead: m.is_read,
+          postId: m.post_id,
+          isPostShare: m.is_post_share,
+          sharedProfileId: m.shared_profile_id,
+          sharedEventId: m.shared_event_id
+        };
+        chat.messages.unshift(messageObj);
+        if (text && !chat.lastMessage) {
+          chat.lastMessage = displayLabel;
+          chat.timestamp = new Date(m.created_at);
+        }
+      });
+      setChats(Array.from(chatGroups.values()).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 20));
+    }
+  };
+
+  const fetchNotifications = async (limit = 15) => {
+    if (!session?.user) return;
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*, sender:profiles!sender_id(*)')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1);
+    if (data) {
+      setNotifications(data.map((n: any) => ({
+        id: n.id,
+        userId: n.user_id,
+        senderId: n.sender_id,
+        senderName: n.sender?.name + ' ' + (n.sender?.last_name || ''),
+        senderAvatar: n.sender?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.sender_id}`,
+        type: n.type,
+        content: n.content,
+        postId: n.post_id,
+        isRead: n.is_read,
+        timestamp: new Date(n.created_at)
+      })));
+      setHasMoreNotifications(data.length === limit);
+    }
+  };
+
+  const fetchGlobalEvents = async () => {
+    const { data } = await supabase.from('user_events').select('*').order('start_time', { ascending: true });
+    if (data) setGlobalEvents(data);
+  };
+    

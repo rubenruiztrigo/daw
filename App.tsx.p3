@@ -1,0 +1,94 @@
+
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [feedOffset, setFeedOffset] = useState(0);
+
+  const fetchFeed = async (offset = 0, limit = 30) => {
+    if (!session?.user) return;
+    try {
+      const [{ data: postsData }, { data: newsData }] = await Promise.all([
+        supabase.from('posts').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }).range(offset, offset + limit - 1),
+        supabase.from('news').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }).range(offset, offset + limit - 1),
+      ]);
+      if (!postsData && !newsData && offset > 0) { setHasMorePosts(false); return; }
+      const postIds = (postsData || []).map(p => p.id);
+      const newsIds = (newsData || []).map(n => n.id);
+      const [
+        { data: myPostLikes }, { data: myNewsVotes }, { data: myReposts },
+        { data: postCommentsData }, { data: newsCommentsData },
+        { data: commentLikesData }, { data: commentRepliesData }
+      ] = await Promise.all([
+        supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id).in('post_id', postIds),
+        supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id).in('news_id', newsIds),
+        supabase.from('post_reposts').select('post_id').eq('user_id', session.user.id).in('post_id', postIds),
+        supabase.from('post_comments').select('*, author:profiles!author_id(*)').in('post_id', postIds).order('created_at', { ascending: true }),
+        supabase.from('news_comments').select('*, author:profiles!author_id(*)').in('news_id', newsIds).order('created_at', { ascending: true }),
+        supabase.from('comment_likes').select('comment_id').eq('user_id', session.user.id),
+        supabase.from('comment_replies').select('*, author:profiles!author_id(*)').order('created_at', { ascending: true })
+      ]);
+      const myLikedPostIds = new Set(myPostLikes?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []);
+      const myDownvotedPostIds = new Set(myPostLikes?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []);
+      const myUpvotedNewsIds = new Set(myNewsVotes?.filter(v => v.vote_type === 'up').map(v => v.news_id) || []);
+      const myDownvotedNewsIds = new Set(myNewsVotes?.filter(v => v.vote_type === 'down').map(v => v.news_id) || []);
+      const myRepostedIds = new Set(myReposts?.map(r => r.post_id) || []);
+      const myLikedCommentIds = new Set(commentLikesData?.map(l => l.comment_id) || []);
+      const repliesByCommentId = (commentRepliesData || []).reduce((acc: any, curr: any) => {
+        if (!acc[curr.comment_id]) acc[curr.comment_id] = [];
+        acc[curr.comment_id].push({
+          id: curr.id,
+          commentId: curr.comment_id,
+          authorId: curr.author_id,
+          authorName: curr.author?.name + ' ' + (curr.author?.last_name || ''),
+          content: curr.content,
+          timestamp: curr.created_at,
+          parentReplyId: curr.parent_reply_id,
+          authorAvatar: curr.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${curr.author_id}`
+        });
+        return acc;
+      }, {});
+      const formatComments = (comments: any[]) => comments.map(c => ({
+        id: c.id,
+        authorId: c.author_id,
+        authorName: c.author?.name + ' ' + (c.author?.last_name || ''),
+        authorAvatar: c.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.author_id}`,
+        text: c.text,
+        timestamp: c.created_at,
+        likes: c.likes_count || 0,
+        userLiked: myLikedCommentIds.has(c.id),
+        replies: repliesByCommentId[c.id] || []
+      }));
+      const formattedPosts = (postsData || []).map(p => ({
+        id: p.id, authorId: p.author_id, authorName: p.author?.name + ' ' + (p.author?.last_name || ''),
+        authorUsername: p.author?.username, authorPosition: p.author?.position,
+        authorAvatar: p.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.author_id}`,
+        content: p.content, imageUrl: p.image_url, docUrl: p.doc_url, docName: p.doc_name,
+        timestamp: p.created_at, type: 'post', tags: p.tags || [], likes: p.likes_count || 0,
+        reposts: p.reposts_count || 0, comments: p.comments_count || 0,
+        commentsList: formatComments(postCommentsData?.filter(c => c.post_id === p.id) || []),
+        userLiked: myLikedPostIds.has(p.id), userDownvoted: myDownvotedPostIds.has(p.id),
+        userReposted: myRepostedIds.has(p.id), linkedEventId: p.linked_event_id
+      }));
+      const formattedNews = (newsData || []).map(n => ({
+        id: n.id, authorId: n.author_id, authorName: n.author?.name + ' ' + (n.author?.last_name || ''),
+        authorUsername: n.author?.username, authorPosition: n.author?.position,
+        authorAvatar: n.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${n.author_id}`,
+        content: n.content, imageUrl: n.image_url, timestamp: n.created_at, type: 'news',
+        tags: n.tags || [], upvotes: n.upvotes_count || 0, downvotes: n.downvotes_count || 0,
+        likes: (n.upvotes_count || 0) - (n.downvotes_count || 0), comments: n.comments_count || 0,
+        commentsList: formatComments(newsCommentsData?.filter(c => c.news_id === n.id) || []),
+        userLiked: myUpvotedNewsIds.has(n.id), userDownvoted: myDownvotedNewsIds.has(n.id)
+      }));
+      const allItems = [...formattedPosts, ...formattedNews].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      if (offset === 0) setPosts(allItems); else setPosts(prev => [...prev, ...allItems]);
+    } catch (err) { console.error('Error fetching feed:', err); }
+  };
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore || !hasMorePosts) return;
+    setIsLoadingMore(true);
+    const limit = 10;
+    await fetchFeed(feedOffset, limit);
+    setFeedOffset(prev => prev + limit);
+    setIsLoadingMore(false);
+  };
+    

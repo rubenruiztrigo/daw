@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag, ArrowUp, Menu, ArrowLeft, Monitor, Pin, Loader2, ChevronRight } from 'lucide-react';
+import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag, Menu, ArrowLeft, Monitor, Pin, Loader2, ChevronRight } from 'lucide-react';
 import { User as UserType, Notification, CalendarEvent, Post } from '../types';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
@@ -51,7 +51,6 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [showScrollTop, setShowScrollTop] = useState(false);
   useScrollLock(showLogoutConfirm);
   const unreadCount = notifications.filter(n => !n.isRead).length;
   const location = useLocation();
@@ -68,6 +67,13 @@ export const Layout: React.FC<LayoutProps> = ({
     return (
       <NavLink
         to={to}
+        onClick={(e) => {
+          if (location.pathname === to) {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (onRefresh) onRefresh();
+          }
+        }}
         className={({ isActive }) => `w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${isActive
           ? 'bg-blue-600 text-white'
           : 'text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-900 hover:text-blue-600'
@@ -185,29 +191,21 @@ export const Layout: React.FC<LayoutProps> = ({
     }
   }, [searchQuery]);
 
-  React.useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 300) {
-        setShowScrollTop(true);
-      } else {
-        setShowScrollTop(false);
-      }
-    };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   return (
     <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
       <div className="w-full flex relative min-h-screen">
         {/* Sidebar Desktop */}
-        <aside className="w-64 xl:w-80 2xl:w-96 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-6 z-30">
-          <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => navigate('/feed')}>
+        <aside className="w-56 xl:w-64 2xl:w-72 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 z-30">
+          <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => {
+            if (location.pathname === '/feed') {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              if (onRefresh) onRefresh();
+            } else {
+              navigate('/feed');
+            }
+          }}>
             <Logo />
             <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Red Social</span>
           </div>
@@ -276,7 +274,14 @@ export const Layout: React.FC<LayoutProps> = ({
         <div className="flex-1 min-w-0 flex flex-col transition-all duration-300">
           {/* Mobile Header */}
           <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
-            <div className="flex-shrink-0 cursor-pointer" onClick={() => navigate('/feed')}>
+            <div className="flex-shrink-0 cursor-pointer" onClick={() => {
+              if (location.pathname === '/feed') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (onRefresh) onRefresh();
+              } else {
+                navigate('/feed');
+              }
+            }}>
               <Logo />
             </div>
 
@@ -405,7 +410,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
 
         {showSidebar && (
-          <aside className="w-80 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-6 z-30 animate-in slide-in-from-right duration-300">
+          <aside className="w-64 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-4 z-30 animate-in slide-in-from-right duration-300">
             <div className="mb-6">
               <form onSubmit={handleSearchFormSubmit} className="relative w-full z-50">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -519,7 +524,7 @@ export const Layout: React.FC<LayoutProps> = ({
                         className="w-full text-left cursor-pointer group p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:border-blue-200 dark:hover:border-blue-900/50"
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors truncate">
+                          <p className="text-sm font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors">
                             {event.title}
                           </p>
                         </div>
@@ -576,9 +581,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </button>
       </nav>
 
-      {showScrollTop && (
-        <button onClick={scrollToTop} className="md:hidden hidden fixed bottom-24 left-4 p-3 bg-blue-600 text-white rounded-full z-40 animate-in fade-in duration-300"><ArrowUp size={24} /></button>
-      )}
+
 
       {showLogoutConfirm && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowLogoutConfirm(false)}>

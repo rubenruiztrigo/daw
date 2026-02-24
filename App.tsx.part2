@@ -1,0 +1,359 @@
+
+  const handleAddPost = async (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => {
+    if (!session?.user) return;
+    if (type === 'news') {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: countError } = await supabase.from('news').select('id', { count: 'exact', head: true }).eq('author_id', session.user.id).gte('created_at', twentyFourHoursAgo);
+      if (countError) console.error('Error checking news limit:', countError.message);
+      else if (count !== null && count >= 2) { setToast({ message: 'Límite: Solo puedes publicar 2 noticias cada 24 horas para evitar saturación.', type: 'error' }); return; }
+    }
+    const table = type === 'news' ? 'news' : 'posts';
+    const payload: any = { author_id: session.user.id, content, tags, image_url: imageUrl || null, updated_at: new Date().toISOString() };
+    if (type === 'post') { payload.doc_url = docUrl || null; payload.doc_name = docName || null; if (linkedEventId) payload.linked_event_id = linkedEventId; }
+    const { data: newPost, error } = await supabase.from(table).insert(payload).select().single();
+    if (error) console.error('Error al publicar:', error.message);
+    else {
+      const mentionMatches = content.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))];
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({ user_id: mentionedUser.id, sender_id: session.user.id, type: 'mention', content: `te ha mencionado en una publicación`, post_id: newPost.id });
+          }
+        }
+      }
+      const formattedPost = {
+        id: newPost.id, authorId: newPost.author_id, authorName: `${currentUserData?.name} ${currentUserData?.lastName || ''}`,
+        authorUsername: currentUserData?.username, authorPosition: currentUserData?.position,
+        authorAvatar: currentUserData?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${newPost.author_id}`,
+        content: newPost.content, imageUrl: newPost.imageUrl, docUrl: newPost.docUrl, docName: newPost.docName,
+        timestamp: newPost.timestamp, type: type === 'news' ? 'news' : 'post', tags: newPost.tags || [],
+        likes: 0, reposts: 0, comments: 0, commentsList: [], userLiked: false, userReposted: false, userDownvoted: false,
+        linkedEventId: newPost.linkedEventId, linkedEvent: prefilledEvent || undefined
+      };
+      setPosts(prev => [formattedPost as any, ...prev]);
+    }
+  };
+
+  const handleAddComment = async (postId: string, text: string) => {
+    if (!session?.user) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const table = post.type === 'news' ? 'news_comments' : 'post_comments';
+    const idField = post.type === 'news' ? 'news_id' : 'post_id';
+    try {
+      await supabase.from(table).insert({ [idField]: postId, author_id: session.user.id, text });
+      if (post.authorId !== session.user.id) {
+        await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `comentó en tu ${post.type === 'news' ? 'noticia' : 'post'}`, post_id: postId });
+      }
+      const mentionMatches = text.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))];
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({ user_id: mentionedUser.id, sender_id: session.user.id, type: 'mention', content: `te ha mencionado en un comentario`, post_id: postId });
+          }
+        }
+      }
+      fetchFeed();
+    } catch (e: any) { console.error('Error adding comment:', e); setToast({ message: 'Error al publicar comentario.', type: 'error' }); }
+  };
+
+  const handleAddReply = async (commentId: string, text: string, parentReplyId?: string) => {
+    if (!session?.user) return;
+    try {
+      const { data: newReply, error } = await supabase.from('comment_replies').insert({ comment_id: commentId, parent_reply_id: parentReplyId || null, author_id: session.user.id, content: text }).select().single();
+      if (error) throw error;
+      let targetAuthorId: string | null = null;
+      let relatedPostId = selectedPostId;
+      if (parentReplyId) { const { data: pr } = await supabase.from('comment_replies').select('author_id').eq('id', parentReplyId).single(); targetAuthorId = pr?.author_id || null; }
+      else {
+        const { data: pc } = await supabase.from('post_comments').select('author_id, post_id').eq('id', commentId).maybeSingle();
+        if (pc) { targetAuthorId = pc.author_id; relatedPostId = pc.post_id || relatedPostId; }
+        else {
+          const { data: nc } = await supabase.from('news_comments').select('author_id, news_id').eq('id', commentId).maybeSingle();
+          targetAuthorId = nc?.author_id || null; relatedPostId = nc?.news_id || relatedPostId;
+        }
+      }
+      if (targetAuthorId && targetAuthorId !== session.user.id) {
+        await supabase.from('notifications').insert({ user_id: targetAuthorId, sender_id: session.user.id, type: 'comment', content: `ha respondido a tu comentario`, post_id: relatedPostId });
+      }
+      const mentionMatches = text.match(/@(\w+)/g);
+      if (mentionMatches) {
+        const uniqueMentions = [...new Set(mentionMatches.map(m => m.slice(1)))];
+        for (const username of uniqueMentions) {
+          const mentionedUser = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
+          if (mentionedUser && mentionedUser.id !== session.user.id && mentionedUser.notificationSettings?.mentions !== false) {
+            await supabase.from('notifications').insert({ user_id: mentionedUser.id, sender_id: session.user.id, type: 'mention', content: `te ha mencionado en una respuesta`, post_id: relatedPostId });
+          }
+        }
+      }
+      setToast({ message: 'Respuesta publicada correctamente.', type: 'success' });
+      fetchFeed();
+    } catch (err: any) { console.error('Error adding reply:', err.message); setToast({ message: 'No se pudo guardar la respuesta. Inténtalo de nuevo.', type: 'error' }); }
+  };
+
+  const handleVoteComment = async (commentId: string) => {
+    if (!session?.user) return;
+    let targetComment: Comment | null = null;
+    let targetPost: Post | null = null;
+    for (const p of posts) { const found = p.commentsList.find(c => c.id === commentId); if (found) { targetComment = found; targetPost = p; break; } }
+    if (!targetComment) return;
+    const isLiked = targetComment.userLiked;
+    const updatePostState = (increment: number, newLikedStatus: boolean) => {
+      setPosts(prevPosts => prevPosts.map(p => {
+        if (p.id !== targetPost!.id) return p;
+        const updateComments = (list: Comment[]): Comment[] => list.map(c => {
+          if (c.id === commentId) return { ...c, likes: Math.max(0, c.likes + increment), userLiked: newLikedStatus };
+          if (c.replies && c.replies.length > 0) {
+            const updatedReplies = (c.replies as any[]).map(r => r.id === commentId ? { ...r, likes: Math.max(0, r.likes + increment), userLiked: newLikedStatus } : r);
+            return { ...c, replies: updatedReplies };
+          }
+          return c;
+        });
+        return { ...p, commentsList: updateComments(p.commentsList) };
+      }));
+    };
+    updatePostState(isLiked ? -1 : 1, !isLiked);
+    try {
+      if (isLiked) { await supabase.from('comment_likes').delete().eq('user_id', session.user.id).eq('comment_id', commentId); await supabase.from('notifications').delete().match({ user_id: targetComment.authorId, sender_id: session.user.id, type: 'like', post_id: targetPost?.id }); }
+      else {
+        await supabase.from('comment_likes').insert({ user_id: session.user.id, comment_id: commentId });
+        if (targetComment.authorId !== session.user.id) {
+          const { data: existing } = await supabase.from('notifications').select('id').match({ user_id: targetComment.authorId, sender_id: session.user.id, type: 'like', content: 'le ha gustado tu comentario' }).maybeSingle();
+          if (!existing) await supabase.from('notifications').insert({ user_id: targetComment.authorId, sender_id: session.user.id, type: 'like', content: `le ha gustado tu comentario`, post_id: targetPost?.id });
+        }
+      }
+    } catch (e) { console.error('Error voting comment', e); updatePostState(isLiked ? 1 : -1, isLiked); }
+  };
+
+  const handleSupportEvent = async (event: CalendarEvent) => {
+    if (!session?.user) return;
+    setGlobalEvents(prev => prev.map(e => e.id === event.id ? { ...e, attendees: (e.attendees || 0) + 1 } : e));
+    try {
+      const { error } = await supabase.from('event_supports').insert({ user_id: session.user.id, event_id: event.id });
+      if (error) { if (error.code === '23505') setToast({ message: 'Ya has apoyado este evento.', type: 'info' }); else throw error; }
+      else {
+        setToast({ message: '¡Estás apoyando este evento!', type: 'success' });
+        if (event.creator_id !== session.user.id) {
+          const { data: existing } = await supabase.from('notifications').select('id').match({ user_id: event.creator_id, sender_id: session.user.id, type: 'like', content: `está apoyando tu evento: ${event.title}` }).maybeSingle();
+          if (!existing) await supabase.from('notifications').insert({ user_id: event.creator_id, sender_id: session.user.id, type: 'like', content: `está apoyando tu evento: ${event.title}` });
+        }
+      }
+      fetchGlobalEvents();
+    } catch (e: any) { console.error('Error supporting event:', e); setToast({ message: 'Error al apoyar evento.', type: 'error' }); fetchGlobalEvents(); }
+  };
+
+  const handleRepost = async (postId: string) => {
+    if (!session?.user || processingReposts.has(postId)) return;
+    const targetPost = posts.find(p => p.id === postId);
+    if (!targetPost) return;
+    setProcessingReposts(prev => new Set(prev).add(postId));
+    const isAdding = !targetPost.userReposted;
+    setPosts(prevPosts => prevPosts.map(p => { if (p.id === postId) return { ...p, userReposted: isAdding, reposts: isAdding ? p.reposts + 1 : Math.max(0, p.reposts - 1) }; return p; }));
+    try {
+      const { data: existingRepost } = await supabase.from('post_reposts').select('*').eq('user_id', session.user.id).eq('post_id', postId).maybeSingle();
+      if (existingRepost) { await supabase.from('post_reposts').delete().eq('user_id', session.user.id).eq('post_id', postId); await supabase.from('notifications').delete().match({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', post_id: postId }); setToast({ message: 'Has eliminado tu republicación.', type: 'info' }); }
+      else {
+        await supabase.from('post_reposts').insert({ user_id: session.user.id, post_id: postId });
+        if (targetPost.authorId !== session.user.id) {
+          const { data: existingNotif } = await supabase.from('notifications').select('id').match({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', post_id: postId }).maybeSingle();
+          if (!existingNotif) supabase.from('notifications').insert({ user_id: targetPost.authorId, sender_id: session.user.id, type: 'repost', content: `ha republicado tu post`, post_id: postId });
+        }
+        setToast({ message: '¡Publicación republicada!', type: 'success' });
+      }
+    } catch (err: any) { fetchFeed(); } finally { setTimeout(() => setProcessingReposts(prev => { const next = new Set(prev); next.delete(postId); return next; }), 500); }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!session?.user) return;
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', session.user.id).eq('is_read', false);
+      if (error) throw error;
+      await fetchNotifications();
+      setToast({ message: 'Notificaciones marcadas como leídas.', type: 'success' });
+    } catch (err: any) { console.error('Error marking all read:', err.message); setToast({ message: 'Error al actualizar notificaciones.', type: 'error' }); }
+  };
+
+  const handleMarkChatAsRead = async (chatId: string) => {
+    if (!session?.user) return;
+    setChats(prevChats => prevChats.map(c => {
+      if (c.id === chatId) {
+        const updatedMessages = c.messages.map(m => { if (m.senderId === chatId && !m.isRead) return { ...m, isRead: true }; return m; });
+        return { ...c, messages: updatedMessages };
+      }
+      return c;
+    }));
+    try {
+      await supabase.from('messages').update({ is_read: true }).eq('recipient_id', session.user.id).eq('sender_id', chatId).eq('is_read', false);
+      fetchNotifications();
+    } catch (err) { console.error('Error marking chat as read:', err); fetchChats(); }
+  };
+
+  const handleNavigateToProfile = (userId: string) => {
+    const targetUser = users.find(u => u.id === userId) || (currentUserData?.id === userId ? currentUserData : null);
+    const identifier = targetUser?.username || userId;
+    navigate(`/${identifier}`);
+  };
+
+  const handleNavigateToEvent = (userId: string, eventId: string) => {
+    setTargetEventId(eventId);
+    handleNavigateToProfile(userId);
+  };
+
+  const handleNavigateToCalendarDate = (date: Date) => {
+    setTargetCalendarDate(date);
+    navigate('/calendar');
+  };
+
+  const handleSendMessage = async (recipientId: string, text: string, postShareId?: string, profileShareId?: string, sharedEventId?: string) => {
+    if (!session?.user) return;
+    try {
+      const { error } = await supabase.from('messages').insert({ sender_id: session.user.id, recipient_id: recipientId, text: encryptMessage(text), post_id: postShareId, is_post_share: !!postShareId, shared_profile_id: profileShareId, shared_event_id: sharedEventId });
+      if (error) throw error;
+      fetchChats();
+    } catch (err: any) { console.error('Error sending message:', err.message); setToast({ message: 'Error al enviar el mensaje.', type: 'error' }); }
+  };
+
+  const handleSendMessageFromShare = async (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string) => {
+    await handleSendMessage(recipientId, text, sharedPostId, sharedProfileId, sharedEventId);
+    setToast({ message: 'Contenido compartido por chat.', type: 'success' });
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!session?.user) return;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const { error: backupError } = await supabase.from('posts_deleted').insert({ post_id: postId, user_id: session.user.id, content: post.content, image_url: post.imageUrl, post_type: post.type, original_created_at: post.timestamp });
+    if (backupError && backupError.code !== '23505') { setToast({ message: 'Error al registrar eliminación. Inténtalo de nuevo.', type: 'error' }); return; }
+    const table = post.type === 'news' ? 'news' : 'posts';
+    const { error: deleteError } = await supabase.from(table).delete().eq('id', postId);
+    if (deleteError) { console.error('Error deleting post:', deleteError); setToast({ message: 'No se pudo eliminar el post.', type: 'error' }); }
+    else { setToast({ message: 'Post eliminado correctamente.', type: 'success' }); fetchFeed(); }
+  };
+
+  const handleApproveUser = async (userId: string, notificationId?: string) => {
+    if (!session?.user) return;
+    try {
+      const { error } = await supabase.from('profiles').update({ status: 'active' }).eq('id', userId);
+      if (error) throw error;
+      if (notificationId) {
+        const user = users.find(u => u.id === userId);
+        const name = user ? `${user.name} ${user.lastName || ''}`.trim() : 'Usuario';
+        const content = `Solicitud de ${name} aceptada`;
+        setNotifications(prev => prev.map(n => (n.senderId === userId && n.type === 'registration_request') ? { ...n, content: content, isRead: true, type: 'system' } : n));
+        await supabase.rpc('resolve_registration_request', { target_user_id: userId, request_status: 'active' });
+      }
+      setToast({ message: 'Usuario aprobado correctamente.', type: 'success' });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
+      await fetchNotifications();
+    } catch (err: any) { console.error('Error approving user:', err.message); setToast({ message: 'Error al aprobar usuario.', type: 'error' }); }
+  };
+
+  const handleRejectUser = async (userId: string, notificationId?: string) => {
+    if (!session?.user) return;
+    try {
+      const { error } = await supabase.from('profiles').update({ status: 'rejected' }).eq('id', userId);
+      if (error) throw error;
+      if (notificationId) {
+        const user = users.find(u => u.id === userId);
+        const name = user ? `${user.name} ${user.lastName || ''}`.trim() : 'Usuario';
+        const content = `Solicitud de ${name} rechazada`;
+        setNotifications(prev => prev.map(n => (n.senderId === userId && n.type === 'registration_request') ? { ...n, content: content, isRead: true, type: 'system' } : n));
+        await supabase.rpc('resolve_registration_request', { target_user_id: userId, request_status: 'rejected' });
+      }
+      setToast({ message: 'Usuario rechazado.', type: 'success' });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
+      await fetchNotifications();
+    } catch (err: any) { console.error('Error rejecting user:', err.message); setToast({ message: 'Error al rechazar usuario.', type: 'error' }); }
+  };
+
+  const PostDetailWrapper = () => {
+    const { postId } = useParams();
+    const post = posts.find(p => p.id === postId);
+    if (!post) return <div className="p-10 text-center">{language === 'es' ? 'Post no encontrado' : 'Post not found'}</div>;
+    return (
+      <FullPostView
+        post={post} currentUser={currentUserData!} onDeletePost={handleDeletePost}
+        onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment}
+        onAddReply={handleAddReply} onVoteComment={handleVoteComment} onRepost={handleRepost}
+        onNavigateToProfile={handleNavigateToProfile} onBack={() => navigate(-1)}
+        onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)}
+        users={users} onNavigateToEvent={handleNavigateToEvent} chats={chats}
+        followerUserIds={followerUserIds} onShareViaChat={handleSendMessageFromShare}
+        language={language}
+      />
+    );
+  };
+
+  if (isLoadingAuth) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
+
+  return (
+    <div className={theme === 'dark' ? 'dark' : ''}>
+      <Routes>
+        <Route path="/login" element={<Login onLogin={() => { navigate('/feed'); }} onRegister={() => navigate('/register')} />} />
+        <Route path="/register" element={<Onboarding onComplete={() => navigate('/account/pending')} onCancel={() => navigate('/login')} />} />
+        <Route path="/recover-password" element={<PasswordRecover onComplete={() => navigate('/login')} />} />
+        <Route path="/account/pending" element={<PendingAccount onLogout={() => { supabase.auth.signOut(); navigate('/login'); }} />} />
+        <Route path="/account/rejected" element={<RejectedAccount onLogout={() => { supabase.auth.signOut(); navigate('/login'); }} />} />
+        <Route path="/*" element={
+          (!session || !currentUserData) ? (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>
+          ) : (
+            <Layout
+              user={currentUserData!} notifications={notifications} globalEvents={globalEvents} posts={posts}
+              searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)}
+              onLogout={() => { sessionStorage.clear(); supabase.auth.signOut(); navigate('/login'); }}
+              language={language} onRefresh={handleRefreshFeed} theme={theme} onThemeChange={setTheme}
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/feed" replace />} />
+                <Route path="/feed" element={
+                  <SocialFeed
+                    posts={posts.filter(p => p.type === 'post')} onLoadMore={handleLoadMore} hasMore={hasMorePosts}
+                    isLoadingMore={isLoadingMore} user={currentUserData!} onLike={(id) => handleVote(id, 'up')}
+                    onVote={handleVote} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment}
+                    users={users} onNavigateToProfile={handleNavigateToProfile} followedUserIds={followedUserIds}
+                    followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)} onDeletePost={handleDeletePost}
+                    initialContent={prefilledPostContent} prefilledEvent={prefilledEvent} onClearInitialContent={() => { setPrefilledPostContent(null); setPrefilledEvent(null); }}
+                    onViewCalendar={() => navigate('/calendar')} onNavigateToEvent={handleNavigateToEvent} chats={chats}
+                    onShareViaChat={handleSendMessageFromShare} language={language} hasNewContent={hasNewPosts} onRefresh={handleRefreshFeed}
+                    pinnedPosts={pinnedPosts} onTogglePin={handleTogglePin}
+                  />
+                } />
+                <Route path="/news" element={
+                  <NewsHubView
+                    posts={posts.filter(p => p.type === 'news')} onLoadMore={handleLoadMore} hasMore={hasMorePosts}
+                    isLoadingMore={isLoadingMore} user={currentUserData!} onVote={handleVote} onRepost={handleRepost}
+                    onAddPost={handleAddPost} onAddComment={handleAddComment} currentUser={currentUserData!} users={users}
+                    onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={(id) => navigate(`/post/${id}`)}
+                    onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)} onDeletePost={handleDeletePost}
+                    chats={chats} followerUserIds={followerUserIds} onShareViaChat={handleSendMessageFromShare}
+                    language={language} hasNewContent={hasNewPosts} onRefresh={handleRefreshFeed}
+                  />
+                } />
+                <Route path="/calendar" element={<CalendarView onNavigateToEvent={handleNavigateToEvent} onPromoteEvent={(ev) => { setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://red.novagob.org/u/${ev.creator_id}/e/${ev.id} #Evento`); setPrefilledEvent(ev); navigate('/feed'); }} onSupportEvent={handleSupportEvent} onShareEvent={setSharingEvent} initialDate={targetCalendarDate} language={language} />} />
+                <Route path="/messages" element={<MessagesView chats={chats} currentUser={currentUserData!} onSendMessage={handleSendMessage} onMarkAsRead={handleMarkChatAsRead} activeChatUserId={activeChatUserId} onSelectChat={setActiveChatUserId} language={language} onNavigateToProfile={handleNavigateToProfile} />} />
+                <Route path="/notifications" element={<NotificationsView notifications={notifications} onMarkAllRead={handleMarkAllNotificationsRead} onNavigateToPost={(id) => navigate(`/post/${id}`)} onNavigateToProfile={handleNavigateToProfile} onLoadMore={() => { const newLimit = notificationsLimit + 15; setNotificationsLimit(newLimit); fetchNotifications(newLimit); }} hasMore={hasMoreNotifications} language={language} onApproveUser={handleApproveUser} onRejectUser={handleRejectUser} />} />
+                <Route path="/store" element={<StoreView user={currentUserData!} onUpdateUser={handleUpdateUser} language={language} />} />
+                <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} theme={theme} onThemeChange={setTheme} language={language} onLanguageChange={setLanguage} />} />
+                <Route path="/search" element={<SearchRoute users={users} posts={posts} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={(id) => navigate(`/post/${id}`)} currentUser={currentUserData!} followedUserIds={followedUserIds} onToggleFollow={handleToggleFollow} language={language} />} />
+                <Route path="/post/:postId" element={<PostDetailWrapper />} />
+                <Route path="/:identifier" element={<ProfileRoute currentUser={currentUserData!} users={users} posts={posts} followedUserIds={followedUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={(id) => navigate(`/post/${id}`)} onDeletePost={handleDeletePost} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onRepost={handleRepost} onSearchHashtag={(t) => navigate(`/search?q=${encodeURIComponent(t)}`)} onAddReply={handleAddReply} onVoteComment={handleVoteComment} chats={chats} followerUserIds={followerUserIds} onShareViaChat={handleSendMessageFromShare} language={language} targetEventId={targetEventId} onClearTargetEvent={() => setTargetEventId(null)} onNavigateToEvent={handleNavigateToEvent} onSupportEvent={handleSupportEvent} onPromoteEvent={(ev) => { setPrefilledPostContent(`📢 ¡Os invito a participar en este evento!\n\n${ev.title}\n\nhttps://red.novagob.org/u/${ev.creator_id}/e/${ev.id} #Evento`); setPrefilledEvent(ev); navigate('/feed'); }} onTogglePin={handleTogglePin} pinnedPosts={pinnedPosts} />} />
+              </Routes>
+            </Layout>
+          )
+        } />
+      </Routes>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      {sharingEvent && <ShareModal isOpen={true} onClose={() => setSharingEvent(null)} type='event' data={sharingEvent} users={users} onShare={handleSendMessageFromShare} language={language} />}
+      {sharingPost && <ShareModal isOpen={true} onClose={() => setSharingPost(null)} type='post' data={sharingPost} users={users} onShare={handleSendMessageFromShare} language={language} />}
+    </div>
+  );
+};
+
+export default App;
+    

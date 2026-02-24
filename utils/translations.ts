@@ -46,6 +46,8 @@ export const translations = {
         no_relevant_news_today: "No hay noticias relevantes hoy",
         no_news_today_description: "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!",
         no_relevant_news_today_description: "Parece que no hay noticias destacadas en las últimas 24 horas. ¡Sube tu aportación!",
+        no_ranking_news: "Sin actividad en el ranking semanal",
+        no_ranking_news_description: "No se han registrado noticias destacadas durante el periodo actual. Le invitamos a compartir las novedades de su entorno.",
         publish_scoop: "Publicar primicia",
 
         // Settings
@@ -121,6 +123,7 @@ export const translations = {
         background_color: "Fondo del chat",
         read_receipts: "Confirmación de lectura",
         read_receipts_desc: "Si desactivas esta opción, no verás la confirmación de lectura de otros usuarios ni ellos verán la tuya.",
+        image_chat_preview: "Imagen",
 
         // Post / Action
         delete_post: "Eliminar post",
@@ -356,6 +359,8 @@ export const translations = {
         no_relevant_news_today: "No relevant news today",
         no_news_today_description: "It seems everything is quiet today. Be the first to inform your colleagues!",
         no_relevant_news_today_description: "It seems there are no featured news in the last 24 hours. Submit your contribution!",
+        no_ranking_news: "No weekly ranking activity",
+        no_ranking_news_description: "No featured news has been recorded during the current period. We invite you to share updates from your area.",
         publish_scoop: "Publish scoop",
 
         // Settings
@@ -431,6 +436,7 @@ export const translations = {
         background_color: "Chat background",
         read_receipts: "Read receipts",
         read_receipts_desc: "If turned off, you won't see read receipts from others and they won't see yours.",
+        image_chat_preview: "Image",
 
         // Post / Action
         delete_post: "Delete post",

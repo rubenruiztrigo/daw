@@ -1480,7 +1480,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
         <SettingItem icon={Bell} label={t('notifications')} onClick={() => setShowNotifications(true)} />
 
         <SettingItem icon={Lock} label={t('privacy_security')} onClick={() => setShowPrivacySecurity(true)} />
-        <SettingItem icon={Smartphone} label={t('devices')} />
+        <SettingItem
+          icon={Smartphone}
+          label={t('devices')}
+          onClick={() => { /* Proximamente: Gestión de dispositivos */ }}
+        />
       </div>
 
       {showChatSettings && createPortal(

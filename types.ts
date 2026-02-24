@@ -234,6 +234,7 @@ export interface Message {
   postId?: string;
   isRead?: boolean;
   sharedProfile?: Partial<User>;
+  sharedProfileId?: string;
   sharedEventId?: string;
   sharedEvent?: CalendarEvent;
 }

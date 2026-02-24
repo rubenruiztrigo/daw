@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProfileView } from './ProfileView';
 import { User, Post, Chat, CalendarEvent, Notification } from '../types';
 import { Language } from '../utils/translations';
+import { supabase } from '../supabaseClient';
+import { Loader2, User as UserIcon } from 'lucide-react';
 
 interface ProfileRouteProps {
     users: User[];
@@ -25,14 +27,19 @@ interface ProfileRouteProps {
     onSearchHashtag: (tag: string) => void;
     onNavigateToPost: (postId: string) => void;
     onNavigateToProfile: (userId: string) => void;
-    onLike: (id: string) => void; // Added missing prop
-    onVote: (id: string, dir: 'up' | 'down') => void; // Added missing prop
-    onAddComment: (postId: string, text: string) => void; // Added missing prop
-    onPreviewImage?: (url: string) => void; // Added missing prop
+    onLike: (id: string) => void;
+    onVote: (id: string, dir: 'up' | 'down') => void;
+    onAddComment: (postId: string, text: string) => void;
+    onAddReply: (commentId: string, text: string, parentReplyId?: string) => void;
+    onVoteComment: (commentId: string) => void;
+    onPreviewImage?: (url: string) => void;
     globalEvents?: any[];
     language: Language;
     pinnedPosts?: Set<string>;
     onTogglePin?: (postId: string) => void;
+    onSupportEvent: (event: CalendarEvent) => void;
+    targetEventId: string | null;
+    onClearTargetEvent: () => void;
 }
 
 export const ProfileRoute: React.FC<ProfileRouteProps> = ({
@@ -59,28 +66,119 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     onLike,
     onVote,
     onAddComment,
+    onAddReply,
+    onVoteComment,
     onPreviewImage,
     globalEvents = [],
     language,
     pinnedPosts,
-    onTogglePin
+    onTogglePin,
+    onSupportEvent,
+    targetEventId,
+    onClearTargetEvent
 }) => {
-    const { username } = useParams<{ username: string }>();
+    const { identifier } = useParams<{ identifier: string }>();
     const navigate = useNavigate();
+    const [fetchedUser, setFetchedUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    // Find user by username or ID
-    const targetUser = users.find(u => u.username === username || u.id === username) ||
-        (currentUserData?.username === username || currentUserData?.id === username ? currentUserData : null) ||
-        (!username && currentUserData ? currentUserData : null);
+    // Sanitize identifier (remove @ if present)
+    const cleanIdentifier = identifier?.startsWith('@') ? identifier.slice(1) : identifier;
 
-    // Fallback if user not found (e.g. invalid URL)
+    // 1. Try to find in local state (case-insensitive username check or exact ID)
+    const localUser = users.find(u => u.username?.toLowerCase() === cleanIdentifier?.toLowerCase() || u.id === cleanIdentifier) ||
+        (currentUserData?.username?.toLowerCase() === cleanIdentifier?.toLowerCase() || currentUserData?.id === cleanIdentifier ? currentUserData : null) ||
+        (!cleanIdentifier && currentUserData ? currentUserData : null);
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            // If already in local state or no identifier, don't fetch
+            if (localUser || !cleanIdentifier) {
+                setFetchedUser(null);
+                return;
+            }
+
+            setLoading(true);
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanIdentifier || '');
+            try {
+                let query = supabase.from('profiles').select('*');
+                if (isUUID) {
+                    query = query.or(`username.ilike.${cleanIdentifier},id.eq.${cleanIdentifier}`);
+                } else {
+                    query = query.ilike('username', cleanIdentifier);
+                }
+                const { data, error } = await query.single();
+
+                if (data && !error) {
+                    const formattedUser: User = {
+                        id: data.id,
+                        name: data.name,
+                        lastName: data.last_name,
+                        username: data.username,
+                        position: data.position,
+                        department: data.department,
+                        avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
+                        bio: data.bio || '',
+                        interests: data.interests || [],
+                        followers: data.followers_count || 0,
+                        following: data.following_count || 0,
+                        joinedDate: data.created_at,
+                        isOrganization: data.is_organization,
+                        status: data.status,
+                        jobCategory: data.job_category,
+                        administrationType: data.administration_type,
+                        country: data.country,
+                        region: data.region
+                    };
+                    setFetchedUser(formattedUser);
+                } else {
+                    setFetchedUser(null);
+                }
+            } catch (err) {
+                console.error("Error loading profile:", err);
+                setFetchedUser(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUser();
+    }, [cleanIdentifier, localUser]);
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 bg-white dark:bg-[#0a0a0a]">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+                <p className="text-slate-500 font-bold animate-pulse text-sm">Cargando perfil...</p>
+            </div>
+        );
+    }
+
+    const targetUser = localUser || fetchedUser;
+
     if (!targetUser) {
-        return <div className="p-10 text-center text-slate-500 dark:text-zinc-400">{language === 'es' ? 'Usuario no encontrado' : 'User not found'}</div>;
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center p-10 bg-white dark:bg-[#0a0a0a]">
+                <div className="w-20 h-20 bg-slate-50 dark:bg-zinc-900 rounded-[2rem] flex items-center justify-center mb-6">
+                    <UserIcon className="text-slate-300 dark:text-zinc-700" size={32} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">
+                    {language === 'es' ? 'Usuario no encontrado' : 'User not found'}
+                </h3>
+                <p className="text-slate-500 dark:text-zinc-500 font-medium text-sm text-center max-w-xs mb-8">
+                    El perfil que buscas no existe o el enlace es incorrecto.
+                </p>
+                <button
+                    onClick={() => navigate('/feed')}
+                    className="px-8 py-4 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95 shadow-xl shadow-blue-500/20"
+                >
+                    Volver al Inicio
+                </button>
+            </div>
+        );
     }
 
     const targetUserId = targetUser.id;
-
-    // Derived state
     const isCurrentUser = targetUserId === currentUserData?.id;
     const isFollowed = followedUserIds.has(targetUserId);
     const isFollower = followerUserIds.has(targetUserId);
@@ -102,8 +200,11 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onSearchHashtag={onSearchHashtag}
             onDeletePost={onDeletePost}
             onNavigateToEvent={onNavigateToEvent}
-            focusedEventId={focusedEventId}
-            onClearFocusedEvent={onClearFocusedEvent}
+            focusedEventId={focusedEventId || targetEventId}
+            onClearFocusedEvent={() => {
+                if (onClearFocusedEvent) onClearFocusedEvent();
+                if (onClearTargetEvent) onClearTargetEvent();
+            }}
             onStartChat={onStartChat}
             onAddPost={onAddPost}
             onPromoteEvent={onPromoteEvent}
@@ -114,11 +215,14 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onLike={onLike}
             onVote={onVote}
             onAddComment={onAddComment}
+            onAddReply={onAddReply}
+            onVoteComment={onVoteComment}
             onPreviewImage={onPreviewImage}
             globalEvents={globalEvents}
             language={language}
             pinnedPosts={pinnedPosts}
             onTogglePin={onTogglePin}
+            onSupportEvent={onSupportEvent}
         />
     );
 };

@@ -40,6 +40,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const shouldAutoScrollRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !selectedId) return;
@@ -229,9 +230,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               <div className="flex-1 text-left min-w-0 overflow-hidden">
                 <div className="flex justify-between items-center mb-0.5 gap-2">
                   <span className="font-bold text-gray-900 dark:text-white text-sm truncate min-w-0 flex-1">{temporaryParticipant.name}</span>
-                  <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full font-black uppercase shrink-0">{t('new_label')}</span>
                 </div>
-                <p className="text-xs text-blue-600 font-bold italic truncate">{t('write_first_message')}</p>
               </div>
             </button>
           )}
@@ -315,7 +314,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 md:space-y-6 scroll-smooth overscroll-contain"
               style={{ backgroundColor: user.chatSettings?.backgroundColor || undefined }}
             >
-              {selectedChat ? selectedChat.messages.map((m, idx) => (
+              {selectedChat?.messages.map((m, idx) => (
                 <div
                   key={m.id || idx}
                   id={`msg-${m.id}`}
@@ -416,7 +415,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           >
                             {isImage ? (
                               <div className="rounded-lg overflow-hidden">
-                                <img src={m.text} alt="Shared image" className="max-w-full max-h-60 object-cover cursor-pointer" onClick={() => { const w = window.open(""); w?.document.write(`<img src="${m.text}" />`); }} />
+                                <img
+                                  src={m.text}
+                                  alt="Shared image"
+                                  className="max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => setSelectedFullImage(m.text)}
+                                />
                               </div>
                             ) : (
                               (() => {
@@ -451,17 +455,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     </div>
                   </div>
                 </div>
-              )) : (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="p-6 bg-blue-50 dark:bg-zinc-800 rounded-full text-blue-600">
-                    <Sparkles size={40} />
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-black text-gray-900 dark:text-white">{t('new_chat')}</h4>
-                    <p className="text-sm text-gray-400 font-medium">{t('start_chat_with', { name: participant.name })}</p>
-                  </div>
-                </div>
-              )}
+              ))}
               <div ref={messagesEndRef} />
             </div>
 
@@ -578,7 +572,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     {infoTab === 'multimedia' ? (
                       <div className="grid grid-cols-3 gap-2 pb-6">
                         {chatInfoData.media.length > 0 ? chatInfoData.media.map((url, i) => (
-                          <div key={i} className="aspect-square rounded-xl overflow-hidden border border-slate-100 dark:border-zinc-800 group relative cursor-pointer" onClick={() => window.open(url, '_blank')}>
+                          <div key={i} className="aspect-square rounded-xl overflow-hidden border border-slate-100 dark:border-zinc-800 group relative cursor-pointer" onClick={() => setSelectedFullImage(url)}>
                             <img src={url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
                           </div>
                         )) : (
@@ -677,6 +671,30 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedFullImage && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-xl animate-in fade-in duration-300"
+          onClick={() => setSelectedFullImage(null)}
+        >
+          <button
+            onClick={() => setSelectedFullImage(null)}
+            className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all hover:rotate-90"
+          >
+            <X size={24} />
+          </button>
+          <div
+            className="relative max-w-5xl max-h-[90vh] w-full flex items-center justify-center animate-in zoom-in-95 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={selectedFullImage}
+              alt="Preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+            />
           </div>
         </div>
       )}
