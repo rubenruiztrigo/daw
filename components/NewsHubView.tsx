@@ -7,6 +7,8 @@ import { RankingHistoryModal } from './RankingHistoryModal';
 import { CreatePostModal } from './CreatePostModal';
 import { Language, useTranslation } from '../utils/translations';
 import { useScrollDirection } from '../hooks/useScrollDirection';
+import { supabase } from '../supabaseClient';
+import { BADGE_CATALOG } from '../types';
 
 interface NewsHubViewProps {
   posts: Post[];
@@ -45,6 +47,48 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   const t = useTranslation(language);
   const scrollDirection = useScrollDirection();
 
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const mentionSuggestions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const query = mentionQuery.toLowerCase();
+    return users.filter(u =>
+      u.name.toLowerCase().includes(query) ||
+      (u.lastName?.toLowerCase().includes(query)) ||
+      u.username?.toLowerCase().includes(query)
+    ).slice(0, 5);
+  }, [mentionQuery, users]);
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const selectionStart = e.target.selectionStart;
+    setNewsContent(value);
+
+    const textBeforeCursor = value.slice(0, selectionStart);
+    const match = textBeforeCursor.match(/(?:^|\s)@(\S*)$/);
+
+    if (match && match[1].length >= 2) {
+      const query = match[1];
+      const atIndex = textBeforeCursor.lastIndexOf('@');
+      setMentionQuery(query);
+      setMentionStartIndex(atIndex);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const selectMention = (selectedUser: User) => {
+    if (mentionStartIndex === -1) return;
+    const before = newsContent.slice(0, mentionStartIndex);
+    const after = newsContent.slice(textareaRef.current?.selectionStart || 0);
+    const newContent = `${before}@${selectedUser.username} ${after}`;
+    setNewsContent(newContent);
+    setMentionQuery(null);
+    textareaRef.current?.focus();
+  };
+
   useEffect(() => {
     if (!onLoadMore) return;
     const handleScroll = () => {
@@ -61,6 +105,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [rankingHistory, setRankingHistory] = useState<{ badge_id: string, created_at: string }[]>([]);
 
   useEffect(() => {
     const savedTab = sessionStorage.getItem('news_hub_tab') as NewsTab;
@@ -70,6 +115,19 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   useEffect(() => {
     sessionStorage.setItem('news_hub_tab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    const fetchRankingHistory = async () => {
+      const { data } = await supabase
+        .from('ranking_history')
+        .select('badge_id, created_at')
+        .eq('user_id', currentUser.id);
+
+      if (data) setRankingHistory(data);
+    };
+
+    if (showHistory) fetchRankingHistory();
+  }, [showHistory, currentUser.id]);
 
   const sortedNews = useMemo(() => {
     let filtered = [...posts];
@@ -162,7 +220,13 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 
       {showHistory && (
         <RankingHistoryModal
-          badges={currentUser.badges || []}
+          badges={rankingHistory.map(rh => {
+            const catalogBadge = BADGE_CATALOG.find(c => c.id === rh.badge_id);
+            return {
+              ...catalogBadge!,
+              created_at: rh.created_at
+            };
+          })}
           onClose={() => setShowHistory(false)}
           mode="global_only"
           onNavigateToProfile={() => {
@@ -187,31 +251,54 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
       <div className="max-w-2xl xl:max-w-3xl mx-auto space-y-4">
         {activeTab !== 'ranking' ? (
           <>
-            <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800 overflow-hidden">
+            <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800">
               <div className="flex space-x-4 p-3 md:p-5">
                 <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   if (!newsContent.trim()) return;
                   onAddPost(newsContent, 'news', [], selectedImage || undefined);
+                  setMentionQuery(null);
                   setNewsContent('');
                   setSelectedImage(null);
                 }} className="flex-1">
-                  <textarea
-                    value={newsContent}
-                    onChange={(e) => setNewsContent(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (!newsContent.trim()) return;
-                        onAddPost(newsContent, 'news', [], selectedImage || undefined);
-                        setNewsContent('');
-                        setSelectedImage(null);
-                      }
-                    }}
-                    placeholder={t('share_your_news')}
-                    className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] p-2"
-                  />
+                  <div className="relative">
+                    <textarea
+                      ref={textareaRef}
+                      value={newsContent}
+                      onChange={handleTextChange}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setMentionQuery(null);
+                        }
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (!newsContent.trim()) return;
+                          onAddPost(newsContent, 'news', [], selectedImage || undefined);
+                          setMentionQuery(null);
+                          setNewsContent('');
+                          setSelectedImage(null);
+                        }
+                      }}
+                      placeholder={`${t('share_your_news')}`}
+                      className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] p-2"
+                    />
+                    {mentionQuery !== null && (
+                      <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
+                        {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
+                          <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
+                            <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                            <div className="min-w-0">
+                              <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                              <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
+                            </div>
+                          </button>
+                        )) : (
+                          <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between mt-4">
                     <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full"><ImageIcon size={20} /></button>
                     <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
@@ -229,7 +316,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             </div>
             <div className="space-y-4">
               {sortedNews.length > 0 ? (
-                sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} />)
+                sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} language={language} />)
               ) : (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
                   <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
@@ -291,8 +378,9 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               </div>
             )}
           </div>
-        )}
-      </div>
+        )
+        }
+      </div >
 
       {!showHistory && (
         <button
@@ -310,7 +398,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         user={user}
         type="news"
         language={language}
+        users={users}
       />
-    </div>
+    </div >
   );
 };

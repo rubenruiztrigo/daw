@@ -8,21 +8,17 @@ export interface LevelInfo {
     desc: string;
     color: string;
     bg: string;
+    bannerColor: string;
     icon: React.ElementType;
 }
 
 export const LEVELS: LevelInfo[] = [
-    { name: "Aspirante", threshold: 0, desc: "El recién llegado que está explorando el terreno.", color: "text-slate-400", bg: "bg-slate-50", icon: Target },
-    { name: "Activo", threshold: 25, desc: "Ya participa y empieza a generar sus primeras Novas.", color: "text-amber-600", bg: "bg-amber-50", icon: Zap },
-    { name: "Impulsor", threshold: 50, desc: "Alguien que dinamiza y aporta energía a los grupos.", color: "text-orange-500", bg: "bg-orange-50", icon: Megaphone },
-    { name: "Especialista", threshold: 100, desc: "Domina su área y es reconocido por sus aportes técnicos.", color: "text-blue-500", bg: "bg-blue-50", icon: Briefcase },
-    { name: "Profesional", threshold: 150, desc: "Un perfil sólido, fiable y con una red ya establecida.", color: "text-indigo-500", bg: "bg-indigo-50", icon: Award },
-    { name: "Experto", threshold: 200, desc: "Su palabra tiene peso; otros usuarios lo consultan.", color: "text-violet-600", bg: "bg-violet-50", icon: Star },
-    { name: "Élite", threshold: 300, desc: "Un nivel de distinción reservado para los más constantes.", color: "text-fuchsia-600", bg: "bg-fuchsia-50", icon: Medal },
-    { name: "Maestro", threshold: 400, desc: "Guía a otros y tiene una influencia clara en la red.", color: "text-rose-600", bg: "bg-rose-50", icon: Trophy },
-    { name: "Nova Estelar", threshold: 600, desc: "El paso previo a la leyenda. Un referente absoluto.", color: "text-cyan-500", bg: "bg-cyan-50", icon: Sparkles },
-    { name: "Nova Galáctica", threshold: 800, desc: "Un titán de la comunidad, su impacto es universal.", color: "text-purple-600", bg: "bg-purple-50", icon: Crown },
-    { name: "SuperNova", threshold: 1000, desc: "El máximo honor. Leyenda viva de la administración pública.", color: "text-yellow-600", bg: "bg-yellow-100", icon: Crown }
+    { name: "NovaReferente", threshold: 0, desc: "El recién llegado que está explorando el terreno.", color: "text-[#82E4FF]", bg: "bg-[#82E4FF]/10", bannerColor: "#82E4FF", icon: Target },
+    { name: "NovaProfesional", threshold: 10, desc: "Ya participa y empieza a generar sus primeras Novas.", color: "text-[#ea76f3]", bg: "bg-[#ea76f3]/10", bannerColor: "#ea76f3", icon: Zap },
+    { name: "NovaEspecialista", threshold: 50, desc: "Domina su área y es reconocido por sus aportes técnicos.", color: "text-[#B8FF1E]", bg: "bg-[#B8FF1E]/10", bannerColor: "#B8FF1E", icon: Briefcase },
+    { name: "NovaDestacada", threshold: 100, desc: "Un perfil sólido, fiable y con una red ya establecida.", color: "text-[#2F5BFF]", bg: "bg-[#2F5BFF]/10", bannerColor: "#2F5BFF", icon: Award },
+    { name: "NovaEstelar", threshold: 150, desc: "Su palabra tiene peso; otros usuarios lo consultan.", color: "text-[#EBD916]", bg: "bg-[#EBD916]/10", bannerColor: "#EBD916", icon: Star },
+    { name: "SuperNova", threshold: 200, desc: "El máximo honor. Leyenda viva de la comunidad.", color: "text-[#9C5DFF]", bg: "bg-[#9C5DFF]/10", bannerColor: "#9C5DFF", icon: Crown }
 ];
 
 export const getLevelInfo = (novas: number, language: Language = 'es') => {

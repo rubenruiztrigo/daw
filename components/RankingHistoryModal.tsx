@@ -67,7 +67,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
             setIsLoading(true);
             try {
                 const { data, error } = await supabase
-                    .from('user_badges')
+                    .from('ranking_history')
                     .select(`
                         badge_id,
                         created_at,
@@ -151,7 +151,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                 {mode === 'personal' ? 'Historial Ranking Semanal' : 'Ganadores de la semana pasada'}
                             </h3>
                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                {mode === 'personal' ? 'Total de insignias recibidas' : ''}
+                                {mode === 'personal' ? '' : ''}
                             </p>
                         </div>
                     </div>
@@ -313,7 +313,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                                     return (
                                                         <div key={`${badge.id}-${index}`} className="flex items-center p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                                             <div className={`p-3 rounded-xl ${badgeInfo.color} mr-4`}>
-                                                                <Medal size={24} />
+                                                                <img src="/img/novagob.brand_isotipo_black.svg" className="w-6 h-6 dark:invert opacity-80" alt="" />
                                                             </div>
                                                             <div className="flex-1">
                                                                 {dateDisplay}

@@ -48,25 +48,12 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
     language
 }) => {
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const query = searchParams.get('q') || '';
-
-    // We can pass the query to SearchResultsView. 
-    // Note: SearchResultsView maintains its own 'localQuery' state initialized from 'query' prop.
-    // We should ensure that if 'query' prop changes (from URL), it updates internal state if needed,
-    // or we can let SearchResultsView handle it (it already does via useEffect or useMemo? Let's check).
-    // Checking SearchResultsView: "const [localQuery, setLocalQuery] = useState(query);"
-    // It doesn't seem to update localQuery when query prop changes in the current code unless I missed a useEffect.
-    // Wait, I should double check SearchResultsView logic.
-    // "const [localQuery, setLocalQuery] = useState(query);" initializes it. 
-    // If the user navigates /search?q=foo, then /search?q=bar, does it update?
-    // Use `key={query}` on SearchResultsView or add a useEffect there?
-    // Let's force a key for now to reset internal state if the URL query actually changes, 
-    // BUT we don't want to reset it on App render.
-    // The 'query' comes from useSearchParams, which is stable across App renders unless URL changes.
 
     return (
         <SearchResultsView
-            key={query} /* Optional: resets view if query parameter changes, ensuring new search is populated */
+            key={query}
             query={query}
             posts={posts}
             users={users}
@@ -75,7 +62,10 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onRepost={onRepost}
             onAddComment={onAddComment}
             onDeletePost={onDeletePost}
-            onViewChange={onViewChange}
+            onViewChange={(view) => {
+                if (view === 'feed') navigate('/feed');
+                else onViewChange(view);
+            }}
             currentUser={currentUser}
             followedUserIds={followedUserIds}
             followerUserIds={followerUserIds}
@@ -84,9 +74,8 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onNavigateToPost={onNavigateToPost}
             onSearchHashtag={onSearchHashtag}
             onNavigateToEvent={onNavigateToEvent}
-            chats={chats}
-            onShareViaChat={onShareViaChat}
             language={language}
+            onShareViaChat={onShareViaChat}
         />
     );
 };

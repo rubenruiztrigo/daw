@@ -4,6 +4,7 @@ import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { Language, useTranslation } from '../utils/translations';
+import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
 
 interface FullPostViewProps {
   post: Post;
@@ -91,12 +92,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
-    const query = mentionQuery.toLowerCase();
-    return users.filter(u =>
-      u.name.toLowerCase().includes(query) ||
-      (u.lastName?.toLowerCase().includes(query)) ||
-      (u.username?.toLowerCase().includes(query))
-    ).slice(0, 5);
+    return getMentionSuggestions(mentionQuery, users);
   }, [mentionQuery, users]);
 
 
@@ -116,7 +112,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
     if (target === 'main') setText(val); else setReplyText(val);
 
     const textBeforeCursor = val.slice(0, selectionStart);
-    const match = textBeforeCursor.match(/(?:^|\s)@(\S*)$/);
+    const match = textBeforeCursor.match(/(?:^|\s)@([\w.]*)$/);
 
     if (match) {
       setMentionQuery(match[1]);
@@ -188,37 +184,41 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
 
   const renderContentWithHashtags = (content: string) => {
     if (!content) return null;
-    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+|https?:\/\/[^\s]+)/g);
+    const parts = content.split(RENDER_REGEX);
     return parts.map((part, i) => {
-      if (part.startsWith('#')) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.startsWith('#')) {
         return (
           <button
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              onSearchHashtag?.(part);
+              onSearchHashtag?.(trimmedPart);
             }}
             className={`font-black hover:underline transition-all ${post.type === 'news' ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600 dark:text-blue-400'}`}
           >
             {part}
           </button>
         );
-      } else if (part.startsWith('@')) {
-        const username = part.slice(1).toLowerCase();
-        const mentionedUser = users.find(u => u.username?.toLowerCase() === username);
+      } else if (trimmedPart.startsWith('@')) {
+        const mentionedUser = getUserByMention(trimmedPart, users);
+
+        if (!mentionedUser) return part;
+
         return (
           <button
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
+              onNavigateToProfile?.(mentionedUser.id);
             }}
-            className="text-blue-600 dark:text-blue-400 font-bold hover:underline transition-all"
+            className="text-purple-600 dark:text-purple-400 font-bold hover:underline transition-all"
           >
-            {part}
+            @{mentionedUser.username}
           </button>
         );
-      } else if (part.startsWith('http')) {
+      }
+      else if (part.startsWith('http')) {
         const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
         if (profileEventMatch && onNavigateToEvent) {
           const [, userId, eventId] = profileEventMatch;
@@ -348,11 +348,11 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
               {mentionTarget === 'main' && mentionSuggestions.length > 0 && (
                 <div className="absolute left-0 bottom-full mb-2 w-72 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
                   {mentionSuggestions.map(u => (
-                    <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
+                    <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
                       <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
-                        <p className="text-[10px] text-blue-600 font-bold">@{u.username}</p>
+                        <p className="text-[10px] text-purple-600 font-bold">@{u.username}</p>
                       </div>
                     </button>
                   ))}
@@ -444,11 +444,11 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                               {mentionTarget === 'reply' && mentionSuggestions.length > 0 && (
                                 <div className="absolute left-0 bottom-full mb-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
                                   {mentionSuggestions.map(u => (
-                                    <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
+                                    <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
                                       <img src={u.avatar} className="w-7 h-7 rounded-lg object-cover" alt="" />
                                       <div className="min-w-0">
                                         <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
-                                        <p className="text-[9px] text-blue-600 dark:text-blue-400 font-bold">@{u.username}</p>
+                                        <p className="text-[9px] text-purple-600 dark:text-purple-400 font-bold">@{u.username}</p>
                                       </div>
                                     </button>
                                   ))}

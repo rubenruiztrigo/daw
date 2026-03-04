@@ -5,7 +5,6 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, calculateNovas } from '../types';
 import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck } from 'lucide-react';
-import { EditProfileModal } from './EditProfileModal';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { PreferencesModal } from './PreferencesModal';
 import { ShareModal } from './ShareModal';
@@ -62,7 +61,7 @@ interface ProfileViewProps {
 const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language: Language }> = ({ user, onClose, language }) => {
   const navigate = useNavigate();
   const t = useTranslation(language);
-  const novas = calculateNovas(user.badges);
+  const novas = user.novas ?? calculateNovas(user.badges || []);
   const status = getLevelInfo(novas, language);
   useScrollLock();
   const StatusIcon = status.icon;
@@ -337,7 +336,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const t = useTranslation(language);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
   const [isShowStatusModalOpen, setIsShowStatusModalOpen] = useState(false);
   const [viewingUsersList, setViewingUsersList] = useState<'followers' | 'following' | 'event-supporters' | null>(null);
@@ -353,6 +352,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showRankingModal, setShowRankingModal] = useState(false);
   const [showLevelsModal, setShowLevelsModal] = useState(false);
+  const [dbBadges, setDbBadges] = useState<{ id: string, created_at?: string }[]>([]);
+  const [rankingHistory, setRankingHistory] = useState<{ id: string, badge_id: string, created_at: string }[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -410,11 +411,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   useEffect(() => {
     const fetchUserData = async () => {
       const { data: reposts } = await supabase
-        .from('post_reposts')
-        .select('post_id')
+        .from('reposts')
+        .select('post_id, news_id')
         .eq('user_id', user.id);
 
-      if (reposts) setRepostedPostIds(reposts.map(r => r.post_id));
+      if (reposts) {
+        const ids = new Set<string>();
+        reposts.forEach(r => {
+          if (r.post_id) ids.add(r.post_id);
+          if (r.news_id) ids.add(r.news_id);
+        });
+        setRepostedPostIds(Array.from(ids));
+      }
+
+      const { data: userBadges } = await supabase
+        .from('user_badges')
+        .select('badge_id, created_at')
+        .eq('user_id', user.id);
+
+      if (userBadges) {
+        setDbBadges(userBadges.map(b => ({ id: b.badge_id, created_at: b.created_at })));
+      }
+
+      const { data: rankHistory } = await supabase
+        .from('ranking_history')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (rankHistory) {
+        setRankingHistory(rankHistory);
+      }
 
       const { data: supports } = await supabase
         .from('event_supports')
@@ -424,7 +450,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (supports) setSupportedEventIds(new Set(supports.map(s => s.event_id)));
     };
 
-    fetchUserData();
     fetchUserData();
     fetchUserEvents();
     fetchCommonFollowers();
@@ -533,8 +558,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  const novas = useMemo(() => calculateNovas(user.badges), [user.badges]);
-  const status = useMemo(() => getLevelInfo(novas), [novas]);
+  const novas = useMemo(() => {
+    if (user.novas !== undefined && user.novas !== null) return user.novas;
+
+    const combinedBadges = [
+      ...dbBadges.map(b => ({ id: b.id })),
+      ...rankingHistory.map(rh => ({ id: rh.badge_id }))
+    ];
+
+    // If we have fetched DB data, use it. Otherwise fallback to user.badges (if any)
+    if (dbBadges.length > 0 || rankingHistory.length > 0) {
+      return calculateNovas(combinedBadges.length > 0 ? combinedBadges : (user.badges || []));
+    }
+
+    return calculateNovas(user.badges || []);
+  }, [user.novas, user.badges, dbBadges, rankingHistory]);
+
+  const status = useMemo(() => getLevelInfo(novas, language), [novas, language]);
 
   const bannerStyle = useMemo(() => {
     // Gold gradient only for levels HIGHER than 10 (if any)
@@ -547,19 +587,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         boxShadow: 'inset 0 0 15px rgba(0,0,0,0.1)'
       };
     }
-    // Scale now up to 10
-    // Level 10 = 10/10 = 100% color (Dark Purple)
-    // Level 9 = 9/10 = 90% color (Lighter)
-    const ratio = Math.min(status.level / 10, 1);
-    const r = Math.round(255 + (156 - 255) * ratio);
-    const g = Math.round(255 + (36 - 255) * ratio);
-    const b = Math.round(255 + (188 - 255) * ratio);
+    // Level colors now come from status.currentLevelInfo (LEVELS array)
     return {
-      backgroundColor: `rgb(${r}, ${g}, ${b})`,
+      backgroundColor: status.currentLevelInfo.bannerColor,
       borderBottom: '1px solid currentColor',
       borderColor: 'rgba(0,0,0,0.05)'
     };
-  }, [status.level]);
+  }, [status.level, status.currentLevelInfo.bannerColor]);
 
   const joinedDateFormatted = useMemo(() => {
     const rawDate = user.joinedDate || new Date().toISOString();
@@ -639,14 +673,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onClick={() => setShowLevelsModal(true)}
         >
           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
-            <div className="bg-white/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 text-white font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
+            <div className="bg-white/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 text-slate-900 font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
               Ver estatus Novagober
             </div>
           </div>
           <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 text-slate-900">
             <Award size={14} className="text-slate-900" />
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
-              {t('influence_level')}: {status.level}
+              {user.level_name || status.rank}
             </span>
           </div>
         </div>
@@ -740,7 +774,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {isCurrentUser ? (
                   <>
                     <button onClick={() => setIsShareModalOpen(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center min-w-fit whitespace-nowrap"><Share2 size={12} className="md:w-[14px] md:h-[14px]" /></button>
-                    <button onClick={() => setIsEditProfileModalOpen(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
+                    <button onClick={() => navigate('/settings', { state: { openPersonalData: true } })} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
                   </>
                 ) : (
                   <>
@@ -824,7 +858,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <button onClick={() => setActiveTab('badges')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'badges' ? 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Medal size={18} />
-            <span className="font-bold text-sm">{t('badges_label')} ({user.badges ? user.badges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : 0})</span>
+            <span className="font-bold text-sm">{t('badges_label')} ({dbBadges.length > 0 ? dbBadges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : (user.badges ? user.badges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : 0)})</span>
           </button>
         </div>
 
@@ -842,50 +876,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {activeTab === 'news' && (
             <>
-              {(() => {
-                const rankingBadge = user.badges?.find((b: any) => ['ranking_top1', 'ranking_top2', 'ranking_top3'].includes(b.id));
-
-                if (rankingBadge) {
-                  const badgeInfo = BADGE_CATALOG.find(b => b.id === rankingBadge.id);
-                  const date = new Date((rankingBadge as any).created_at);
-
-                  // Calculate week of month (simplified)
-                  const day = date.getDate();
-                  const week = Math.ceil(day / 7);
-                  const month = date.toLocaleString('es-ES', { month: 'long' });
-                  const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
-
-                  return (
-                    <div className="mb-6">
-                      <button
-                        onClick={() => setShowRankingModal(true)}
-                        className="w-full bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-4 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between group transition-all"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className="p-2 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl text-yellow-600 dark:text-yellow-400">
-                            <Trophy size={20} />
-                          </div>
-                          <div className="text-left">
-                            <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm flex items-center">
-                              {t('weekly_ranking_top')}
-                              <Clock className="ml-2 opacity-60" size={14} />
-                            </span>
-                            <span className="text-[10px] text-yellow-600/70 dark:text-yellow-500/50 font-bold uppercase tracking-wide">
-                              {t('view_badge_history')}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="transform group-hover:translate-x-1 transition-transform duration-300">
-                          <ChevronRight className="text-yellow-600/50" size={20} />
-                        </div>
-                      </button>
+              <div className="mb-6">
+                <button
+                  onClick={() => setShowRankingModal(true)}
+                  className="w-full bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-4 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between group transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl text-yellow-600 dark:text-yellow-400">
+                      <Trophy size={20} />
                     </div>
-                  );
-                }
-                return null;
-              })()}
-
-
+                    <div className="text-left">
+                      <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm flex items-center">
+                        {t('weekly_ranking_top')}
+                        <Clock className="ml-2 opacity-60" size={14} />
+                      </span>
+                      <span className="text-[10px] text-yellow-600/70 dark:text-yellow-500/50 font-bold uppercase tracking-wide">
+                        {t('view_badge_history')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="transform group-hover:translate-x-1 transition-transform duration-300">
+                    <ChevronRight className="text-yellow-600/50" size={20} />
+                  </div>
+                </button>
+              </div>
 
               {userNews.length === 0 ? (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
@@ -894,7 +908,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               ) : (
                 userNews.map(news => (
-                  <NewsCard key={news.id} post={news} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} />
+                  <NewsCard key={news.id} post={news} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} language={language} />
                 ))
               )}
             </>
@@ -906,9 +920,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <Repeat className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                 <p className="text-slate-400 font-bold italic">{t('no_reposts')}</p>
               </div>
-            ) : userRepostsList.map(post => (
-              <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
-            ))
+            ) : userRepostsList.map(post => {
+              if (post.type === 'news') {
+                return <NewsCard key={`repost-${post.id}`} post={post} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} language={language} />;
+              }
+              return (
+                <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
+              );
+            })
           )}
 
           {activeTab === 'events' && (
@@ -1037,9 +1056,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
 
           {activeTab === 'badges' && (() => {
-            const userBadges = BADGE_CATALOG.filter(b =>
-              user.badges?.some((ub: any) => ub.id === b.id) && b.category !== 'ranking'
-            );
+            const currentBadges = dbBadges.length > 0 ? dbBadges : (user.badges || []);
+            const userBadges = currentBadges
+              .map(ub => {
+                const info = BADGE_CATALOG.find(c => c.id === ub.id);
+                return info ? info : {
+                  id: ub.id,
+                  label: ub.id,
+                  description: language === 'es' ? 'Insignia especial' : 'Special badge',
+                  color: 'bg-slate-100 text-slate-500 border-slate-200',
+                  category: 'general' as const
+                };
+              })
+              .filter(b => b.category !== 'ranking');
 
             if (userBadges.length > 0) {
               return (
@@ -1049,7 +1078,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <div key={badge.id} className="p-5 rounded-3xl border bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 transition-all hover:scale-[1.02]">
                         <div className="flex items-start space-x-4">
                           <div className={`p-3 rounded-2xl ${badge.color}`}>
-                            <Medal size={24} />
+                            <img src="/img/novagob.brand_isotipo_black.svg" className="w-6 h-6 dark:invert opacity-80" alt="" />
                           </div>
                           <div className="flex-1">
                             <h4 className="font-bold text-slate-900 dark:text-white mb-1">{badge.label}</h4>
@@ -1076,16 +1105,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       {isPreferencesModalOpen && <PreferencesModal user={user} onClose={() => setIsPreferencesModalOpen(false)} onSave={onUpdateUser} />}
-      {isEditProfileModalOpen && (
-        <EditProfileModal
-          user={user}
-          onClose={() => setIsEditProfileModalOpen(false)}
-          onSave={(updated) => {
-            onUpdateUser(updated);
-            setIsEditProfileModalOpen(false);
-          }}
-        />
-      )}
+
       {
         isShareModalOpen && (
           <ShareModal
@@ -1127,7 +1147,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {showLevelsModal && createPortal(
         <LevelsListModal
-          currentNovas={calculateNovas(user.badges)}
+          currentNovas={user.novas ?? calculateNovas(user.badges || [])}
+          language={language}
           onClose={() => setShowLevelsModal(false)}
         />,
         document.body
@@ -1149,7 +1170,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       }
       {showRankingModal && createPortal(
         <RankingHistoryModal
-          badges={user.badges || []}
+          badges={rankingHistory.map(rh => {
+            const catalogBadge = BADGE_CATALOG.find(c => c.id === rh.badge_id);
+            return {
+              ...catalogBadge!,
+              created_at: rh.created_at
+            };
+          })}
           onClose={() => setShowRankingModal(false)}
           mode="personal"
         />,

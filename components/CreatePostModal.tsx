@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { X, ImageIcon, Calendar, MapPin, Smile, User, Tag } from 'lucide-react';
 import { Language, useTranslation } from '../utils/translations';
 import { CalendarEvent, User as UserType } from '../types';
+import { MENTION_REGEX, getMentionSuggestions } from '../utils/mentionUtils';
 
 interface CreatePostModalProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface CreatePostModalProps {
     type?: 'post' | 'news';
     language: Language;
     userEvents?: CalendarEvent[];
+    users?: UserType[];
 }
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
@@ -22,18 +24,27 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     user,
     type = 'post',
     language,
-    userEvents = []
+    userEvents = [],
+    users = []
 }) => {
     const [content, setContent] = useState('');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [linkedEvent, setLinkedEvent] = useState<CalendarEvent | null>(null);
     const [showEventDropdown, setShowEventDropdown] = useState(false);
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const t = useTranslation(language);
 
     useScrollLock(isOpen);
+
+    const mentionSuggestions = useMemo(() => {
+        if (mentionQuery === null) return [];
+        return getMentionSuggestions(mentionQuery, users);
+    }, [mentionQuery, users]);
 
     useEffect(() => {
         if (isOpen) {
@@ -53,6 +64,34 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const value = e.target.value;
+        const selectionStart = e.target.selectionStart;
+        setContent(value);
+
+        const textBeforeCursor = value.slice(0, selectionStart);
+        const match = textBeforeCursor.match(/(?:^|\s)@(\S*)$/);
+
+        if (match && match[1].length >= 2) {
+            const query = match[1];
+            const atIndex = textBeforeCursor.lastIndexOf('@');
+            setMentionQuery(query);
+            setMentionStartIndex(atIndex);
+        } else {
+            setMentionQuery(null);
+        }
+    };
+
+    const selectMention = (selectedUser: UserType) => {
+        if (mentionStartIndex === -1) return;
+        const before = content.slice(0, mentionStartIndex);
+        const after = content.slice(textareaRef.current?.selectionStart || 0);
+        const newContent = `${before}@${selectedUser.username} ${after}`;
+        setContent(newContent);
+        setMentionQuery(null);
+        textareaRef.current?.focus();
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!content.trim() && !selectedImage && !linkedEvent) return;
@@ -60,20 +99,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
         onPost(content, type, tags, selectedImage || undefined, undefined, undefined, linkedEvent?.id);
 
+        setMentionQuery(null);
         setContent('');
         setSelectedImage(null);
         setLinkedEvent(null);
         onClose();
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            // On mobile we might want to allow new lines with just Enter, 
-            // but for consistency with desktop let's submit. 
-            // Actually, on mobile Enter usually adds a new line. Let's keep default behavior for mobile friendliness 
-            // or check if it's a physical keyboard.
-            // For now, let's NOT submit on Enter to allow multiline easily on mobile.
-        }
     };
 
     if (!isOpen) return null;
@@ -103,17 +133,41 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto px-4 pt-4 pb-0 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto px-4 pt-4 pb-0 custom-scrollbar relative">
                     <div className="flex space-x-3">
                         <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
                         <div className="flex-1 min-w-0">
                             <textarea
                                 ref={textareaRef}
                                 value={content}
-                                onChange={(e) => setContent(e.target.value)}
-                                placeholder={type === 'post' ? t('post_placeholder') : t('share_your_news')}
+                                onChange={handleTextChange}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                        setMentionQuery(null);
+                                    }
+                                }}
+                                placeholder={`${type === 'post' ? t('post_placeholder') : t('share_your_news')}`}
                                 className="w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[80px] p-0 transition-colors"
                             />
+
+                            {/* Mention Suggestions */}
+                            {mentionQuery !== null && (
+                                <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
+                                    {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
+                                        <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
+                                            <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                                                <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
+                                            </div>
+                                        </button>
+                                    )) : (
+                                        <div className="px-4 py-3 text-xs text-gray-400 italic font-bold">
+                                            {t('no_users_found')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Linked Event Preview */}
                             {linkedEvent && (
@@ -191,7 +245,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                             <button type="button" onClick={() => setShowEventDropdown(false)}><X size={14} className="text-gray-400" /></button>
                                         </div>
                                         <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                                            {userEvents.length > 0 ? userEvents.map(event => (
+                                            {userEvents && userEvents.length > 0 ? userEvents.map(event => (
                                                 <button
                                                     key={event.id}
                                                     type="button"

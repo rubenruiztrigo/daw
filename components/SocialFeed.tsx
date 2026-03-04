@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Post, User, CalendarEvent } from '../types';
 import { ImageIcon, Clapperboard, Smile, X, Users, Sparkles, Plus, AtSign, Calendar, MapPin, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getMentionSuggestions, MENTION_REGEX } from '../utils/mentionUtils';
 import { PostCard } from './PostCard';
 import { ShareModal } from './ShareModal';
 import { CreatePostModal } from './CreatePostModal';
@@ -45,11 +46,12 @@ interface SocialFeedProps {
   onTogglePin?: (postId: string) => void;
 }
 
-export const SocialFeed: React.FC<SocialFeedProps> = ({
+export const SocialFeedV2: React.FC<SocialFeedProps> = ({
   posts, user, onLike, onVote, onRepost, onAddPost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, users = [], initialContent, prefilledEvent, onClearInitialContent, onViewCalendar, onNavigateToEvent, onShareViaChat, globalEvents = [],
   onLoadMore, hasMore = false, isLoadingMore = false, language, hasNewContent = false, onRefresh,
   pinnedPosts = new Set(), onTogglePin
 }) => {
+  console.log('SocialFeed: Rendering with', { postsCount: posts.length, userId: user.id });
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const t = useTranslation(language);
   const scrollDirection = useScrollDirection();
@@ -142,17 +144,25 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
 
   const filteredPosts = useMemo(() => {
-    if (activeTab === 'following') return posts.filter(post => followedUserIds.has(post.authorId));
+    // 1. Pestaña "Siguiendo": solo usuarios a los que sigo
+    if (activeTab === 'following') {
+      return posts.filter(post => followedUserIds.has(post.authorId));
+    }
+
+    // 2. Pestaña "Para ti": Mis posts + Descubrimiento por intereses
     const myInterests = user.interests || [];
-    if (myInterests.length === 0) return posts;
-    const matchingPosts = posts.filter(post => {
+
+    return posts.filter(post => {
+      // Siempre mostramos los posts propios
       if (post.authorId === user.id) return true;
+
       const author = users.find(u => u.id === post.authorId);
       if (!author) return false;
+
       const authorInterests = author.interests || [];
+      // Mostramos posts si comparten al menos 1 interés
       return authorInterests.some(interest => myInterests.includes(interest));
     });
-    return matchingPosts.length > 0 ? matchingPosts : posts;
   }, [posts, activeTab, followedUserIds, users, user]);
 
 
@@ -160,24 +170,20 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
-    const query = mentionQuery.toLowerCase();
-    return users.filter(u =>
-      u.name.toLowerCase().includes(query) ||
-      (u.lastName?.toLowerCase().includes(query)) ||
-      u.username?.toLowerCase().includes(query)
-    ).slice(0, 5);
+    return getMentionSuggestions(mentionQuery, users);
   }, [mentionQuery, users]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const selectionStart = e.target.selectionStart;
     setContent(value);
+
     const textBeforeCursor = value.slice(0, selectionStart);
     const match = textBeforeCursor.match(/(?:^|\s)@(\S*)$/);
-    if (match) {
+
+    if (match && match[1].length >= 2) {
       const query = match[1];
-      const matchText = match[0];
-      const atIndex = selectionStart - matchText.length + (matchText.startsWith('@') ? 0 : 1);
+      const atIndex = textBeforeCursor.lastIndexOf('@');
       setMentionQuery(query);
       setMentionStartIndex(atIndex);
     } else {
@@ -200,10 +206,14 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
     if (!content.trim() && !selectedImage && !selectedDoc && !linkedEvent) return;
     const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
     onAddPost(content, 'post', tags, selectedImage || undefined, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id);
+    setMentionQuery(null);
     setContent(''); setSelectedImage(null); setSelectedDoc(null); setLinkedEvent(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      setMentionQuery(null);
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e as any);
@@ -211,8 +221,9 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
   };
 
   return (
-    <div className="pb-20 pt-28 md:pt-0">
-      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 mb-4 transition-all duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
+    <div className="pb-20 pt-0">
+      {/* Barra de depuración visible */}
+      <div className={`sticky top-0 z-40 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 transition-all duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-full md:translate-y-0' : 'translate-y-0'}`}>
         <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
           <button onClick={() => setActiveTab('for-you')} className="flex-1 h-full text-sm font-bold relative group transition-all focus:outline-none">
             <span className={activeTab === 'for-you' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-zinc-600'}>{t('for_you')}</span>
@@ -226,7 +237,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
         </div>
       </div>
 
-      <div className="max-w-2xl xl:max-w-3xl mx-auto">
+      <div className="max-w-2xl xl:max-w-3xl mx-auto pt-4 md:pt-6">
 
         <div className="space-y-4">
           {hasNewContent && onRefresh && (
@@ -244,14 +255,32 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
             <div className="flex space-x-4 p-3 md:p-5">
               <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
               <form onSubmit={handleSubmit} className="flex-1">
-                <textarea
-                  ref={textareaRef}
-                  value={content}
-                  onChange={handleTextChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={t('post_placeholder')}
-                  className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] mt-1 p-2"
-                />
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    value={content}
+                    onChange={handleTextChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={`${t('post_placeholder')}`}
+                    className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] mt-1 p-2"
+                  />
+
+                  {mentionQuery !== null && (
+                    <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
+                      {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
+                        <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
+                          <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                            <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
+                          </div>
+                        </button>
+                      )) : (
+                        <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {linkedEvent && (
                   <div className="mt-2 mb-3 bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 border border-blue-100 dark:border-blue-800/50 relative group/event">
@@ -269,16 +298,6 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                   </div>
                 )}
 
-                {mentionQuery !== null && mentionSuggestions.length > 0 && (
-                  <div className="absolute left-16 mt-0 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('mention_users')}</span>
-                    </div>
-                    {mentionSuggestions.map(u => (
-                      <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors text-left"><img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" /><div className="min-w-0"><p className="text-sm font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p><p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold truncate">@{u.username}</p></div></button>
-                    ))}
-                  </div>
-                )}
 
                 {showEventDropdown && (
                   <div ref={dropdownRef} className="absolute bottom-16 left-20 w-72 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -327,30 +346,40 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
           <div className="space-y-4">
             {filteredPosts.length > 0 ? (
-              filteredPosts.map(post => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  onLike={onLike}
-                  onVote={onVote}
-                  onRepost={onRepost}
-                  onAddComment={onAddComment}
-                  onDeletePost={onDeletePost}
-                  onSearchHashtag={onSearchHashtag}
-                  onSharePost={onSharePost}
-                  onNavigateToProfile={onNavigateToProfile}
-                  onNavigateToPost={onNavigateToPost}
-                  onOpenShare={setSharingPost}
-                  currentUser={user}
-                  followedUserIds={followedUserIds}
-                  followerUserIds={followerUserIds}
-                  onToggleFollow={onToggleFollow}
-                  users={users}
-                  onViewCalendar={onViewCalendar}
-                  onNavigateToEvent={onNavigateToEvent}
-                  globalEvents={globalEvents}
-                />
-              ))
+              filteredPosts.map(post => {
+                console.log('SocialFeed: Mapping post', post.id);
+                try {
+                  return (
+                    <div key={post.id}>
+                      <PostCard
+                        post={post}
+                        onLike={onLike}
+                        onVote={onVote}
+                        onRepost={onRepost}
+                        onAddComment={onAddComment}
+                        onDeletePost={onDeletePost}
+                        onSearchHashtag={onSearchHashtag}
+                        onSharePost={onSharePost}
+                        onNavigateToProfile={onNavigateToProfile}
+                        onNavigateToPost={onNavigateToPost}
+                        onOpenShare={setSharingPost}
+                        currentUser={user}
+                        followedUserIds={followedUserIds}
+                        followerUserIds={followerUserIds}
+                        onToggleFollow={onToggleFollow}
+                        users={users}
+                        onViewCalendar={onViewCalendar}
+                        onNavigateToEvent={onNavigateToEvent}
+                        globalEvents={globalEvents}
+                        language={language}
+                      />
+                    </div>
+                  );
+                } catch (e: any) {
+                  console.error('Error rendering PostCard:', post.id, e);
+                  return <div key={post.id} className="p-4 bg-red-100 text-red-600 rounded-xl mb-4">Error al mostrar este post: {e.message}</div>;
+                }
+              })
             ) : (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800 px-10">
                 <div className="mx-auto w-16 h-16 bg-slate-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-4">
@@ -387,6 +416,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
               type="post"
               language={language}
               userEvents={userEvents}
+              users={users}
             />
           </div>
         </div>

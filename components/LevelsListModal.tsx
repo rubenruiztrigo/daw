@@ -4,19 +4,22 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate } from 'react-router-dom';
 import { X, CheckCircle2, Lock, Gift, ChevronRight } from 'lucide-react';
 import { LEVELS, getLevelInfo } from '../utils/gamificationUtils';
+import { Language, useTranslation } from '../utils/translations';
 
 interface LevelsListModalProps {
     currentNovas: number;
+    language: Language;
     onClose: () => void;
 }
 
-export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, onClose }) => {
+export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, language, onClose }) => {
     const navigate = useNavigate();
+    const t = useTranslation(language);
     const [showAllLevels, setShowAllLevels] = React.useState(false);
 
     useScrollLock();
 
-    const currentStatus = getLevelInfo(currentNovas);
+    const currentStatus = getLevelInfo(currentNovas, language);
 
     // Calculate progress
     const nextThreshold = currentStatus.nextThreshold;
@@ -54,8 +57,8 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                                 </h2>
                             </div>
                             <div className="text-right">
-                                <span className="text-3xl font-black text-blue-600 dark:text-blue-400">{currentNovas}</span>
-                                <span className="text-xs font-bold text-blue-400 dark:text-blue-500 uppercase ml-1 block">Novas Totales</span>
+                                <span className="text-3xl font-black text-purple-600 dark:text-purple-400">{currentNovas}</span>
+                                <span className="text-xs font-bold text-purple-400 dark:text-purple-500 uppercase ml-1 block">Novas Totales</span>
                             </div>
                         </div>
 
@@ -67,8 +70,8 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                                 />
                             </div>
                             <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">
-                                <span>Nivel {currentStatus.level}</span>
-                                {nextThreshold ? <span>Siguiente: Nivel {currentStatus.level + 1}</span> : <span>Nivel Máximo</span>}
+                                <span>{currentStatus.rank}</span>
+                                {nextThreshold ? <span>Siguiente: {currentStatus.nextLevelInfo?.name}</span> : <span>Nivel Máximo</span>}
                             </div>
                         </div>
                     </div>

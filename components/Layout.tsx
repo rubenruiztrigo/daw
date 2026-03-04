@@ -7,6 +7,7 @@ import { User as UserType, Notification, CalendarEvent, Post } from '../types';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
 import { useScrollDirection } from '../hooks/useScrollDirection';
+import { sortUsersByRelevance } from '../utils/mentionUtils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -68,6 +69,9 @@ export const Layout: React.FC<LayoutProps> = ({
       <NavLink
         to={to}
         onClick={(e) => {
+          if (to === '/feed' || to === '/news') {
+            onSearchChange('');
+          }
           if (location.pathname === to) {
             e.preventDefault();
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -114,9 +118,13 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const trendingTags = useMemo(() => {
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const startOfDay = now.getTime();
-    const relevantPosts = posts.filter(p => new Date(p.timestamp).getTime() >= startOfDay);
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+
+    const relevantPosts = posts.filter(p => {
+      const postDate = new Date(p.timestamp).getTime();
+      return postDate >= startOfDay && postDate <= endOfDay;
+    });
 
     const countTags = (text: string, counts: Record<string, number>) => {
       if (!text) return;
@@ -138,15 +146,12 @@ export const Layout: React.FC<LayoutProps> = ({
 
       post.commentsList?.forEach(comment => {
         countTags(comment.text, counts);
-        comment.replies?.forEach(reply => {
-          countTags(reply.text, counts);
-        });
       });
     });
 
     return Object.entries(counts)
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
+      .slice(0, 5) // Mostramos 5 en lugar de 3 para mejor visibilidad si hay muchos
       .map(([tag, count]) => ({ tag, count }));
   }, [posts]);
 
@@ -195,10 +200,11 @@ export const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
-      <div className="w-full flex relative min-h-screen">
+      <div className={`w-full flex relative ${location.pathname.startsWith('/messages') ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
         {/* Sidebar Desktop */}
         <aside className="w-56 xl:w-64 2xl:w-72 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 z-30">
           <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => {
+            onSearchChange('');
             if (location.pathname === '/feed') {
               window.scrollTo({ top: 0, behavior: 'smooth' });
               if (onRefresh) onRefresh();
@@ -275,6 +281,7 @@ export const Layout: React.FC<LayoutProps> = ({
           {/* Mobile Header */}
           <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
             <div className="flex-shrink-0 cursor-pointer" onClick={() => {
+              onSearchChange('');
               if (location.pathname === '/feed') {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 if (onRefresh) onRefresh();
@@ -303,7 +310,9 @@ export const Layout: React.FC<LayoutProps> = ({
                         .or(`name.ilike.%${query}%,last_name.ilike.%${query}%,username.ilike.%${query}%`)
                         .limit(5)
                         .then(({ data }) => {
-                          setAutocompleteResults(data || []);
+                          const users = data as any[] || [];
+                          const sortedResults = sortUsersByRelevance(users, query);
+                          setAutocompleteResults(sortedResults);
                           setShowAutocomplete(true);
                           setAutocompleteLoading(false);
                         });
@@ -404,7 +413,7 @@ export const Layout: React.FC<LayoutProps> = ({
             )}
           </header>
 
-          <main className={`p-4 md:p-8 md:pb-8 ${['/feed', '/news'].includes(location.pathname) ? 'pt-0 md:pt-0' : 'pt-20 md:pt-8'} w-full max-w-[100vw] overflow-x-hidden ${location.pathname.startsWith('/messages/') && location.pathname.split('/').length > 2 ? 'pb-0' : 'pb-20'}`}>
+          <main className={`${location.pathname.startsWith('/messages') ? 'p-0 md:p-4 lg:p-8 h-full overflow-hidden' : (location.pathname === '/feed' || location.pathname === '/news' || location.pathname === '/') ? 'px-4 pb-4 md:px-8 md:pb-8 pt-16 md:pt-0' : 'px-4 pb-4 md:px-8 md:pb-8 pt-20 md:pt-8'} flex-1 min-h-0 w-full`}>
             {children}
           </main>
         </div>
@@ -428,7 +437,9 @@ export const Layout: React.FC<LayoutProps> = ({
                         .or(`name.ilike.%${query}%,last_name.ilike.%${query}%,username.ilike.%${query}%`)
                         .limit(10)
                         .then(({ data }) => {
-                          setAutocompleteResults(data || []);
+                          const users = data as any[] || [];
+                          const sortedResults = sortUsersByRelevance(users, query);
+                          setAutocompleteResults(sortedResults);
                           setShowAutocomplete(true);
                           setAutocompleteLoading(false);
                         });
@@ -564,6 +575,9 @@ export const Layout: React.FC<LayoutProps> = ({
           <button
             key={to}
             onClick={() => {
+              if (to === '/feed' || to === '/news') {
+                onSearchChange('');
+              }
               if (location.pathname === to) {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 if (onRefresh) onRefresh();

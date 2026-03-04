@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Smartphone, Lock, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2, Medal, GraduationCap, Star, Trophy, MessageCircle, RefreshCw, Info, Heart, Globe, Settings, Briefcase, Building } from 'lucide-react';
+import { Shield, Bell, Eye, LogOut, ChevronRight, Wand2, Megaphone, Lock, ArrowLeft, X, Sun, Moon, Check, UserCircle, Save, Calendar, Mail, AtSign, FileText, AlertCircle, CheckCircle2, Loader2, Medal, GraduationCap, Star, Trophy, MessageCircle, RefreshCw, Info, Heart, Globe, Settings, Briefcase, Building } from 'lucide-react';
 import { User, BADGE_CATALOG } from '../types';
 import { COUNTRIES, COUNTRIES_DATA } from '../constants';
 import { supabase } from '../supabaseClient';
@@ -182,31 +182,73 @@ const AboutContent = ({ t }: { t: any }) => (
   </div>
 );
 
+const CustomBadgeIcon = ({ className = "", size = 24 }: any) => (
+  <img
+    src="/img/novagob.brand_isotipo_black.svg"
+    style={{ width: size, height: size }}
+    className={`${className} dark:invert opacity-80`}
+    alt=""
+  />
+);
+
 const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ user, t, onClose }) => {
   useScrollLock();
-  // Static definition of available badges for now
-  // Centralized badge catalog is used here via import
-  const allBadges = BADGE_CATALOG;
+  const [allBadges, setAllBadges] = useState<any[]>(BADGE_CATALOG);
+  const [loading, setLoading] = useState(true);
+  const [userBadgeIds, setUserBadgeIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        // Fetch all available badges from 'badges' table
+        const { data: dbBadges } = await supabase
+          .from('badges')
+          .select('*')
+          .order('category');
+
+        if (dbBadges && dbBadges.length > 0) {
+          setAllBadges(dbBadges);
+        } else {
+          setAllBadges(BADGE_CATALOG);
+        }
+
+        // Fetch user's unlocked badges from 'user_badges' table
+        const { data: unlocked } = await supabase
+          .from('user_badges')
+          .select('badge_id')
+          .eq('user_id', user.id);
+
+        if (unlocked) {
+          setUserBadgeIds(new Set(unlocked.map(ub => ub.badge_id)));
+        }
+      } catch (error) {
+        console.error("Error fetching badges in settings:", error);
+        setAllBadges(BADGE_CATALOG);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user.id]);
 
   const categories = [
     { id: 'general', label: t('cat_general'), icon: UserCircle },
     { id: 'novas', label: t('cat_novas'), icon: Star },
     { id: 'congresos', label: t('cat_congresos'), icon: Calendar },
-    { id: 'premios', label: t('cat_premios'), icon: Medal },
+    { id: 'premios', label: t('cat_premios'), icon: () => <img src="/img/novagob.brand_isotipo_black.svg" className="w-3.5 h-3.5 dark:invert opacity-70" alt="" /> },
     { id: 'eventos', label: t('cat_eventos'), icon: GraduationCap },
     { id: 'formacion', label: t('cat_formacion'), icon: FileText },
     { id: 'ranking', label: t('cat_ranking'), icon: Trophy }
   ];
-
-  // Check if user has badges (mapping by ID or checking if object exists)
-  const userBadgeIds = new Set(user.badges?.map(b => b.id) || []);
 
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
       <div className="p-8 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-amber-600">
-            <Medal size={24} />
+            <CustomBadgeIcon size={24} />
           </div>
           <div>
             <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('badges_title')}</h3>
@@ -217,8 +259,18 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 scrollbar-hide bg-slate-50 dark:bg-black/20 space-y-8">
-        {categories.map(cat => {
-          const catBadges = allBadges.filter(b => b.category === cat.id);
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <Loader2 className="animate-spin text-blue-600" size={32} />
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('loading') || 'Cargando insignias...'}</p>
+          </div>
+        ) : allBadges.length === 0 ? (
+          <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
+            <CustomBadgeIcon className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
+            <p className="text-slate-400 font-bold italic">{t('no_badges_available') || 'No se encontraron insignias disponibles.'}</p>
+          </div>
+        ) : categories.map(cat => {
+          const catBadges = allBadges.filter(b => b.category?.toLowerCase() === cat.id.toLowerCase());
           if (catBadges.length === 0) return null;
 
           return (
@@ -233,19 +285,18 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
                   return (
                     <div key={badge.id} className={`p-5 rounded-3xl border transition-all relative ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent opacity-60 grayscale'}`}>
                       <div className="flex items-start space-x-4">
-                        <div className={`p-3 rounded-2xl ${isUnlocked ? badge.color : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
-                          <Medal size={24} />
+                        <div className={`p-3 rounded-2xl ${isUnlocked ? (badge.color || 'bg-blue-100 text-blue-600') : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
+                          <CustomBadgeIcon size={24} />
                         </div>
                         <div className="flex-1">
-                          <div className="flex justify-between items-center mb-1">
+                          <div className="flex justify-between items-center">
                             <h4 className="font-bold text-slate-900 dark:text-white">{badge.label}</h4>
                             {isUnlocked && <CheckCircle2 size={16} className="text-blue-500" />}
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-gray-400 font-medium leading-relaxed">{badge.description}</p>
                         </div>
                       </div>
 
-                      {badge.value !== undefined && (
+                      {badge.value !== undefined && badge.value !== null && (
                         <div className="absolute bottom-4 right-4 bg-slate-50 dark:bg-zinc-900/50 px-2 py-1 rounded-lg border border-slate-100 dark:border-zinc-800 flex items-center space-x-1.5">
                           <span className="text-[11px] font-black text-blue-600 leading-none">{badge.value}</span>
                           <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">Novas</span>
@@ -587,7 +638,7 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
 
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'personal' | 'professional'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'professional'>('professional');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -672,17 +723,17 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
           <div className="flex p-1.5 bg-slate-100 dark:bg-zinc-900 rounded-2xl border border-slate-200/50 dark:border-zinc-800/50">
             <button
               type="button"
-              onClick={() => setActiveTab('personal')}
-              className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'personal' ? 'bg-white dark:bg-zinc-800 text-blue-600 shadow-sm' : 'text-slate-400'}`}
-            >
-              {t('personal_data_tab')}
-            </button>
-            <button
-              type="button"
               onClick={() => setActiveTab('professional')}
               className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'professional' ? 'bg-white dark:bg-zinc-800 text-blue-600 shadow-sm' : 'text-slate-400'}`}
             >
               {t('professional_data_tab')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('personal')}
+              className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'personal' ? 'bg-white dark:bg-zinc-800 text-blue-600 shadow-sm' : 'text-slate-400'}`}
+            >
+              {t('personal_data_tab')}
             </button>
           </div>
 
@@ -1474,16 +1525,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
         <SettingItem icon={UserCircle} label={t('personal_data')} onClick={() => setShowPersonalData(true)} />
-        <SettingItem icon={Medal} label={t('badges')} onClick={() => setShowBadges(true)} />
+        <SettingItem icon={CustomBadgeIcon} label={t('badges')} onClick={() => setShowBadges(true)} />
         <SettingItem icon={Heart} label={t('interests')} onClick={() => setShowInterests(true)} />
         <SettingItem icon={Wand2} label={t('accessibility')} onClick={() => setShowAccessibility(true)} />
         <SettingItem icon={Bell} label={t('notifications')} onClick={() => setShowNotifications(true)} />
 
         <SettingItem icon={Lock} label={t('privacy_security')} onClick={() => setShowPrivacySecurity(true)} />
         <SettingItem
-          icon={Smartphone}
-          label={t('devices')}
-          onClick={() => { /* Proximamente: Gestión de dispositivos */ }}
+          icon={Megaphone}
+          label={t('news_updates')}
+          onClick={() => { /* Proximamente: Novedades */ }}
         />
       </div>
 

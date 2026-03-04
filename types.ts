@@ -27,6 +27,7 @@ export interface Badge {
   color: string;
   category: 'general' | 'novas' | 'congresos' | 'premios' | 'eventos' | 'formacion' | 'ranking';
   value?: number;
+  iconUrl?: string;
 }
 
 export const BADGE_CATALOG: Badge[] = [
@@ -126,6 +127,7 @@ export interface User {
   username?: string;
   email?: string;
   password?: string;
+  gender?: string;
   birthDate?: string;
   position: string;
   department: string;
@@ -159,6 +161,7 @@ export interface User {
     event_supports: boolean;
     reposts: boolean;
     mentions: boolean;
+    redemptions?: string[];
   };
   chatSettings?: {
     senderColor: string;
@@ -166,6 +169,8 @@ export interface User {
     backgroundColor: string;
     readReceipts: boolean;
   };
+  level_name?: string;
+  novas?: number;
 }
 
 export interface CommentReply {
@@ -249,7 +254,7 @@ export interface Chat {
 
 export interface Notification {
   id: string;
-  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system';
+  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system' | 'reward_request';
   senderName: string;
   senderId?: string;
   senderAvatar: string;

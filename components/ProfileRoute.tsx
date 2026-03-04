@@ -128,7 +128,11 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                         jobCategory: data.job_category,
                         administrationType: data.administration_type,
                         country: data.country,
-                        region: data.region
+                        region: data.region,
+                        level_name: data.level_name,
+                        novas: data.novas,
+                        birthDate: data.birth_date,
+                        notificationSettings: data.notification_settings
                     };
                     setFetchedUser(formattedUser);
                 } else {

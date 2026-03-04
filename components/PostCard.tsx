@@ -6,6 +6,7 @@ import { timeAgo, extractFirstUrl, isExternalUrl } from '../utils/stringUtils';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { Language, useTranslation } from '../utils/translations';
 import { LinkPreview } from './LinkPreview';
+import { RENDER_REGEX, getUserByMention } from '../utils/mentionUtils';
 
 interface PostCardProps {
   post: Post;
@@ -65,38 +66,42 @@ export const PostCard: React.FC<PostCardProps> = ({
 
   const renderContent = (content: string, urlToHide?: string) => {
     if (!content) return null;
-    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+|https?:\/\/[^\s]+)/g);
+    const parts = content.split(RENDER_REGEX);
     let hiddenOnce = false;
     return parts.map((part, i) => {
-      if (part.startsWith('#')) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.startsWith('#')) {
         return (
           <button
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              onSearchHashtag?.(part);
+              onSearchHashtag?.(trimmedPart);
             }}
             className="text-blue-600 dark:text-blue-400 font-black hover:underline transition-all"
           >
             {part}
           </button>
         );
-      } else if (part.startsWith('@')) {
-        const username = part.slice(1).toLowerCase();
-        const mentionedUser = users.find(u => u.username?.toLowerCase() === username);
+      } else if (trimmedPart.startsWith('@')) {
+        const mentionedUser = getUserByMention(trimmedPart, users);
+
+        if (!mentionedUser) return part;
+
         return (
           <button
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
+              onNavigateToProfile?.(mentionedUser.id);
             }}
-            className="text-blue-600 dark:text-blue-400 font-black hover:underline transition-all"
+            className="text-purple-600 dark:text-purple-400 font-black hover:underline transition-all"
           >
-            {part}
+            @{mentionedUser.username}
           </button>
         );
-      } else if (part.startsWith('http')) {
+      }
+      else if (part.startsWith('http')) {
         if (part === urlToHide && !hiddenOnce) {
           hiddenOnce = true;
           return null;
@@ -155,7 +160,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       />
 
       <div
-        className={`bg-white dark:bg-[#111] sm:p-5 p-3 rounded-2xl border transition-all cursor-pointer group flex space-x-3 hover:border-gray-300 dark:hover:border-zinc-700 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'} ${isPinned ? 'border-l-4 border-l-blue-500' : ''}`}
+        className={`bg-white dark:bg-[#111] sm:p-5 p-3 rounded-2xl border transition-all cursor-pointer group flex space-x-3 hover:border-gray-300 dark:hover:border-zinc-700 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'} ${isPinned ? 'border-l-4 border-l-blue-500 hover:border-l-blue-500' : ''}`}
         onClick={handlePostClick}
       >
         <div className="relative flex-shrink-0">

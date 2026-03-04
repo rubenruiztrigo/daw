@@ -11,6 +11,7 @@ interface MessagesViewProps {
   user: User;
   chats: Chat[];
   posts: Post[];
+  users?: User[];
   onSendMessage: (recipientId: string, text: string) => void;
   onViewPost?: (postId: string) => void;
   onLike?: (id: string) => void;
@@ -25,11 +26,40 @@ interface MessagesViewProps {
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
-  user, chats, posts, onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents, language
+  user, chats, posts, users = [], onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents, language
 }) => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
-  const selectedId = chatId || null;
+  const [resolvedId, setResolvedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!chatId) {
+      setResolvedId(null);
+      return;
+    }
+
+    // Priorizar búsqueda en chats existentes para resolución instantánea
+    const existingChat = chats.find(c => c.participant.username === chatId || c.id === chatId);
+    if (existingChat) {
+      setResolvedId(existingChat.id);
+      return;
+    }
+
+    // Si chatId coincide con algún username o ID en el listado global de usuarios
+    const matchingUser = users.find(u => u.username === chatId || u.id === chatId);
+    if (matchingUser) {
+      setResolvedId(matchingUser.id);
+    } else {
+      // Intentar una busqueda en remoto asincrona si no lo tenemos (esto pasa en recargas F5)
+      supabase.from('profiles').select('id').or(`username.eq.${chatId},id.eq.${chatId}`).maybeSingle()
+        .then(({ data }) => {
+          if (data) setResolvedId(data.id);
+          else setResolvedId(chatId); // Fallback: asumimos que es un viejo ID
+        });
+    }
+  }, [chatId, users, chats]);
+
+  const selectedId = resolvedId || externalActiveId || null;
   const t = useTranslation(language);
 
   const [msg, setMsg] = useState('');
@@ -72,7 +102,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         followers: data.followers_count,
         following: data.following_count,
         bio: data.bio || '',
-        interests: data.interests || []
+        interests: data.interests || [],
+        username: data.username
       });
     }
   };
@@ -149,10 +180,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       : [];
 
     selectedChat.messages.forEach(m => {
-      const imgRegex = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp))/gi;
-      let match;
-      while ((match = imgRegex.exec(m.text)) !== null) {
-        media.push(match[0]);
+      const isDirectImage = m.text.startsWith('data:image') || !!m.text.match(/^\s*(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp))\s*$/i);
+      if (isDirectImage) {
+        media.push(m.text.trim());
+      } else {
+        const imgRegex = /(https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp))/gi;
+        let match;
+        while ((match = imgRegex.exec(m.text)) !== null) {
+          media.push(match[0]);
+        }
       }
 
       let sharedUrl = '';
@@ -205,11 +241,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const participant = selectedChat?.participant || temporaryParticipant;
 
   return (
-    <div className={`h-[calc(100vh-64px)] sm:h-[calc(100vh-180px)] w-full bg-white dark:bg-[#111] rounded-3xl border border-gray-100 dark:border-zinc-800 overflow-hidden flex flex-col md:flex-row ${selectedId ? '' : 'pb-16 md:pb-0'}`}>
-      <div className={`w-full md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col min-w-0 ${selectedId ? 'hidden md:flex' : 'flex'}`}>
+    <div className="h-full w-full bg-white dark:bg-black overflow-hidden flex flex-row border border-gray-100 dark:border-zinc-800 rounded-[2rem] shadow-sm">
+      <div className="w-20 sm:w-72 md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col min-w-0 shrink-0">
         <div className="p-4 md:p-6 border-b border-gray-50 dark:border-zinc-900">
-          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">{t('messages_title')}</h2>
-          <div className="relative">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4 hidden sm:block">{t('messages_title')}</h2>
+          <div className="relative hidden sm:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input
               type="text"
@@ -223,7 +259,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         <div className="flex-1 overflow-y-auto">
           {temporaryParticipant && !chats.find(c => c.id === temporaryParticipant.id) && (
             <button
-              onClick={() => navigate(`/messages/${temporaryParticipant.id}`)}
+              onClick={() => navigate(`/messages/${temporaryParticipant.username || temporaryParticipant.id}`)}
               className={`w-full max-w-full p-4 flex items-center space-x-3 bg-blue-50/30 dark:bg-zinc-800/30 border-r-4 border-blue-600 transition-all overflow-hidden`}
             >
               <img src={temporaryParticipant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
@@ -242,7 +278,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             return (
               <button
                 key={chat.id}
-                onClick={() => navigate(`/messages/${chat.id}`)}
+                onClick={() => navigate(`/messages/${chat.participant.username || chat.id}`)}
                 className={`w-full max-w-full p-4 flex items-center space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all overflow-hidden ${selectedId === chat.id ? 'bg-blue-50/50 dark:bg-zinc-800/50 border-r-4 border-blue-600' : ''}`}
               >
                 <img src={chat.participant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
@@ -253,11 +289,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       {timeAgo(new Date(chat.timestamp).toISOString(), language)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className={`text-xs truncate ${isUnread ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 font-medium'}`}>
-                      {isMe ? (lastMsg?.isRead && (chat.participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')) : chat.lastMessage}
-                    </p>
-                    {isUnread && <div className="w-2 h-2 bg-blue-600 rounded-full shrink-0 ml-2" />}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={`text-xs truncate flex items-center gap-1.5 ${(!isMe && isUnread && selectedId !== chat.id) ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 font-medium'}`}>
+                      {isMe ? (
+                        <span className="text-gray-400 font-medium lowercase first-letter:uppercase">
+                          {lastMsg?.isRead && (chat.participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')}
+                        </span>
+                      ) : (
+                        (isUnread && selectedId !== chat.id) ? (
+                          <span className="truncate">{chat.lastMessage}</span>
+                        ) : (
+                          <span className="text-gray-400 font-medium lowercase first-letter:uppercase">
+                            {user.chatSettings?.readReceipts !== false ? t('visto') : t('enviado')}
+                          </span>
+                        )
+                      )}
+                    </div>
+                    {isUnread && selectedId !== chat.id && <div className="w-2 h-2 bg-blue-600 rounded-full shrink-0" />}
                   </div>
                 </div>
               </button>
@@ -271,7 +319,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col min-h-0 bg-slate-50/30 dark:bg-black/20 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
+      <div className="flex-1 flex flex-col min-h-0 bg-slate-50/30 dark:bg-black/20 h-full">
         {participant ? (
           <>
             <div className="sticky top-0 z-20 p-4 bg-white dark:bg-[#111] border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
@@ -314,148 +362,228 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 space-y-4 md:space-y-6 scroll-smooth overscroll-contain"
               style={{ backgroundColor: user.chatSettings?.backgroundColor || undefined }}
             >
-              {selectedChat?.messages.map((m, idx) => (
-                <div
-                  key={m.id || idx}
-                  id={`msg-${m.id}`}
-                  className={`flex ${m.senderId === user.id ? 'justify-end' : 'justify-start'} transition-all duration-500 ${highlightedMessageId === m.id ? 'scale-105 brightness-110' : ''}`}
-                >
-                  <div className={`max-w-[85%] md:max-w-[75%] space-y-1 ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
-                    {m.postId ? (
-                      (() => {
-                        const sharedPost = posts.find(p => p.id === m.postId);
-                        if (!sharedPost) return (
-                          <div className={`p-4 rounded-2xl text-sm font-medium italic text-slate-500 bg-slate-100 dark:bg-zinc-800 ${m.senderId === user.id ? 'rounded-tr-none' : 'rounded-tl-none'}`}>
-                            {t('post_not_available')}
-                          </div>
-                        );
-                        return (
+              {(selectedChat?.messages || []).map((m, index, messagesArray) => {
+                const isLastMessage = index === messagesArray.length - 1;
+                const previousMessage = index > 0 ? messagesArray[index - 1] : null;
+
+                let showTimestamp = true;
+                if (previousMessage) {
+                  const currTime = new Date(m.timestamp).getTime();
+                  const prevTime = new Date(previousMessage.timestamp).getTime();
+                  const diffHours = (currTime - prevTime) / (1000 * 60 * 60);
+                  if (diffHours < 1) {
+                    showTimestamp = false;
+                  }
+                }
+
+                // Date separator logic
+                let showDateSeparator = false;
+                let dateSeparatorLabel = '';
+
+                const currentMsgDate = new Date(m.timestamp);
+                const currentDay = new Date(currentMsgDate).setHours(0, 0, 0, 0);
+
+                if (!previousMessage) {
+                  showDateSeparator = true;
+                } else {
+                  const prevMsgDate = new Date(previousMessage.timestamp);
+                  const prevDay = new Date(prevMsgDate).setHours(0, 0, 0, 0);
+                  if (currentDay !== prevDay) {
+                    showDateSeparator = true;
+                  }
+                }
+
+                if (showDateSeparator) {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+
+                  const yesterday = new Date(today);
+                  yesterday.setDate(yesterday.getDate() - 1);
+
+                  if (currentDay === today.getTime()) {
+                    dateSeparatorLabel = (t as any)('today') || 'Hoy';
+                  } else if (currentDay === yesterday.getTime()) {
+                    dateSeparatorLabel = (t as any)('yesterday') || 'Ayer';
+                  } else {
+                    dateSeparatorLabel = currentMsgDate.toLocaleDateString([], {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    });
+                  }
+                }
+
+                return (
+                  <React.Fragment key={m.id}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-6">
+                        <div className="bg-slate-100 dark:bg-zinc-800 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-400 border border-slate-200 dark:border-zinc-700">
+                          {dateSeparatorLabel}
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      id={`msg-${m.id}`}
+                      className={`flex flex-col mb-1 animate-in fade-in slide-in-from-bottom-2 duration-300 ${m.senderId === user.id ? 'items-end' : 'items-start'}`}
+                    >
+                      <div className={`max-w-[85%] md:max-w-[75%] space-y-1 ${m.senderId === user.id ? 'items-end' : 'items-start'}`}>
+                        {m.postId ? (
+                          (() => {
+                            const sharedPost = posts.find(p => p.id === m.postId);
+                            if (!sharedPost) return (
+                              <div className={`p-4 rounded-2xl text-sm font-medium italic text-slate-500 bg-slate-100 dark:bg-zinc-800 ${m.senderId === user.id ? 'rounded-tr-none' : 'rounded-tl-none'}`}>
+                                {t('post_not_available')}
+                              </div>
+                            );
+                            return (
+                              <div
+                                className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-purple-500/50 ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                onClick={() => onViewPost?.(sharedPost.id)}
+                              >
+                                <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <img src={sharedPost.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{sharedPost.authorName}</p>
+                                      <p className="text-[9px] text-gray-400 font-bold uppercase truncate">{sharedPost.authorPosition}</p>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 font-medium">{sharedPost.content}</p>
+                                  {sharedPost.imageUrl && (
+                                    <div className="rounded-lg overflow-hidden h-24 mb-2">
+                                      <img src={sharedPost.imageUrl} className="w-full h-full object-cover" alt="" />
+                                    </div>
+                                  )}
+                                  <div className="text-center text-[10px] text-blue-600 font-bold uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors">
+                                    <span>{t('view_post')}</span>
+                                  </div>
+                                </div>
+                                {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
+                              </div>
+                            );
+                          })()
+                        ) : m.sharedProfile ? (
                           <div
                             className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-purple-500/50 ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
                             style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
-                            onClick={() => onViewPost?.(sharedPost.id)}
+                            onClick={() => m.sharedProfile?.id && onNavigateToProfile?.(m.sharedProfile.id)}
                           >
-                            <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <img src={sharedPost.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{sharedPost.authorName}</p>
-                                  <p className="text-[9px] text-gray-400 font-bold uppercase truncate">{sharedPost.authorPosition}</p>
-                                </div>
-                              </div>
-                              <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 font-medium">{sharedPost.content}</p>
-                              {sharedPost.imageUrl && (
-                                <div className="rounded-lg overflow-hidden h-24 mb-2">
-                                  <img src={sharedPost.imageUrl} className="w-full h-full object-cover" alt="" />
-                                </div>
-                              )}
-                              <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-50 dark:bg-zinc-900 p-2 rounded-lg">
-                                <span>{t('post')}</span>
-                                <span className="text-blue-600">{t('view_all')}</span>
+                            <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
+                              <img src={m.sharedProfile.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-gray-900 dark:text-white truncate">{m.sharedProfile.name} {m.sharedProfile.lastName}</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{m.sharedProfile.position}</p>
+                                <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_profile')}</p>
                               </div>
                             </div>
                             {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
                           </div>
-                        );
-                      })()
-                    ) : m.sharedProfile ? (
-                      <div
-                        className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-purple-500/50 ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
-                        style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
-                        onClick={() => m.sharedProfile?.id && onNavigateToProfile?.(m.sharedProfile.id)}
-                      >
-                        <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
-                          <img src={m.sharedProfile.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-black text-gray-900 dark:text-white truncate">{m.sharedProfile.name} {m.sharedProfile.lastName}</p>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{m.sharedProfile.position}</p>
-                            <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_profile')}</p>
-                          </div>
-                        </div>
-                        {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
-                      </div>
-                    ) : (m.sharedEvent || (m.sharedEventId && globalEvents.find(e => e.id === m.sharedEventId))) ? (
-                      (() => {
-                        const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
-                        if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">{t('event_not_available')}</div>;
-                        return (
-                          <div
-                            className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-purple-500/50 ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
-                            style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
-                            onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
-                          >
-                            <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
-                              <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-xl text-blue-600 dark:text-blue-400">
-                                <Calendar size={18} />
+                        ) : (m.sharedEvent || (m.sharedEventId && globalEvents.find(e => e.id === m.sharedEventId))) ? (
+                          (() => {
+                            const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
+                            if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">{t('event_not_available')}</div>;
+                            return (
+                              <div
+                                className={`p-1 rounded-2xl overflow-hidden cursor-pointer transition-all ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                              >
+                                <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-4 shadow-sm">
+                                  <div className="p-3 bg-blue-50 dark:bg-zinc-800/50 rounded-2xl text-blue-500">
+                                    <Calendar size={24} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-gray-900 dark:text-white truncate mb-1">{event.title}</p>
+                                    <div className="flex items-center text-[10px] text-slate-500 font-bold uppercase tracking-wide truncate mb-1.5 space-x-1.5">
+                                      <span className="truncate">{event.location}</span>
+                                      <span>•</span>
+                                      <span>{new Date(event.event_date).toLocaleDateString()}</span>
+                                    </div>
+                                    <p className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase inline-flex items-center hover:underline">{t('view_event')}</p>
+                                  </div>
+                                </div>
+                                {m.text && <div className="px-4 py-2 text-sm text-gray-100 dark:text-gray-200 font-medium">{m.text}</div>}
                               </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-black text-gray-900 dark:text-white truncate">{event.title}</p>
-                                <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{event.location} • {new Date(event.event_date).toLocaleDateString()}</p>
-                                <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_event')}</p>
-                              </div>
-                            </div>
-                            {m.text && <div className="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      (() => {
-                        const isImage = m.text.startsWith('data:image') || m.text.match(/\.(jpg|jpeg|png|gif|webp)$/i) || (m.text.startsWith('http') && m.text.match(/(https?:\/\/.*\.(?:png|jpg|jpeg|gif|webp))/i));
-                        const firstUrl = extractFirstUrl(m.text);
-                        const hasPreview = firstUrl && isExternalUrl(firstUrl) && !isImage;
+                            );
+                          })()
+                        ) : (
+                          (() => {
+                            const trimmedText = m.text.trim();
 
-                        return (
-                          <div
-                            className={`${isImage || hasPreview ? 'p-0.5' : 'p-3 md:p-4'} rounded-2xl text-sm font-medium transition-all duration-500 break-words ${m.senderId === user.id ? 'text-white rounded-tr-none' : `rounded-tl-none ${isImage || hasPreview ? 'border-[0.5px]' : 'border'} border-gray-200 dark:border-zinc-700`}`}
-                            style={
-                              m.senderId === user.id
-                                ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' }
-                                : { backgroundColor: user.chatSettings?.receiverColor || (highlightedMessageId === m.id ? '#e5e7eb' : '#e5e7eb'), color: user.chatSettings?.receiverColor === '#27272a' ? '#fff' : '#1f2937' }
+                            // Definitive cryptic data detection (Base64 or very long technical strings)
+                            const isProbablyData = trimmedText.includes(';base64,') ||
+                              (trimmedText.length > 60 && !trimmedText.includes(' '));
+
+                            const isImage = trimmedText.startsWith('data:image') ||
+                              trimmedText.match(/\.(jpg|jpeg|png|gif|webp|svg)(?:\?.*)?$/i) ||
+                              (trimmedText.startsWith('http') && trimmedText.match(/\.(jpg|jpeg|png|gif|webp|svg)(?:\?.*)?$/i));
+
+                            if (isProbablyData && !isImage) {
+                              return <div className="p-3 text-xs italic text-slate-400 bg-slate-100 dark:bg-zinc-800 rounded-lg">Adjunto o dato de sistema</div>;
                             }
-                          >
-                            {isImage ? (
-                              <div className="rounded-lg overflow-hidden">
-                                <img
-                                  src={m.text}
-                                  alt="Shared image"
-                                  className="max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                  onClick={() => setSelectedFullImage(m.text)}
-                                />
-                              </div>
-                            ) : (
-                              (() => {
-                                if (hasPreview && firstUrl) {
-                                  const mainText = m.text.replace(firstUrl, '').trim();
-                                  return (
-                                    <>
-                                      {mainText && <p className="mb-2">{mainText}</p>}
-                                      <LinkPreview url={firstUrl} language={language} />
-                                    </>
-                                  );
+
+                            const firstUrl = extractFirstUrl(m.text);
+                            const hasPreview = firstUrl && isExternalUrl(firstUrl) && !isImage;
+
+                            return (
+                              <div
+                                className={`${isImage || hasPreview ? 'p-0.5' : 'p-3 md:p-4'} rounded-2xl text-sm font-medium transition-all duration-500 break-words ${m.senderId === user.id ? 'text-white rounded-tr-none' : `rounded-tl-none ${isImage || hasPreview ? 'border-[0.5px]' : 'border'} border-gray-200 dark:border-zinc-700`}`}
+                                style={
+                                  m.senderId === user.id
+                                    ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' }
+                                    : { backgroundColor: user.chatSettings?.receiverColor || (highlightedMessageId === m.id ? '#dbeafe' : '#f1f5f9'), color: user.chatSettings?.receiverColor === '#27272a' ? '#fff' : '#1f2937' }
                                 }
-                                return m.text;
-                              })()
+                              >
+                                {isImage ? (
+                                  <div className="rounded-lg overflow-hidden">
+                                    <img
+                                      src={m.text}
+                                      alt="Shared image"
+                                      className="max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                      onClick={() => setSelectedFullImage(m.text)}
+                                    />
+                                  </div>
+                                ) : (
+                                  (() => {
+                                    if (hasPreview && firstUrl) {
+                                      const mainText = m.text.replace(firstUrl, '').trim();
+                                      return (
+                                        <>
+                                          {mainText && <p className="mb-2">{mainText}</p>}
+                                          <LinkPreview url={firstUrl} language={language} />
+                                        </>
+                                      );
+                                    }
+                                    return m.text;
+                                  })()
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
+
+                        {(showTimestamp || isLastMessage) && (
+                          <div className="flex items-center justify-end space-x-2 px-1 mt-1">
+                            {isLastMessage && m.senderId === user.id && (
+                              <>
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                                  {m.isRead && (participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')}
+                                </span>
+                                <span className="text-gray-300 mx-1">-</span>
+                              </>
                             )}
+                            <span className="text-[9px] text-slate-400 font-black uppercase">
+                              {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
-                        );
-                      })()
-                    )}
-                    <div className="flex items-center justify-end space-x-2 px-1 mt-1">
-                      {m.senderId === user.id && (
-                        <>
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                            {m.isRead && (selectedChat.participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')}
-                          </span>
-                          <span className="text-gray-300 mx-1">-</span>
-                        </>
-                      )}
-                      <span className="text-[9px] text-slate-400 font-black uppercase">
-                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                        )}
+
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  </React.Fragment>
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 
@@ -571,7 +699,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   <div className="px-6 flex-1">
                     {infoTab === 'multimedia' ? (
                       <div className="grid grid-cols-3 gap-2 pb-6">
-                        {chatInfoData.media.length > 0 ? chatInfoData.media.map((url, i) => (
+                        {chatInfoData.media.length > 0 ? [...chatInfoData.media].reverse().map((url, i) => (
                           <div key={i} className="aspect-square rounded-xl overflow-hidden border border-slate-100 dark:border-zinc-800 group relative cursor-pointer" onClick={() => setSelectedFullImage(url)}>
                             <img src={url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
                           </div>
@@ -641,22 +769,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             );
                           } else if (item.type === 'link') {
                             const link = item.data as { url: string, text: string };
-                            const domain = new URL(link.url).hostname.replace('www.', '');
                             return (
-                              <button
-                                key={item.id}
-                                onClick={() => window.open(link.url, '_blank')}
-                                className="w-full p-3 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 text-left hover:border-blue-500 transition-all group"
-                              >
-                                <div className="flex items-center space-x-3 mb-1">
-                                  <div className="p-2 bg-slate-100 dark:bg-zinc-800 rounded-lg text-slate-500"><LinkIcon size={14} /></div>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight truncate">{domain}</p>
-                                    <span className="text-[9px] text-gray-400 font-medium block">{new Date(item.timestamp).toLocaleDateString()}</span>
-                                  </div>
+                              <div key={item.id} className="relative group/link bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-zinc-800">
+                                <LinkPreview url={link.url} language={language} />
+                                <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 backdrop-blur-md rounded-full text-[9px] text-white font-bold pointer-events-none">
+                                  {new Date(item.timestamp).toLocaleDateString()}
                                 </div>
-                                <p className="text-xs font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600">{link.url}</p>
-                              </button>
+                              </div>
                             );
                           }
                           return null;

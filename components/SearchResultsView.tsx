@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Post, User } from '../types';
+import { sortUsersByRelevance } from '../utils/mentionUtils';
 import { supabase } from '../supabaseClient';
 import { Search, ArrowLeft, Users, Zap, Clock, Filter, Check, X, Loader2, UserPlus, UserMinus, ChevronDown } from 'lucide-react';
 import { PostCard } from './PostCard';
@@ -83,10 +84,25 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     }
 
     try {
-      const searchTerm = `%${normalizedQuery}%`;
+      const isHashtagSearch = query.trim().startsWith('#');
+      const searchTerm = normalizedQuery.trim();
 
-      let postsQuery = supabase.from('posts').select('*').or(`content.ilike.${searchTerm}`);
-      let newsQuery = supabase.from('news').select('*').or(`content.ilike.${searchTerm}`);
+      let postsQuery = supabase.from('posts').select('*');
+      let newsQuery = supabase.from('news').select('*');
+
+      if (isHashtagSearch) {
+        // Búsqueda explícita de hashtag: usar ilike normal
+        const likeTerm = `%${searchTerm}%`;
+        postsQuery = postsQuery.or(`content.ilike.${likeTerm}`);
+        newsQuery = newsQuery.or(`content.ilike.${likeTerm}`);
+      } else {
+        // Búsqueda de texto plano: excluir si está precedido por #
+        // Usamos regex POSIX de Postgres: (^|[^#]) para asegurar que no hay un # justo antes
+        // Nota: usamos imatch (~) para case-insensitive regex
+        const regexTerm = `(^|[^#])${searchTerm}`;
+        postsQuery = postsQuery.filter('content', 'imatch', regexTerm);
+        newsQuery = newsQuery.filter('content', 'imatch', regexTerm);
+      }
 
       if (filterType === 'post') {
         newsQuery = newsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
@@ -196,14 +212,15 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   const peopleResults = useMemo(() => {
     if (!normalizedQuery) return users;
-    return users.filter(user =>
+    const filtered = users.filter(user =>
       normalizeString(user.name).includes(normalizedQuery) ||
       (user.lastName && normalizeString(user.lastName).includes(normalizedQuery)) ||
       (user.username && normalizeString(user.username).includes(normalizedQuery)) ||
       (user.position && normalizeString(user.position).includes(normalizedQuery)) ||
       (user.department && normalizeString(user.department).includes(normalizedQuery))
     );
-  }, [users, normalizedQuery]);
+    return sortUsersByRelevance(filtered, query);
+  }, [users, normalizedQuery, query]);
 
   const handleLocalSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,7 +240,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
             <h2 className="text-2xl font-black text-gray-900 dark:text-white">{t('search')}</h2>
           </div>
         </div>
-        <form onSubmit={handleLocalSearch} className="relative flex-1 max-w-md z-50 hidden md:block">
+        <form onSubmit={handleLocalSearch} className="relative flex-1 max-w-md z-50">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"

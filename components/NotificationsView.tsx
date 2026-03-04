@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat, Star, ShieldCheck } from 'lucide-react';
+import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat, Star, ShieldCheck, Award, AtSign, FileText, CheckCircle2 } from 'lucide-react';
 import { Notification, User } from '../types';
 import { Language, useTranslation } from '../utils/translations';
 
@@ -12,7 +12,9 @@ interface NotificationsViewProps {
   language: Language;
   onApproveUser?: (userId: string, notificationId: string) => void;
   onRejectUser?: (userId: string, notificationId: string) => void;
+  onApproveRedemption?: (userId: string, rewardId: string, notificationId: string) => void;
   currentUser?: User;
+  onNavigateToProfile?: (userId: string) => void;
 }
 
 type Tab = 'all' | 'mentions' | 'followers' | 'admin';
@@ -26,11 +28,14 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   language,
   onApproveUser,
   onRejectUser,
-  currentUser
+  onApproveRedemption,
+  currentUser,
+  onNavigateToProfile
 }) => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
   const t = useTranslation(language);
   const [activeTab, setActiveTab] = useState<Tab>('all');
+  const [adminTab, setAdminTab] = useState<'solicitudes' | 'recompensas'>('solicitudes');
 
   useEffect(() => {
     if (unreadCount > 0) {
@@ -50,46 +55,38 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   }, [onLoadMore, hasMore]);
 
 
-  const getIcon = (type: string, content: string = "") => {
-    const isNews = content.toLowerCase().includes('noticia') || content.toLowerCase().includes('news');
-    const isEvent = content.toLowerCase().includes('evento') || content.toLowerCase().includes('event');
-    const isComment = content.toLowerCase().includes('comentario') || content.toLowerCase().includes('comment');
-
+  const getIcon = (type: string, origContent: string | null = '') => {
+    const content = origContent || '';
     switch (type) {
-      case 'like':
-        if (isNews) return <ChevronUp size={18} className="text-emerald-500" strokeWidth={3} />;
-        if (isEvent) return <Heart size={18} className="text-pink-500" fill="currentColor" />;
-        if (isComment) return <Heart size={16} className="text-pink-400" fill="currentColor" />;
-        return <Heart size={18} className="text-pink-500" fill="currentColor" />;
       case 'follow':
-        return <UserPlus size={18} className="text-blue-500" />;
+        return <UserPlus size={12} className="text-blue-600 dark:text-blue-400" />;
+      case 'like':
+        return <Heart size={12} className="text-pink-600 dark:text-pink-400" />;
       case 'comment':
-        return <MessageSquare size={18} className={isNews ? "text-orange-600" : "text-emerald-500"} />;
-      case 'registration_request':
-        return <UserPlus size={18} className="text-orange-500" />;
-      case 'repost':
-        return <Repeat size={18} className="text-emerald-500" strokeWidth={3} />;
+        const isNews = content.includes('noticia');
+        return isNews ? <FileText size={12} className="text-orange-600 dark:text-orange-400" /> : <MessageSquare size={12} className="text-emerald-600 dark:text-emerald-400" />;
       case 'system':
-        return <ShieldCheck size={18} className="text-blue-500" />;
+        return <ShieldCheck size={12} className="text-blue-500" />;
+      case 'reward_request':
+        return <Award size={12} className="text-purple-600" />;
+      case 'reward_accepted':
+        return <CheckCircle2 size={12} className="text-emerald-600" />;
+      case 'mention':
+        return <AtSign size={12} className="text-purple-500" />;
       default:
-        return <Bell size={18} className="text-gray-400" />;
+        return <Bell size={12} className="text-gray-400" />;
     }
   };
 
-  const getBgColor = (type: string, content: string = "") => {
-    const isNews = content.toLowerCase().includes('noticia') || content.toLowerCase().includes('news');
-    const isEvent = content.toLowerCase().includes('evento') || content.toLowerCase().includes('event');
-    const isComment = content.toLowerCase().includes('comentario') || content.toLowerCase().includes('comment');
-
+  const getBgColor = (type: string, origContent: string | null = '') => {
+    const content = origContent || '';
     switch (type) {
-      case 'like':
-        if (isNews) return 'bg-emerald-50 dark:bg-emerald-900/20';
-        if (isEvent) return 'bg-amber-50 dark:bg-amber-900/20';
-        if (isComment) return 'bg-pink-50/50 dark:bg-pink-900/10';
-        return 'bg-pink-50 dark:bg-pink-900/20';
       case 'follow':
         return 'bg-blue-50 dark:bg-blue-900/20';
+      case 'like':
+        return 'bg-pink-50 dark:bg-pink-900/20';
       case 'comment':
+        const isNews = content.includes('noticia');
         return isNews ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
       case 'registration_request':
         return 'bg-orange-50 dark:bg-orange-900/20';
@@ -97,24 +94,36 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         return 'bg-emerald-50 dark:bg-emerald-900/20';
       case 'system':
         return 'bg-blue-50 dark:bg-blue-900/20';
+      case 'reward_request':
+        return 'bg-purple-50 dark:bg-purple-900/20';
+      case 'reward_accepted':
+        return 'bg-emerald-50 dark:bg-emerald-900/20';
+      case 'mention':
+        return 'bg-purple-50 dark:bg-purple-900/20';
       default:
         return 'bg-gray-50 dark:bg-zinc-800';
     }
   };
 
   const filteredNotifications = notifications.filter(n => {
+    const content = n.content || '';
     if (activeTab === 'all') {
       // Exclude admin-related system messages from 'all'
-      const isAdminMsg = n.type === 'registration_request' || (n.type === 'system' && (n.content.includes('aprobado en la red') || n.content.includes('rechazado en la red') || n.content.includes('Solicitud de')));
+      const isAdminMsg = n.type === 'registration_request' || n.type === 'reward_request' || (n.type === 'system' && ((n.content || '').includes('aprobado en la red') || (n.content || '').includes('rechazado en la red') || (n.content || '').includes('Solicitud de') || (n.content || '').includes('Canje de')));
       if (isAdminMsg) return false;
 
-      return n.type === 'like' || n.type === 'vote' || n.type === 'comment' || n.type === 'repost' || n.type === 'system';
+      return n.type === 'like' || n.type === 'vote' || n.type === 'comment' || n.type === 'repost' || n.type === 'system' || n.type === 'reward_accepted';
     } else if (activeTab === 'mentions') {
       return n.type === 'mention';
     } else if (activeTab === 'followers') {
       return n.type === 'follow';
     } else if (activeTab === 'admin') {
-      return n.type === 'registration_request' || (n.type === 'system' && (n.content.includes('aprobado en la red') || n.content.includes('rechazado en la red') || n.content.includes('Solicitud de')));
+      if (adminTab === 'solicitudes') {
+        return n.type === 'registration_request' || (n.type === 'system' && ((n.content || '').includes('aprobado en la red') || (n.content || '').includes('rechazado en la red') || (n.content || '').includes('Solicitud de') && !(n.content || '').includes('Canje de')));
+      } else if (adminTab === 'recompensas') {
+        // Explicitly return true for reward_request down here so it isn't filtered
+        return n.type === 'reward_request' || n.type === 'reward_accepted' || (n.content || '').includes('Canje de');
+      }
     }
     return true;
   });
@@ -128,35 +137,52 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       <div className="w-full max-w-full flex space-x-2 overflow-x-auto pb-2 scrollbar-hide px-1">
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'all' ? 'bg-pink-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'all' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <Bell size={16} className={activeTab === 'all' ? 'fill-current' : ''} />
-          <span>{language === 'es' ? 'Todo' : 'All'}</span>
+          <span>{t('notif_tab_all')}</span>
         </button>
         <button
           onClick={() => setActiveTab('mentions')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'mentions' ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'mentions' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <MessageSquare size={16} />
-          <span>{language === 'es' ? 'Menciones' : 'Mentions'}</span>
+          <span>{t('notif_tab_mentions')}</span>
         </button>
         <button
           onClick={() => setActiveTab('followers')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'followers' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'followers' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <UserPlus size={16} />
-          <span>{language === 'es' ? 'Seguidores' : 'Followers'}</span>
+          <span>{t('notif_tab_followers')}</span>
         </button>
         {currentUser?.isAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'admin' ? 'bg-orange-500 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+            className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'admin' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
           >
             <ShieldCheck size={16} />
-            <span>{language === 'es' ? 'Administrar' : 'Manage'}</span>
+            <span>{t('notif_tab_admin')}</span>
           </button>
         )}
       </div>
+
+      {activeTab === 'admin' && currentUser?.isAdmin && (
+        <div className="flex space-x-2 px-1 mb-2">
+          <button
+            onClick={() => setAdminTab('solicitudes')}
+            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${adminTab === 'solicitudes' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
+          >
+            {language === 'es' ? 'Solicitudes' : 'Requests'}
+          </button>
+          <button
+            onClick={() => setAdminTab('recompensas')}
+            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${adminTab === 'recompensas' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
+          >
+            {language === 'es' ? 'Recompensas' : 'Rewards'}
+          </button>
+        </div>
+      )}
 
       <div className="w-full bg-white dark:bg-[#111] rounded-2xl md:rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden min-h-[400px]">
         {filteredNotifications.length === 0 ? (
@@ -166,53 +192,103 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           </div>
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-zinc-900">
-            {filteredNotifications.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => onNotificationClick?.(n.postId)}
-                className={`px-3 md:px-8 py-5 flex space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative overflow-hidden ${!n.isRead ? 'bg-red-50/20 dark:bg-red-900/10' : ''}`}
-              >
-                {!n.isRead && (
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse"></div>
-                )}
-                <div className="relative flex-shrink-0">
-                  <img src={n.senderAvatar} className="w-12 h-12 rounded-2xl object-cover border border-gray-100 dark:border-zinc-800" alt="" />
-                  <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full border-2 border-white dark:border-zinc-800 ${getBgColor(n.type, n.content)}`}>
-                    {getIcon(n.type, n.content)}
+            {filteredNotifications.map((n) => {
+              const content = n.content || '';
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => onNotificationClick?.(n.postId)}
+                  className={`px-3 md:px-8 py-5 flex space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative overflow-hidden ${!n.isRead ? 'bg-red-50/20 dark:bg-red-900/10' : ''}`}
+                >
+                  {!n.isRead && (
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse"></div>
+                  )}
+                  <div
+                    className="relative flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={(e) => {
+                      if (n.senderId) {
+                        e.stopPropagation();
+                        onNavigateToProfile?.(n.senderId);
+                      }
+                    }}
+                  >
+                    <img src={n.senderAvatar} className="w-12 h-12 rounded-2xl object-cover border border-gray-100 dark:border-zinc-800" alt="" />
+                    <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full border-2 border-white dark:border-zinc-800 ${getBgColor(n.type, content)}`}>
+                      {getIcon(n.type, content)}
+                    </div>
                   </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                    <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> {n.content}
-                  </p>
-
-                  {n.type === 'registration_request' &&
-                    !n.content.includes('aprobado en la red') &&
-                    !n.content.includes('rechazado en la red') &&
-                    !n.content.includes('aceptada') &&
-                    !n.content.includes('rechazada') && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onApproveUser?.(n.senderId || '', n.id); }} // Assuming senderId is the new user's ID (which it is in our implementation)
-                          className="px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                        >
-                          Aceptar
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onRejectUser?.(n.senderId || '', n.id); }}
-                          className="px-4 py-1.5 bg-white border border-gray-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors shadow-sm"
-                        >
-                          Rechazar
-                        </button>
+                  <div className="flex-1 min-w-0">
+                    {n.type === 'reward_request' ? (
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                          El usuario <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> reclama: <span className="font-bold text-gray-900 dark:text-white">{(n.content || '').replace(/.*(ha solicitado|canjear la recompensa:)\s*(el canje de)?\s*/i, '').trim()}</span>
+                        </p>
+                        {!(n.content || '').includes('(aceptado)') &&
+                          !(n.content || '').includes('(rechazado)') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onApproveRedemption?.(n.senderId || '', n.postId || '', n.id); }}
+                              className="flex-shrink-0 px-6 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                              {t('accept_redemption')}
+                            </button>
+                          )}
                       </div>
+                    ) : n.type === 'reward_accepted' ? (
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                        El canje solicitado ha sido <span className="text-emerald-500 font-bold">aceptado</span>.
+                      </p>
+                    ) : (n.type === 'system' && (n.content || '').includes('Canje de')) ? (
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                        {n.content}
+                      </p>
+                    ) : n.type === 'registration_request' || (n.type === 'system' && (n.content || '').toLowerCase().includes('solicitud')) ? (
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                        {(() => {
+                          const c = (n.content || '').toLowerCase();
+                          const isAceptada = c.includes('aceptad') || c.includes('aprobad') || c.includes('bienvenido');
+                          const isRechazada = c.includes('rechazad');
+                          const status = isAceptada ? 'aceptada' : (isRechazada ? 'rechazada' : '');
+                          return (
+                            <>
+                              Solicitud de <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span>{status ? ` ${status}` : ''}
+                            </>
+                          );
+                        })()}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                        <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> {content}
+                      </p>
                     )}
 
-                  <p className="text-xs text-gray-400 dark:text-zinc-600 font-bold mt-1 uppercase">
-                    {new Date(n.timestamp).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'long' })} {t('at_time')} {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                    {n.type === 'registration_request' &&
+                      !(n.content || '').includes('aceptada') &&
+                      !(n.content || '').includes('rechazada') &&
+                      !(n.content || '').includes('(aceptado)') &&
+                      !(n.content || '').includes('(rechazado)') && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onApproveUser?.(n.senderId || '', n.id); }}
+                            className="px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                          >
+                            Aceptar
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onRejectUser?.(n.senderId || '', n.id); }}
+                            className="px-4 py-1.5 bg-white border border-gray-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors shadow-sm"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      )}
+
+                    <p className="text-xs text-gray-400 dark:text-zinc-600 font-bold mt-1 uppercase">
+                      {new Date(n.timestamp).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'long' })} {t('at_time')} {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

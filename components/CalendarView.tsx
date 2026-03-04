@@ -59,6 +59,28 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
     fetchEvents();
   }, [initialDate]);
 
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === '=' || e.key === '-' || e.key === '0' || e.key === '+')) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeydown);
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeydown);
+    };
+  }, []);
+
   const fetchEvents = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -109,6 +131,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
     return day === 0 ? 6 : day - 1;
   }, [currentMonth, currentYear]);
 
+  const numWeeks = useMemo(() => {
+    return Math.ceil((firstDayOfMonth + daysInMonth) / 7);
+  }, [firstDayOfMonth, daysInMonth]);
+
   const changeMonth = (delta: number) => {
     const nextDate = new Date(currentYear, currentMonth + delta, 1);
     setCurrentDate(nextDate);
@@ -142,8 +168,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   const todaysEvents = mappedEventsByDate[dateKey] || [];
 
   return (
-    <div className="w-full flex flex-col lg:flex-row gap-8 pb-20 animate-in fade-in duration-500 relative" onClick={() => setIsSelectorOpen(false)}>
-      <div className="flex-1 bg-white dark:bg-[#111] p-3 md:p-5 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative overflow-visible">
+    <div
+      className="w-full h-[70vh] flex flex-col lg:flex-row gap-8 animate-in fade-in duration-500 relative touch-none select-none"
+      onClick={() => setIsSelectorOpen(false)}
+      style={{ touchAction: 'none' }}
+    >
+      <div className="flex-1 bg-white dark:bg-[#111] p-3 md:p-5 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-2 md:mb-4">
           <div className="relative">
             <button
@@ -197,10 +227,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               </div>
             )}
           </div>
-          <div className="flex space-x-1">
-            <button onClick={() => changeMonth(-1)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-xl hover:bg-gray-100 transition-all"><ChevronLeft size={18} /></button>
-            <button onClick={() => changeMonth(1)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-xl hover:bg-gray-100 transition-all"><ChevronRight size={18} /></button>
-          </div>
+          <button
+            onClick={() => setCurrentDate(new Date())}
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
+          >
+            {t('today')}
+          </button>
         </div>
 
         {loading ? (
@@ -219,13 +251,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               })}
             </div>
 
-            <div className="grid grid-cols-7 gap-1 md:gap-2">
-              {Array.from({ length: 42 }).map((_, i) => {
+            <div className={`flex-1 grid grid-cols-7 gap-1 md:gap-2`} style={{ gridTemplateRows: `repeat(${numWeeks}, 1fr)` }}>
+              {Array.from({ length: numWeeks * 7 }).map((_, i) => {
                 const day = i + 1 - firstDayOfMonth;
                 const isCurrentMonth = day > 0 && day <= daysInMonth;
 
                 if (!isCurrentMonth) {
-                  return <div key={`empty-${i}`} className="aspect-[1.25/1]" />;
+                  return <div key={`empty-${i}`} className="h-full" />;
                 }
 
                 const hasEvents = mappedEventsByDate[`${currentYear}-${currentMonth}-${day}`];
@@ -234,12 +266,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                   <button
                     key={day}
                     onClick={() => selectDate(day)}
-                    className={`aspect-[1.25/1] rounded-xl flex flex-col items-center justify-center relative transition-all border-2 ${isSelected
+                    className={`h-full rounded-xl flex flex-col items-center justify-center relative transition-all border-2 ${isSelected
                       ? 'bg-blue-600 border-blue-600 text-white'
                       : 'bg-white dark:bg-zinc-900 border-transparent hover:border-gray-100 dark:hover:border-zinc-800 text-gray-600 dark:text-gray-400'
                       }`}
                   >
-                    <span className="text-sm font-black">{day}</span>
+                    <span className="text-[1.8vh] md:text-[2.2vh] font-black leading-none">{day}</span>
                     {hasEvents && (
                       <div className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full transition-all duration-300 ${isSelected ? 'bg-white ring-2 ring-white/20' : 'bg-blue-600 ring-2 ring-white/50 dark:ring-zinc-900/50'}`} />
                     )}
@@ -250,21 +282,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
           </>
         )}
 
-        <div className="mt-1 md:mt-2 p-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20">
-          <p className="text-[9px] text-blue-600 dark:text-blue-400 font-bold leading-tight">
-            {t('calendar_note')}
-          </p>
-        </div>
       </div>
 
       <div className="w-full lg:w-96 space-y-4">
-        <div className="bg-blue-600 p-6 rounded-[2rem] text-white relative overflow-hidden">
-          <Sparkles className="absolute top-3 right-3 opacity-30" size={20} />
-          <h3 className="text-2xl font-black mb-0.5 italic">{selectedDay}</h3>
-          <p className="text-blue-100 font-bold uppercase text-[10px] tracking-widest">{MONTHS[currentMonth]}</p>
-        </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 overflow-y-auto pr-2 max-h-[calc(70vh-140px)] scrollbar-hide">
           {todaysEvents.length > 0 ? (
             todaysEvents.map(event => (
               <div key={event.id} className="bg-white dark:bg-[#111] p-4 rounded-[1.5rem] border border-gray-100 dark:border-zinc-900 hover:border-gray-200 dark:hover:border-zinc-800 transition-all group relative">

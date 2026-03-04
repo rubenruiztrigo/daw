@@ -1,17 +1,17 @@
 
 export const COUNTRIES_DATA: Record<string, string[]> = {
   "España": [
-    "Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria", 
-    "Castilla-La Mancha", "Castilla y León", "Cataluña", "Comunidad Valenciana", 
+    "Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria",
+    "Castilla-La Mancha", "Castilla y León", "Cataluña", "Comunidad Valenciana",
     "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja",
     "Ceuta", "Melilla"
   ],
   "Portugal": [
-    "Lisboa", "Oporto", "Braga", "Coímbra", "Faro (Algarve)", "Setúbal", 
+    "Lisboa", "Oporto", "Braga", "Coímbra", "Faro (Algarve)", "Setúbal",
     "Aveiro", "Leiria", "Santarém", "Viseu", "Madeira", "Azores", "Évora", "Viana do Castelo"
   ],
   "Perú": [
-    "Lima", "Arequipa", "Cusco", "La Libertad", "Piura", "Ica", "Lambayeque", 
+    "Lima", "Arequipa", "Cusco", "La Libertad", "Piura", "Ica", "Lambayeque",
     "Ancash", "Junín", "Callao", "Loreto", "San Martín", "Cajamarca", "Puno"
   ],
   "Brasil": [
@@ -25,15 +25,21 @@ export const COUNTRIES_DATA: Record<string, string[]> = {
 export const COUNTRIES = Object.keys(COUNTRIES_DATA);
 
 export const PUBLIC_INTERESTS = [
-  'Innovación Pública', 
-  'IA en Gobierno', 
-  'Transformación Digital', 
-  'Transparencia', 
-  'Gestión del Talento', 
-  'Smart Cities', 
-  'Contratación Pública', 
-  'Datos Abiertos', 
-  'Liderazgo', 
+  'Innovación Pública',
+  'IA en Gobierno',
+  'Transformación Digital',
+  'Transparencia',
+  'Gestión del Talento',
+  'Sostenibilidad',
+  'Innovación urbana',
+  'Comunicación',
+  'Buen gobierno',
+  'Participación',
+  'Resiliencia',
+  'Prospectiva',
+  'Contratación Pública',
+  'Datos Abiertos',
+  'Liderazgo',
   'Laboratorios de Innovación'
 ];
 
@@ -42,50 +48,50 @@ const now = new Date();
 const dayInMs = 24 * 60 * 60 * 1000;
 
 export const CALENDAR_EVENTS = [
-  { 
-    id: 'e1', 
-    title: 'Congreso Red Social de NovaGob 2024', 
-    type: 'congress' as const, 
-    date: new Date(now.getTime() + 2 * dayInMs), 
-    location: 'Sede Central / Online', 
-    attendees: 450, 
-    description: 'El mayor evento de innovación pública en iberoamérica.' 
+  {
+    id: 'e1',
+    title: 'Congreso Red Social de NovaGob 2024',
+    type: 'congress' as const,
+    date: new Date(now.getTime() + 2 * dayInMs),
+    location: 'Sede Central / Online',
+    attendees: 450,
+    description: 'El mayor evento de innovación pública en iberoamérica.'
   },
-  { 
-    id: 'e2', 
-    title: 'Webinar: IA en Gobiernos Locales', 
-    type: 'training' as const, 
-    date: new Date(now.getTime() + 5 * dayInMs), 
-    location: 'Zoom', 
-    attendees: 120, 
-    description: 'Sesión práctica sobre implementación de LLMs en ayuntamientos.' 
+  {
+    id: 'e2',
+    title: 'Webinar: IA en Gobiernos Locales',
+    type: 'training' as const,
+    date: new Date(now.getTime() + 5 * dayInMs),
+    location: 'Zoom',
+    attendees: 120,
+    description: 'Sesión práctica sobre implementación de LLMs en ayuntamientos.'
   },
-  { 
-    id: 'e3', 
-    title: 'Reunión de Laboratorios', 
-    type: 'innovation' as const, 
-    date: new Date(now.getTime() + 10 * dayInMs), 
-    location: 'Sala 3B', 
-    attendees: 15, 
-    description: 'Coordinación trimestral de laboratorios de innovación ciudadana.' 
+  {
+    id: 'e3',
+    title: 'Reunión de Laboratorios',
+    type: 'innovation' as const,
+    date: new Date(now.getTime() + 10 * dayInMs),
+    location: 'Sala 3B',
+    attendees: 15,
+    description: 'Coordinación trimestral de laboratorios de innovación ciudadana.'
   },
-  { 
-    id: 'e4', 
-    title: 'Taller de Transparencia Activa', 
-    type: 'training' as const, 
-    date: new Date(now.getTime() + 14 * dayInMs), 
-    location: 'Aula Virtual', 
-    attendees: 85, 
-    description: 'Mejora de los portales de datos abiertos institucionales.' 
+  {
+    id: 'e4',
+    title: 'Taller de Transparencia Activa',
+    type: 'training' as const,
+    date: new Date(now.getTime() + 14 * dayInMs),
+    location: 'Aula Virtual',
+    attendees: 85,
+    description: 'Mejora de los portales de datos abiertos institucionales.'
   },
-  { 
-    id: 'e5', 
-    title: 'Hackathon Sector Público', 
-    type: 'innovation' as const, 
-    date: new Date(now.getTime() + 25 * dayInMs), 
-    location: 'Madrid Tech Lab', 
-    attendees: 200, 
-    description: 'Resolviendo retos reales con tecnología abierta.' 
+  {
+    id: 'e5',
+    title: 'Hackathon Sector Público',
+    type: 'innovation' as const,
+    date: new Date(now.getTime() + 25 * dayInMs),
+    location: 'Madrid Tech Lab',
+    attendees: 200,
+    description: 'Resolviendo retos reales con tecnología abierta.'
   }
 ];
 

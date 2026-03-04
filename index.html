@@ -1,54 +1,52 @@
+
 <!DOCTYPE html>
 <html lang="es">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Red Social - Administración Pública</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: '#9362e3',
-            blue: {
-              50: '#f4effc',
-              100: '#e9e0fa',
-              200: '#d2c1f5',
-              300: '#bc9fed',
-              400: '#a57ee6',
-              500: '#9362e3',
-              600: '#7d4bc9',
-              700: '#6739af',
-              800: '#512795',
-              900: '#3c187a',
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Red Social - Administración Pública</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              brand: '#9362e3',
+              blue: {
+                50: '#f4effc',
+                100: '#e9e0fa',
+                200: '#d2c1f5',
+                300: '#bc9fed',
+                400: '#a57ee6',
+                500: '#9362e3',
+                600: '#7d4bc9',
+                700: '#6739af',
+                800: '#512795',
+                900: '#3c187a',
+              },
+              indigo: {
+                50: '#f4effc',
+                100: '#e9e0fa',
+                200: '#d2c1f5',
+                300: '#bc9fed',
+                400: '#a57ee6',
+                500: '#9362e3',
+                600: '#7d4bc9',
+                700: '#6739af',
+                800: '#512795',
+                900: '#3c187a',
+              }
             },
-            indigo: {
-              50: '#f4effc',
-              100: '#e9e0fa',
-              200: '#d2c1f5',
-              300: '#bc9fed',
-              400: '#a57ee6',
-              500: '#9362e3',
-              600: '#7d4bc9',
-              700: '#6739af',
-              800: '#512795',
-              900: '#3c187a',
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
             }
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
           }
         }
       }
-    }
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-    rel="stylesheet">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script type="importmap">
 {
   "imports": {
@@ -61,14 +59,10 @@
   }
 }
 </script>
-  <link rel="stylesheet" href="/index.css">
-  <link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="stylesheet" href="/index.css">
 </head>
-
-<body
-  class="bg-[radial-gradient(ellipse_at_top_left,#A9D6E5_0%,#C8B6D9_70%)] dark:bg-[radial-gradient(ellipse_at_top_left,#0F172A_0%,#2E1065_70%)] min-h-screen bg-fixed text-slate-900 transition-colors duration-200 dark:text-gray-100">
-  <div id="root"></div>
+  <body class="bg-gray-50 text-slate-900 transition-colors duration-200 dark:bg-black dark:text-gray-100">
+    <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
-
 </html>

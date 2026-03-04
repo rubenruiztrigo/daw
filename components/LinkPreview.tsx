@@ -87,7 +87,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ url, language = 'es' }
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block bg-white dark:bg-zinc-950 rounded-2xl border-[0.5px] border-gray-100 dark:border-zinc-800 overflow-hidden hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-0.5 transition-all duration-300 group"
+            className="block bg-white dark:bg-zinc-950 rounded-2xl border-[0.5px] border-gray-100 dark:border-zinc-800 overflow-hidden transition-all duration-300 group"
         >
             <div className="flex flex-row">
                 {data.image?.url && (
@@ -95,7 +95,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ url, language = 'es' }
                         <img
                             src={data.image.url}
                             alt={data.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            className="w-full h-full object-cover transition-transform duration-500"
                         />
                     </div>
                 )}
@@ -110,7 +110,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ url, language = 'es' }
                             {data.publisher || domain}
                         </span>
                     </div>
-                    <h4 className="text-sm font-black text-gray-900 dark:text-white line-clamp-1 mb-0.5 group-hover:text-blue-600 transition-colors">
+                    <h4 className="text-sm font-black text-gray-900 dark:text-white line-clamp-1 mb-0.5 transition-colors">
                         {data.title || url}
                     </h4>
                     {data.description && (

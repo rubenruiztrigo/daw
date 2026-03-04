@@ -4,6 +4,7 @@ import { Post, User } from '../types';
 import { MessageSquare, ChevronUp, ChevronDown } from 'lucide-react';
 import { timeAgo } from '../utils/stringUtils';
 import { Language } from '../utils/translations';
+import { RENDER_REGEX, getUserByMention } from '../utils/mentionUtils';
 
 interface NewsCardProps {
   post: Post;
@@ -38,36 +39,46 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
   const renderContent = (content: string) => {
     if (!content) return null;
-    const parts = content.split(/(#[\wáéíóúÁÉÍÓÚñÑ]+|@[\w.]+)/g);
+    const parts = content.split(RENDER_REGEX);
     return parts.map((part, i) => {
-      if (part.startsWith('#')) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.startsWith('#')) {
         return (
           <button
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              onSearchHashtag?.(part);
+              onSearchHashtag?.(trimmedPart);
             }}
             className="text-orange-600 dark:text-orange-400 font-black hover:underline transition-all"
           >
             {part}
           </button>
         );
-      } else if (part.startsWith('@')) {
-        const username = part.slice(1).toLowerCase();
-        const mentionedUser = users.find(u => u.username?.toLowerCase() === username);
-        return (
-          <button
-            key={i}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (mentionedUser) onNavigateToProfile?.(mentionedUser.id);
-            }}
-            className="text-orange-600 dark:text-orange-400 font-black hover:underline transition-all"
-          >
-            {part}
-          </button>
-        );
+      } else if (trimmedPart.startsWith('@')) {
+        const username = trimmedPart.slice(1).toLowerCase();
+        const mentionedUser = users.find(u => {
+          const uName = u.username?.toLowerCase();
+          if (!uName) return false;
+          if (uName === username) return true;
+          const cleanPart = username.replace(/[.,!?;:]+$/, '');
+          return uName === cleanPart;
+        });
+
+        if (mentionedUser) {
+          return (
+            <button
+              key={i}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateToProfile?.(mentionedUser.id);
+              }}
+              className="text-purple-600 dark:text-purple-400 font-black hover:underline transition-all"
+            >
+              @{mentionedUser.username}
+            </button>
+          );
+        }
       }
       return part;
     });
