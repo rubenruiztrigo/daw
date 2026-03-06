@@ -90,7 +90,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div

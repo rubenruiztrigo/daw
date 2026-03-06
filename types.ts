@@ -209,8 +209,9 @@ export interface Post {
   authorUsername?: string;
   authorPosition: string;
   authorAvatar: string;
+  title?: string;
   content: string;
-  imageUrl?: string;
+  imageUrl?: string[];
   docUrl?: string;
   docName?: string;
   timestamp: string;
@@ -227,6 +228,8 @@ export interface Post {
   userDownvoted?: boolean;
   linkedEventId?: string;
   linkedEvent?: CalendarEvent;
+  isPinned?: boolean;
+  pinnedAt?: string;
 }
 
 export interface Message {
@@ -242,6 +245,8 @@ export interface Message {
   sharedProfileId?: string;
   sharedEventId?: string;
   sharedEvent?: CalendarEvent;
+  updated_at?: string;
+  is_deleted?: boolean;
 }
 
 export interface Chat {

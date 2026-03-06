@@ -1,11 +1,13 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { X, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Download, FileText, Reply } from 'lucide-react';
+import { X, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
+import { ImageLightbox } from './ImageLightbox';
+import { useTranslation } from '../utils/translations';
+import { Language } from '../utils/translations';
 
 interface PostDetailsModalProps {
   post: Post;
@@ -29,6 +31,8 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   const [replyingTo, setReplyingTo] = useState<string | null>(null); // commentId
   const [replyingToParentReplyId, setReplyingToParentReplyId] = useState<string | undefined>(undefined); // replyId
   const [replyText, setReplyText] = useState('');
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
@@ -189,7 +193,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-8 py-4 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
@@ -213,7 +217,63 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
               {renderContentWithHashtags(post.content)}
             </div>
 
-            {post.imageUrl && <div className="mb-6 rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800"><img src={post.imageUrl} className="w-full h-auto object-cover max-h-[600px]" alt="" /></div>}
+            {post.imageUrl && post.imageUrl.length > 0 && (
+              <div className={`mb-6 rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/50 ${post.imageUrl.length === 1 ? '' : 'grid gap-1'
+                } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[250px]' :
+                  post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[400px]' :
+                    post.imageUrl.length === 4 ? 'grid-cols-2 h-[400px]' : 'h-[400px]'
+                }`}>
+                {post.imageUrl.length === 1 ? (
+                  <img
+                    src={post.imageUrl[0]}
+                    className="w-full h-[400px] object-cover transition-all hover:scale-[1.01] rounded-3xl cursor-zoom-in"
+                    alt=""
+                    onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                  />
+                ) : post.imageUrl.length === 2 ? (
+                  post.imageUrl.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                    />
+                  ))
+                ) : post.imageUrl.length === 3 ? (
+                  <>
+                    <img
+                      src={post.imageUrl[0]}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                    />
+                    <img
+                      src={post.imageUrl[1]}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
+                    />
+                    <img
+                      src={post.imageUrl[2]}
+                      alt=""
+                      className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
+                    />
+                  </>
+                ) : post.imageUrl.length === 4 ? (
+                  post.imageUrl.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="w-full h-[200px] object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                    />
+                  ))
+                ) : null}
+              </div>
+            )}
 
             <div className="flex items-center justify-between py-4 border-y border-slate-50 dark:border-zinc-900">
               <div className="flex items-center space-x-6">
@@ -300,6 +360,13 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             </div>
           )}
         </div>
+
+        <ImageLightbox
+          images={post.imageUrl || []}
+          initialIndex={currentImgIndex}
+          isOpen={isLightboxOpen}
+          onClose={() => setIsLightboxOpen(false)}
+        />
       </div>
     </div>,
     document.body

@@ -284,22 +284,22 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
                   const isUnlocked = userBadgeIds.has(badge.id);
                   return (
                     <div key={badge.id} className={`p-5 rounded-3xl border transition-all relative ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent opacity-60 grayscale'}`}>
-                      <div className="flex items-start space-x-4">
-                        <div className={`p-3 rounded-2xl ${isUnlocked ? (badge.color || 'bg-blue-100 text-blue-600') : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
+                      <div className="flex items-center space-x-4">
+                        <div className={`p-3 rounded-2xl shrink-0 ${isUnlocked ? (badge.color || 'bg-blue-100 text-blue-600') : 'bg-gray-200 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'}`}>
                           <CustomBadgeIcon size={24} />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <h4 className="font-bold text-slate-900 dark:text-white">{badge.label}</h4>
-                            {isUnlocked && <CheckCircle2 size={16} className="text-blue-500" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center gap-2">
+                            <h4 className="font-bold text-slate-900 dark:text-white leading-tight break-words">{badge.label}</h4>
+                            {isUnlocked && <CheckCircle2 size={16} className="text-blue-500 shrink-0" />}
                           </div>
                         </div>
                       </div>
 
                       {badge.value !== undefined && badge.value !== null && (
-                        <div className="absolute bottom-4 right-4 bg-slate-50 dark:bg-zinc-900/50 px-2 py-1 rounded-lg border border-slate-100 dark:border-zinc-800 flex items-center space-x-1.5">
-                          <span className="text-[11px] font-black text-blue-600 leading-none">{badge.value}</span>
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">Novas</span>
+                        <div className="absolute bottom-2.5 right-3 bg-slate-50 dark:bg-zinc-900/50 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-800 flex items-center space-x-1">
+                          <span className="text-[10px] font-black text-blue-600 leading-none">{badge.value}</span>
+                          <span className="text-[8px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-tighter">Novas</span>
                         </div>
                       )}
                     </div>
@@ -1006,7 +1006,7 @@ const AccessibilityModal: React.FC<{
   );
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
 
         {view === 'menu' && (
@@ -1275,7 +1275,7 @@ const PrivacySecurityModal: React.FC<{
   );
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
 
         {view === 'menu' && (
@@ -1539,7 +1539,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       </div>
 
       {showChatSettings && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowChatSettings(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowChatSettings(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <ChatSettingsForm user={user} t={t} onSave={(updated) => { onUpdateUser(updated); setShowChatSettings(false); }} onClose={() => setShowChatSettings(false)} />
           </div>
@@ -1548,7 +1548,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       )}
 
       {showBadges && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowBadges(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowBadges(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <BadgesList user={user} t={t} onClose={() => setShowBadges(false)} />
           </div>
@@ -1557,7 +1557,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       )}
 
       {showNotifications && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowNotifications(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowNotifications(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <NotificationSettingsForm user={user} t={t} onSave={(updated) => { onUpdateUser(updated); setShowNotifications(false); }} onClose={() => setShowNotifications(false)} />
           </div>
@@ -1591,7 +1591,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       </div>
 
       {showPersonalData && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPersonalData(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowPersonalData(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <PersonalDataForm user={user} t={t} onSave={(updated) => { onUpdateUser(updated); setShowPersonalData(false); }} onClose={() => setShowPersonalData(false)} />
           </div>
@@ -1600,7 +1600,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       )}
 
       {showPrivacyPolicy && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowPrivacyPolicy(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowPrivacyPolicy(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 flex flex-col max-h-[85vh] shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="px-8 py-6 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
               <div className="flex items-center space-x-3">
@@ -1628,7 +1628,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       )}
 
       {showAbout && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowAbout(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowAbout(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 flex flex-col max-h-[85vh] shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="px-8 py-6 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
               <div className="flex items-center space-x-3">
@@ -1671,7 +1671,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       {showLogoutConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
           onClick={() => setShowLogoutConfirm(false)}
         >
           <div

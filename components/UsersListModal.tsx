@@ -93,7 +93,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div

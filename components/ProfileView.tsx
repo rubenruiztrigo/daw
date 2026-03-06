@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, calculateNovas } from '../types';
-import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck } from 'lucide-react';
+import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck, Mic } from 'lucide-react';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { PreferencesModal } from './PreferencesModal';
 import { ShareModal } from './ShareModal';
@@ -70,7 +70,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
     : 100;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-md rounded-[3rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="p-10 text-center space-y-6">
           <div className={`mx-auto w-24 h-24 ${status.bg} ${status.color} rounded-[2rem] flex items-center justify-center`}>
@@ -113,6 +113,17 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
         </div>
       </div>
     </div >,
+    document.body
+  );
+};
+
+const FullScreenImageModal: React.FC<{ imageUrl: string, onClose: () => void }> = ({ imageUrl, onClose }) => {
+  useScrollLock();
+  return createPortal(
+    <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300 cursor-pointer" onClick={onClose}>
+      <button onClick={onClose} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 z-10"><X size={24} /></button>
+      <img src={imageUrl} className="max-w-full max-h-[90vh] rounded-[3rem] object-contain animate-in zoom-in-95 duration-300 border-4 border-white/5" alt="Profile Preview" onClick={(e) => e.stopPropagation()} />
+    </div>,
     document.body
   );
 };
@@ -188,7 +199,7 @@ const CreateEventModal: React.FC<{
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-lg max-h-[85vh] flex flex-col rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
@@ -332,6 +343,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = [], language,
   pinnedPosts = new Set(), onTogglePin
 }) => {
+  console.log('ProfileView Rendering. onTogglePin defined:', !!onTogglePin);
   const navigate = useNavigate();
   const t = useTranslation(language);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
@@ -352,7 +364,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showRankingModal, setShowRankingModal] = useState(false);
   const [showLevelsModal, setShowLevelsModal] = useState(false);
-  const [dbBadges, setDbBadges] = useState<{ id: string, created_at?: string }[]>([]);
+  const [dbBadges, setDbBadges] = useState<{ id: string, created_at?: string, label?: string, description?: string }[]>([]);
   const [rankingHistory, setRankingHistory] = useState<{ id: string, badge_id: string, created_at: string }[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -424,13 +436,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setRepostedPostIds(Array.from(ids));
       }
 
-      const { data: userBadges } = await supabase
+      // 1. Fetch user's badge assignments
+      const { data: assignments } = await supabase
         .from('user_badges')
         .select('badge_id, created_at')
         .eq('user_id', user.id);
 
-      if (userBadges) {
-        setDbBadges(userBadges.map(b => ({ id: b.badge_id, created_at: b.created_at })));
+      // 2. Fetch ALL badge definitions to ensure we have labels/desc
+      const { data: definitions } = await supabase
+        .from('badges')
+        .select('*');
+
+      if (assignments && assignments.length > 0 && definitions) {
+        const badgeMap = new Map(definitions.map(d => [d.id.toLowerCase(), d]));
+
+        setDbBadges(assignments.map(a => {
+          const badgeIdLower = a.badge_id.toLowerCase();
+          const def = badgeMap.get(badgeIdLower);
+
+          return {
+            id: a.badge_id,
+            created_at: a.created_at,
+            label: def?.label || a.badge_id,
+            description: def?.description
+          };
+        }));
+      } else if (assignments && assignments.length > 0) {
+        // Fallback if definitions fetch failed but we have assignments
+        setDbBadges(assignments.map(a => ({
+          id: a.badge_id,
+          created_at: a.created_at
+        })));
+      } else {
+        setDbBadges([]);
       }
 
       const { data: rankHistory } = await supabase
@@ -458,25 +496,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [commonFollowers, setCommonFollowers] = useState<any[]>([]);
 
   const fetchCommonFollowers = async () => {
-    // 1. Fetch followers of THIS profile (up to 50 to get a good sample)
+    if (!currentUser?.id || !user?.id || isCurrentUser || followedUserIds.size === 0) {
+      setCommonFollowers([]);
+      return;
+    }
+
+    // 1. Convert followedUserIds Set to an array for the query
+    const myFollowedIds = Array.from(followedUserIds);
+
+    // 2. Fetch users who follow THIS profile AND are followed by ME (Mutuals)
     const { data } = await supabase
       .from('follows')
       .select('follower_id, profiles!follower_id(id, avatar)')
       .eq('followed_id', user.id)
-      .neq('follower_id', currentUser.id)
-      .limit(50); // Increased limit to find mutuals
+      .in('follower_id', myFollowedIds)
+      .limit(50); // We only need 3 but fetch more for safety
 
     if (data) {
-      // 2. Filter: Keep only those who I FOLLOW (Mutuals)
-      // "Seguido por... [Personas que YO sigo] y que siguen a [Este Perfil]"
       const mutuals = data
+        .filter((d: any) => d.profiles)
         .map((d: any) => ({
           id: d.profiles.id,
           avatar: d.profiles.avatar
-        }))
-        .filter((follower: any) => followedUserIds.has(follower.id));
+        }));
 
-      setCommonFollowers(mutuals.slice(0, 3));
+      setCommonFollowers(mutuals);
+    } else {
+      setCommonFollowers([]);
     }
   };
 
@@ -602,29 +648,58 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return t('joined_date', { month, year: date.getFullYear() });
   }, [user.joinedDate, language, t]);
 
+  const allPinnedPostIds = useMemo(() => {
+    const set = new Set(posts.filter(p => p.authorId === user.id && p.isPinned).map(p => p.id));
+    if (pinnedPosts) {
+      pinnedPosts.forEach(id => set.add(id));
+    }
+    return set;
+  }, [posts, user.id, pinnedPosts]);
+
   const userPosts = useMemo(() => {
     const filtered = posts.filter(p => p.authorId === user.id && p.type === 'post');
     return filtered.sort((a, b) => {
-      const aPinned = pinnedPosts.has(a.id);
-      const bPinned = pinnedPosts.has(b.id);
+      // 1. Pinned status first
+      const aPinned = allPinnedPostIds.has(a.id);
+      const bPinned = allPinnedPostIds.has(b.id);
+
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-      return 0;
+
+      // 2. If both are pinned, sort by pinnedAt (newest first)
+      if (aPinned && bPinned) {
+        const aPinTime = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const bPinTime = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        if (aPinTime !== bPinTime) return bPinTime - aPinTime;
+      }
+
+      // 3. Otherwise, sort by timestamp (newest first)
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [posts, user.id, pinnedPosts]);
+  }, [posts, user.id, allPinnedPostIds]);
 
   const userNews = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'news'), [posts, user.id]);
 
   const userRepostsList = useMemo(() => {
     const filtered = posts.filter(p => repostedPostIds.includes(p.id));
     return filtered.sort((a, b) => {
-      const aPinned = pinnedPosts.has(a.id);
-      const bPinned = pinnedPosts.has(b.id);
+      // 1. Pinned status first
+      const aPinned = allPinnedPostIds.has(a.id);
+      const bPinned = allPinnedPostIds.has(b.id);
+
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-      return 0;
+
+      // 2. If both are pinned, sort by pinnedAt (newest first)
+      if (aPinned && bPinned) {
+        const aPinTime = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const bPinTime = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        if (aPinTime !== bPinTime) return bPinTime - aPinTime;
+      }
+
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [posts, user.id, repostedPostIds, pinnedPosts]);
+  }, [posts, user.id, repostedPostIds, allPinnedPostIds]);
 
   const handlePhotoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -673,13 +748,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onClick={() => setShowLevelsModal(true)}
         >
           <div className="absolute inset-0 bg-black/5 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center">
-            <div className="bg-white/30 backdrop-blur-md px-6 py-2 rounded-full border border-white/40 text-slate-900 font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
+            <div className="bg-white/30 backdrop-blur-sm px-6 py-2 rounded-full border border-white/40 text-slate-900 font-black text-xs uppercase tracking-widest opacity-0 group-hover/banner:opacity-100 transform translate-y-4 group-hover/banner:translate-y-0 transition-all duration-300">
               Ver estatus Novagober
             </div>
           </div>
-          <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/30 text-slate-900">
+          <div className="absolute top-4 right-6 flex items-center space-x-2 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/30 text-slate-900">
             <Award size={14} className="text-slate-900" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+            <span className="text-[10px] font-black tracking-widest text-slate-900">
               {user.level_name || status.rank}
             </span>
           </div>
@@ -757,7 +832,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               </div>
             </div>
-
             <div className="flex flex-col items-center md:items-end space-y-3 md:space-y-4 w-full md:w-auto mt-2 md:mt-0">
               <div className="flex items-center justify-center md:justify-end space-x-6 w-full px-4 md:px-0">
                 <button onClick={() => setViewingUsersList('followers')} className="text-center md:text-right group">
@@ -803,30 +877,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-sm md:text-lg max-w-full whitespace-pre-wrap break-words">{user.bio || t('no_bio')}</p>
             </div>
 
-
-
-
-            {commonFollowers.length > 0 && !isCurrentUser && (
+            {!isCurrentUser && (
               <div
-                className="space-y-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-900/50 p-3 -mx-3 rounded-2xl transition-all"
+                className="pt-4 border-t border-gray-50 dark:border-zinc-900 cursor-pointer group"
                 onClick={() => setViewingUsersList('followers')}
               >
-
-                <div className="flex items-center justify-center md:justify-start space-x-3">
-                  <div className="flex -space-x-3">
-                    {commonFollowers.map((follower) => (
-                      <img
-                        key={follower.id}
-                        src={follower.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${follower.id}`}
-                        className="w-8 h-8 rounded-full border-2 border-white dark:border-[#111] object-cover"
-                        alt=""
-                        title="Seguido por..."
-                      />
-                    ))}
+                <div className="flex items-center space-x-3">
+                  <div className="flex -space-x-3 overflow-hidden">
+                    {commonFollowers.length > 0 ? (
+                      commonFollowers.slice(0, 3).map((follower) => (
+                        <img
+                          key={follower.id}
+                          src={follower.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${follower.id}`}
+                          className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-white dark:border-[#111] object-cover ring-2 ring-transparent group-hover:ring-blue-500/30 transition-all"
+                          alt=""
+                        />
+                      ))
+                    ) : (
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex items-center justify-center">
+                        <Users size={12} className="text-slate-300" />
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-zinc-500 font-bold">
-                    {commonFollowers.length === 1 ? t('common_connections_singular') : t('common_connections_plural', { count: commonFollowers.length })}
+                  <p className="text-xs md:text-sm text-gray-500 dark:text-zinc-500 font-bold group-hover:text-blue-600 transition-colors">
+                    {commonFollowers.length === 1
+                      ? (language === 'es' ? `1 persona en común` : `1 common connection`)
+                      : (language === 'es'
+                        ? `${commonFollowers.length} personas en común`
+                        : `${commonFollowers.length} common connections`)}
                   </p>
+                  <ChevronRight size={14} className="text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 transform group-hover:translate-x-1 transition-all" />
                 </div>
               </div>
             )}
@@ -870,36 +950,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <p className="text-slate-400 font-bold italic">{t('no_posts')}</p>
               </div>
             ) : userPosts.map(post => (
-              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
+              <PostCard key={post.id} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} />
             ))
           )}
 
           {activeTab === 'news' && (
             <>
-              <div className="mb-6">
-                <button
-                  onClick={() => setShowRankingModal(true)}
-                  className="w-full bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-4 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between group transition-all"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl text-yellow-600 dark:text-yellow-400">
-                      <Trophy size={20} />
+              {isCurrentUser && (
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowRankingModal(true)}
+                    className="w-full bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-4 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between group transition-all"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl text-yellow-600 dark:text-yellow-400">
+                        <Trophy size={20} />
+                      </div>
+                      <div className="text-left">
+                        <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm flex items-center">
+                          {t('weekly_ranking_top')}
+                          <Clock className="ml-2 opacity-60" size={14} />
+                        </span>
+                        <span className="text-[10px] text-yellow-600/70 dark:text-yellow-500/50 font-bold uppercase tracking-wide">
+                          {t('view_badge_history')}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <span className="block font-black text-yellow-700 dark:text-yellow-500 uppercase tracking-widest text-sm flex items-center">
-                        {t('weekly_ranking_top')}
-                        <Clock className="ml-2 opacity-60" size={14} />
-                      </span>
-                      <span className="text-[10px] text-yellow-600/70 dark:text-yellow-500/50 font-bold uppercase tracking-wide">
-                        {t('view_badge_history')}
-                      </span>
+                    <div className="transform group-hover:translate-x-1 transition-transform duration-300">
+                      <ChevronRight className="text-yellow-600/50" size={20} />
                     </div>
-                  </div>
-                  <div className="transform group-hover:translate-x-1 transition-transform duration-300">
-                    <ChevronRight className="text-yellow-600/50" size={20} />
-                  </div>
-                </button>
-              </div>
+                  </button>
+                </div>
+              )}
 
               {userNews.length === 0 ? (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
@@ -925,7 +1007,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 return <NewsCard key={`repost-${post.id}`} post={post} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} language={language} />;
               }
               return (
-                <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={pinnedPosts.has(post.id)} onTogglePin={onTogglePin} />
+                <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={() => { }} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} />
               );
             })
           )}
@@ -1062,10 +1144,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 const info = BADGE_CATALOG.find(c => c.id === ub.id);
                 return info ? info : {
                   id: ub.id,
-                  label: ub.id,
-                  description: language === 'es' ? 'Insignia especial' : 'Special badge',
+                  label: (ub as any).label || ub.id,
+                  description: '', // Removed default description
                   color: 'bg-slate-100 text-slate-500 border-slate-200',
-                  category: 'general' as const
+                  category: ((ub as any).label || '').toLowerCase().includes('congreso') ? 'congresos' :
+                    ((ub as any).label || '').toLowerCase().includes('premio') ? 'premios' :
+                      ((ub as any).label || '').toLowerCase().includes('evento') ? 'eventos' : 'general' as const
                 };
               })
               .filter(b => b.category !== 'ranking');
@@ -1073,20 +1157,83 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             if (userBadges.length > 0) {
               return (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {userBadges.map(badge => (
-                      <div key={badge.id} className="p-5 rounded-3xl border bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 transition-all hover:scale-[1.02]">
-                        <div className="flex items-start space-x-4">
-                          <div className={`p-3 rounded-2xl ${badge.color}`}>
-                            <img src="/img/novagob.brand_isotipo_black.svg" className="w-6 h-6 dark:invert opacity-80" alt="" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {userBadges.map(badge => {
+                      const isSpeaker = badge.label.toLowerCase().includes('ponente');
+                      const isAssistant = badge.label.toLowerCase().includes('asistente');
+                      const isAward = badge.category === 'premios';
+                      const isNovas = badge.category === 'novas';
+                      const isVerified = badge.id === 'verified';
+                      const isPioneer = badge.id === 'pioneer';
+                      const isTraining = badge.category === 'formacion';
+                      const isEvent = badge.category === 'eventos';
+
+                      // Determine Gradient & Icon based on Category/Label
+                      let gradient = 'from-blue-500 to-indigo-600';
+                      let IconComponent = Award;
+
+                      if (isSpeaker) {
+                        gradient = 'from-amber-400 via-orange-500 to-amber-600';
+                        IconComponent = Mic;
+                      } else if (isAssistant) {
+                        gradient = 'from-slate-400 to-slate-600';
+                        IconComponent = Users;
+                      } else if (isAward) {
+                        gradient = 'from-yellow-400 via-amber-500 to-yellow-600';
+                        IconComponent = Trophy;
+                      } else if (isNovas) {
+                        gradient = 'from-purple-500 via-pink-500 to-rose-500';
+                        IconComponent = Sparkles;
+                      } else if (isVerified) {
+                        gradient = 'from-cyan-400 to-blue-500';
+                        IconComponent = BadgeCheck;
+                      } else if (isPioneer) {
+                        gradient = 'from-amber-300 to-orange-500';
+                        IconComponent = Star;
+                      } else if (isTraining) {
+                        gradient = 'from-indigo-500 to-purple-600';
+                        IconComponent = Target;
+                      } else if (isEvent) {
+                        gradient = 'from-emerald-400 to-teal-600';
+                        IconComponent = Calendar;
+                      }
+
+                      return (
+                        <div key={badge.id} className="group bg-white dark:bg-[#111] rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 p-6 flex flex-col items-center text-center transition-all hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2">
+                          {/* Logo Area (The colorful part) - Wider and taller */}
+                          <div className={`w-full h-32 mb-6 rounded-[2rem] bg-gradient-to-br ${gradient} p-0.5 shadow-lg group-hover:shadow-2xl transition-all duration-500`}>
+                            <div className="w-full h-full bg-white dark:bg-[#0a0a0a] rounded-[1.9rem] flex items-center justify-center relative overflow-hidden">
+                              {/* Soft Glow Background */}
+                              <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-10`}></div>
+                              <div className={`p-5 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg transform rotate-2 group-hover:rotate-0 transition-transform duration-500`}>
+                                <IconComponent size={40} strokeWidth={2.5} />
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <h4 className="font-bold text-slate-900 dark:text-white mb-1">{badge.label}</h4>
-                            <p className="text-xs text-slate-500 dark:text-gray-400 font-medium leading-relaxed">{badge.description}</p>
+
+                          {/* Info Area */}
+                          <div className="space-y-3">
+                            <h4 className="text-lg font-black text-slate-900 dark:text-white leading-tight px-4">
+                              {badge.label}
+                            </h4>
+                            <p className="text-xs text-slate-400 dark:text-zinc-500 font-bold leading-relaxed px-2 italic uppercase tracking-wider">
+                              {badge.description}
+                            </p>
+                          </div>
+
+                          {/* Decorative Elements */}
+                          <div className="mt-8 pt-6 border-t border-slate-50 dark:border-zinc-900 w-full flex justify-center">
+                            <div className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full ${isSpeaker ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'} dark:bg-zinc-900`}>
+                              {badge.category.toLowerCase() === 'congresos' ? 'Congreso' :
+                                badge.category.toLowerCase() === 'premios' ? 'Premio' :
+                                  badge.category.toLowerCase() === 'eventos' ? 'Evento' :
+                                    badge.category.toLowerCase() === 'formacion' ? 'Formación' :
+                                      badge.category.toLowerCase() === 'novas' ? 'Novas' : ''}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -1116,6 +1263,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             followerUserIds={followerUserIds}
             followedUserIds={followedUserIds}
             currentUser={currentUser}
+            chats={chats}
           />
         )
       }
@@ -1129,37 +1277,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             followerUserIds={followerUserIds}
             followedUserIds={followedUserIds}
             currentUser={currentUser}
+            chats={chats}
           />
         )
       }
-      {viewingUsersList && createPortal(
-        <UsersListModal type={viewingUsersList} userId={viewingListId || user.id} onClose={() => { setViewingUsersList(null); setViewingListId(null); }} onNavigate={(id) => onNavigateToProfile?.(id)} currentUserFollowedIds={followedUserIds} currentUserFollowerIds={followerUserIds} onToggleFollow={onToggleFollow} currentUserId={currentUser.id} />,
-        document.body
-      )}
-      {isCreateEventModalOpen && createPortal(
-        <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} language={language} />,
-        document.body
-      )}
-      {isShowStatusModalOpen && createPortal(
-        <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} language={language} />,
-        document.body
-      )}
+      {
+        viewingUsersList && createPortal(
+          <UsersListModal type={viewingUsersList} userId={viewingListId || user.id} onClose={() => { setViewingUsersList(null); setViewingListId(null); }} onNavigate={(id) => onNavigateToProfile?.(id)} currentUserFollowedIds={followedUserIds} currentUserFollowerIds={followerUserIds} onToggleFollow={onToggleFollow} currentUserId={currentUser.id} />,
+          document.body
+        )
+      }
+      {
+        isCreateEventModalOpen && createPortal(
+          <CreateEventModal userId={currentUser.id} onClose={() => setIsCreateEventModalOpen(false)} onSave={fetchUserEvents} onAddPost={onAddPost} language={language} />,
+          document.body
+        )
+      }
+      {
+        isShowStatusModalOpen && createPortal(
+          <NovagoberStatusModal user={user} onClose={() => setIsShowStatusModalOpen(false)} language={language} />,
+          document.body
+        )
+      }
 
-      {showLevelsModal && createPortal(
-        <LevelsListModal
-          currentNovas={user.novas ?? calculateNovas(user.badges || [])}
-          language={language}
-          onClose={() => setShowLevelsModal(false)}
-        />,
-        document.body
-      )}
+      {
+        showLevelsModal && createPortal(
+          <LevelsListModal
+            currentNovas={user.novas ?? calculateNovas(user.badges || [])}
+            language={language}
+            onClose={() => setShowLevelsModal(false)}
+          />,
+          document.body
+        )
+      }
 
       {
         fullScreenImage && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300 cursor-pointer" onClick={() => setFullScreenImage(null)}>
-            <button onClick={() => setFullScreenImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 z-10"><X size={24} /></button>
-            <img src={fullScreenImage} className="max-w-full max-h-[90vh] rounded-[3rem] object-contain animate-in zoom-in-95 duration-300 border-4 border-white/5" alt="Profile Preview" onClick={(e) => e.stopPropagation()} />
-          </div>
+          <FullScreenImageModal imageUrl={fullScreenImage} onClose={() => setFullScreenImage(null)} />
         )
       }
 
@@ -1168,20 +1322,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <ImageCropModal image={imageToCrop} onClose={() => setImageToCrop(null)} onSave={handleCropComplete} />
         )
       }
-      {showRankingModal && createPortal(
-        <RankingHistoryModal
-          badges={rankingHistory.map(rh => {
-            const catalogBadge = BADGE_CATALOG.find(c => c.id === rh.badge_id);
-            return {
-              ...catalogBadge!,
-              created_at: rh.created_at
-            };
-          })}
-          onClose={() => setShowRankingModal(false)}
-          mode="personal"
-        />,
-        document.body
-      )}
+      {
+        showRankingModal && createPortal(
+          <RankingHistoryModal
+            badges={rankingHistory.map(rh => {
+              const catalogBadge = BADGE_CATALOG.find(c => c.id === rh.badge_id);
+              return {
+                ...catalogBadge!,
+                created_at: rh.created_at
+              };
+            })}
+            onClose={() => setShowRankingModal(false)}
+            mode="personal"
+          />,
+          document.body
+        )
+      }
     </div >
   );
 };

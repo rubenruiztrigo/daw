@@ -56,8 +56,21 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   const [hasMoreResults, setHasMoreResults] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [visiblePeopleLimit, setVisiblePeopleLimit] = useState(10);
 
   const normalizedQuery = useMemo(() => normalizeString(query), [query]);
+
+  const peopleResults = useMemo(() => {
+    if (!normalizedQuery) return users;
+    const filtered = users.filter(user =>
+      normalizeString(user.name).includes(normalizedQuery) ||
+      (user.lastName && normalizeString(user.lastName).includes(normalizedQuery)) ||
+      (user.username && normalizeString(user.username).includes(normalizedQuery)) ||
+      (user.position && normalizeString(user.position).includes(normalizedQuery)) ||
+      (user.department && normalizeString(user.department).includes(normalizedQuery))
+    );
+    return sortUsersByRelevance(filtered, query);
+  }, [users, normalizedQuery, query]);
 
   // Sync localQuery
   useEffect(() => {
@@ -189,15 +202,23 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     setSearchOffset(0);
     setHasMoreResults(true);
     setSearchResults([]);
-    fetchSearchResults(0, 30, false);
+    setVisiblePeopleLimit(10);
+    fetchSearchResults(0, 10, false);
   }, [normalizedQuery, filterType, activeTab, fetchSearchResults]);
 
   const loadMoreResults = useCallback(() => {
+    if (activeTab === 'people') {
+      if (visiblePeopleLimit < peopleResults.length) {
+        setVisiblePeopleLimit(prev => prev + 10);
+      }
+      return;
+    }
+
     if (!hasMoreResults || isSearching || isLoadingMore) return;
-    const newOffset = searchOffset + (searchOffset === 0 ? 30 : 15);
+    const newOffset = searchOffset + 10;
     setSearchOffset(newOffset);
-    fetchSearchResults(newOffset, 15, true);
-  }, [hasMoreResults, isSearching, isLoadingMore, searchOffset, fetchSearchResults]);
+    fetchSearchResults(newOffset, 10, true);
+  }, [hasMoreResults, isSearching, isLoadingMore, searchOffset, fetchSearchResults, activeTab, visiblePeopleLimit, peopleResults.length]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -209,18 +230,6 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, [loadMoreResults]);
 
-
-  const peopleResults = useMemo(() => {
-    if (!normalizedQuery) return users;
-    const filtered = users.filter(user =>
-      normalizeString(user.name).includes(normalizedQuery) ||
-      (user.lastName && normalizeString(user.lastName).includes(normalizedQuery)) ||
-      (user.username && normalizeString(user.username).includes(normalizedQuery)) ||
-      (user.position && normalizeString(user.position).includes(normalizedQuery)) ||
-      (user.department && normalizeString(user.department).includes(normalizedQuery))
-    );
-    return sortUsersByRelevance(filtered, query);
-  }, [users, normalizedQuery, query]);
 
   const handleLocalSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -382,7 +391,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {peopleResults.map(person => {
+            {peopleResults.slice(0, visiblePeopleLimit).map(person => {
               const isMutual = followedUserIds.has(person.id!) && followerUserIds.has(person.id!);
               return (
                 <div key={person.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-800 flex items-center justify-between transition-all cursor-pointer group" onClick={() => onNavigateToProfile?.(person.id!)}>
@@ -421,6 +430,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
             })}
           </div>
         ))}
+
+        {activeTab === 'people' && visiblePeopleLimit < peopleResults.length && (
+          <div className="py-6 flex justify-center">
+            <Loader2 className="animate-spin text-blue-600" size={24} />
+          </div>
+        )}
       </div>
     </div>
   );

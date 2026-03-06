@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Post, User } from '../types';
-import { Newspaper, TrendingUp, History, Filter, ChevronRight, MessageSquare, ThumbsUp, MapPin, Calendar, Clock, Trophy, ImageIcon, ChevronUp, Sparkles, Loader2, RefreshCw, Plus } from 'lucide-react';
+import { Newspaper, TrendingUp, History, Filter, ChevronRight, MessageSquare, ThumbsUp, MapPin, Calendar, Clock, Trophy, ImageIcon, ChevronUp, Sparkles, Loader2, RefreshCw, Plus, X } from 'lucide-react';
 import { NewsCard } from './NewsCard';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { CreatePostModal } from './CreatePostModal';
@@ -15,7 +15,7 @@ interface NewsHubViewProps {
   user: User;
   onVote: (id: string, direction: 'up' | 'down') => void;
   onRepost: (id: string) => void;
-  onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string) => void;
+  onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, eventId?: string) => Promise<void>;
   onAddComment: (postId: string, text: string) => void;
   onDeletePost?: (postId: string) => void;
   onNavigateToProfile?: (userId: string) => void;
@@ -100,8 +100,10 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, [onLoadMore, isLoadingMore, hasMore]);
 
+  const [newsTitle, setNewsTitle] = useState('');
   const [newsContent, setNewsContent] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -171,7 +173,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
           return t >= mondayStart.getTime() && t <= fridayEnd.getTime();
         })
         .sort((a, b) => getUpvotes(b) - getUpvotes(a))
-        .slice(0, 5);
+        .slice(0, 3);
     }
 
     if (activeTab === 'popular') {
@@ -254,15 +256,29 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800">
               <div className="flex space-x-4 p-3 md:p-5">
                 <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!newsContent.trim()) return;
-                  onAddPost(newsContent, 'news', [], selectedImage || undefined);
-                  setMentionQuery(null);
-                  setNewsContent('');
-                  setSelectedImage(null);
+                  if (!newsTitle.trim() || !newsContent.trim() || isSubmitting) return;
+                  setIsSubmitting(true);
+                  try {
+                    await onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
+                    setMentionQuery(null);
+                    setNewsTitle('');
+                    setNewsContent('');
+                    setSelectedImage(null);
+                  } finally {
+                    setIsSubmitting(false);
+                  }
                 }} className="flex-1">
                   <div className="relative">
+                    <input
+                      type="text"
+                      value={newsTitle}
+                      onChange={(e) => setNewsTitle(e.target.value)}
+                      maxLength={100}
+                      placeholder="Título de la noticia"
+                      className="w-full bg-transparent border-none text-lg font-bold dark:text-white placeholder-gray-400 focus:ring-0 p-2 mb-1"
+                    />
                     <textarea
                       ref={textareaRef}
                       value={newsContent}
@@ -273,16 +289,34 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                         }
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                          if (!newsContent.trim()) return;
-                          onAddPost(newsContent, 'news', [], selectedImage || undefined);
+                          if (!newsTitle.trim() || !newsContent.trim()) return;
+                          onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
                           setMentionQuery(null);
+                          setNewsTitle('');
                           setNewsContent('');
                           setSelectedImage(null);
                         }
                       }}
                       placeholder={`${t('share_your_news')}`}
-                      className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] p-2"
+                      className={`w-full bg-transparent border-none text-base dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[40px] p-2 transition-all duration-200 ${selectedImage ? 'pr-20 pb-4' : 'pr-4'}`}
                     />
+
+                    {/* Image Preview */}
+                    {selectedImage && (
+                      <div className="absolute right-2 bottom-4 z-10">
+                        <div className="relative inline-block">
+                          <img src={selectedImage} alt="Preview" className="h-14 w-auto rounded-lg object-cover border border-gray-100 dark:border-zinc-800 shadow-sm bg-white dark:bg-zinc-900" />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedImage(null)}
+                            className="absolute -top-2 -right-2 p-1 bg-white dark:bg-zinc-800 text-gray-500 hover:text-red-500 rounded-full shadow-md border border-gray-100 dark:border-zinc-700 transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {mentionQuery !== null && (
                       <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
                         {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
@@ -309,7 +343,16 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                         reader.readAsDataURL(file);
                       }
                     }} />
-                    <button type="submit" className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm">{t('publish')}</button>
+                    <button type="submit" disabled={isSubmitting || !newsTitle.trim() || !newsContent.trim()} className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>{t('publishing')}...</span>
+                        </>
+                      ) : (
+                        <span>{t('publish')}</span>
+                      )}
+                    </button>
                   </div>
                 </form>
               </div>
@@ -342,6 +385,11 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </div>
               )}
 
+              {isLoadingMore && (
+                <div className="py-6 flex justify-center">
+                  <Loader2 className="animate-spin text-orange-600" size={24} />
+                </div>
+              )}
 
               {!hasMore && sortedNews.length > 0 && (
                 <div className="py-8 text-center text-gray-400 text-xs font-semibold uppercase tracking-widest opacity-50">
@@ -360,7 +408,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               sortedNews.map((post, index) => (
                 <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
                   <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
-                  <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.content}</h4></div></div>
+                  <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.title || post.content}</h4></div></div>
                   <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.upvotes !== undefined ? post.upvotes : post.likes}</span></div>
                 </div>
               ))

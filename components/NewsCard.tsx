@@ -99,15 +99,26 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             </span>
           </div>
           <p className="text-[10px] font-black mb-2 text-orange-600 uppercase tracking-widest">{post.authorPosition}</p>
-          <div className="text-slate-800 dark:text-gray-200 text-[15px] font-medium leading-relaxed mb-4 whitespace-pre-wrap break-words">
-            {renderContent(post.content)}
-          </div>
 
-          {post.imageUrl && (
-            <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
-              <img src={post.imageUrl} className="w-full h-auto object-cover max-h-80" alt="" />
+          <div className="flex space-x-4 items-start mb-4">
+            <div className="flex-1 min-w-0">
+              {post.title && (
+                <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white mb-2 leading-tight">
+                  {post.title}
+                </h3>
+              )}
+
+              <div className="text-slate-800 dark:text-gray-200 text-[14px] font-medium leading-relaxed whitespace-pre-wrap break-words line-clamp-4">
+                {renderContent(post.content)}
+              </div>
             </div>
-          )}
+
+            {post.imageUrl && (
+              <div className="w-24 h-24 md:w-32 md:h-32 shrink-0 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
+                <img src={post.imageUrl} className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" alt="" />
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-between text-slate-500" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center space-x-4">

@@ -100,7 +100,7 @@ export const MOCK_USER: any = {
   name: 'Ana García',
   position: 'Directora de Innovación',
   department: 'Diputación General',
-  avatar: 'https://i.pravatar.cc/150?u=ana',
+  avatar: '/img/imagen-por-defecto.png',
   bio: 'Apasionada por la transformación digital del sector público. Siempre buscando nuevas formas de mejorar los servicios ciudadanos.',
   interests: ['Innovación Pública', 'IA en Gobierno', 'Transparencia'],
   followers: 128,

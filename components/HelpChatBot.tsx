@@ -80,7 +80,7 @@ export const HelpChatBot: React.FC<HelpChatBotProps> = ({ onClose, userName }) =
     };
 
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-300">
             <div
                 className="bg-white dark:bg-[#111] w-full max-w-lg h-[600px] rounded-[2.5rem] overflow-hidden flex flex-col border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300"
                 onClick={e => e.stopPropagation()}

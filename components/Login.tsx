@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 interface LoginProps {
-  onLogin: () => void;
-  onRegister: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
+export const Login: React.FC<LoginProps> = () => {
+  const navigate = useNavigate();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -121,7 +121,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
       } else {
         localStorage.removeItem(STORAGE_KEY);
       }
-      onLogin();
+      // Removed onLogin() call as App.tsx handles redirection based on session change
     }
   };
 
@@ -356,7 +356,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onRegister }) => {
           <p className="text-xs text-gray-400 font-medium">
             ¿No tienes cuenta?{' '}
             <button
-              onClick={onRegister}
+              onClick={() => navigate('/register')}
               className="text-blue-600 font-bold hover:underline transition-all"
             >
               Regístrate ahora

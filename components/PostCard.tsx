@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Post, User } from '../types';
-import { MessageSquare, Heart, Share2, MoreHorizontal, Trash2, Repeat, Calendar, MapPin, ChevronRight, Clock, Link as LinkIcon, Pin } from 'lucide-react';
+import { MessageSquare, Heart, Share2, MoreHorizontal, Trash2, Repeat, Calendar, MapPin, Clock, Pin, ExternalLink, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { UserInfoDropdown } from './UserInfoDropdown';
 import { timeAgo, extractFirstUrl, isExternalUrl } from '../utils/stringUtils';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -85,9 +85,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         );
       } else if (trimmedPart.startsWith('@')) {
         const mentionedUser = getUserByMention(trimmedPart, users);
-
         if (!mentionedUser) return part;
-
         return (
           <button
             key={i}
@@ -106,15 +104,12 @@ export const PostCard: React.FC<PostCardProps> = ({
           hiddenOnce = true;
           return null;
         }
-
         const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/?\s]+)/);
-
         if (profileEventMatch && onNavigateToEvent) {
           const [, userId, eventId] = profileEventMatch;
           const eventOwner = users.find(u => u.id === userId);
           const foundEvent = globalEvents?.find(ev => ev.id === eventId);
           const label = foundEvent ? foundEvent.title : (eventOwner ? t('view_event_of', { name: eventOwner.name }) : t('view_event'));
-
           return (
             <button
               key={i}
@@ -129,7 +124,6 @@ export const PostCard: React.FC<PostCardProps> = ({
             </button>
           );
         }
-
         return (
           <button
             key={i}
@@ -160,7 +154,8 @@ export const PostCard: React.FC<PostCardProps> = ({
       />
 
       <div
-        className={`bg-white dark:bg-[#111] sm:p-5 p-3 rounded-2xl border transition-all cursor-pointer group flex space-x-3 hover:border-gray-300 dark:hover:border-zinc-700 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'} ${isPinned ? 'border-l-4 border-l-blue-500 hover:border-l-blue-500' : ''}`}
+        className={`bg-white dark:bg-[#111] sm:p-5 p-3 rounded-2xl border transition-all cursor-pointer group flex space-x-3 hover:border-gray-300 dark:hover:border-zinc-700 ${isNews ? 'border-orange-100/50 dark:border-orange-900/20' : 'border-gray-100 dark:border-zinc-800'
+          } ${isPinned ? 'border-l-4 border-l-blue-500 hover:border-l-blue-500' : ''}`}
         onClick={handlePostClick}
       >
         <div className="relative flex-shrink-0">
@@ -171,7 +166,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             alt=""
           />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pr-2 sm:pr-4">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center space-x-2 truncate">
               <span
@@ -187,9 +182,6 @@ export const PostCard: React.FC<PostCardProps> = ({
               <span className="text-gray-400 dark:text-zinc-600 text-[11px] font-bold whitespace-nowrap">
                 {timeAgo(post.timestamp, language)}
               </span>
-
-              {/* Pin Button */}
-
 
               {showMenu && post.authorId === currentUser.id && (
                 <div className="relative">
@@ -208,7 +200,8 @@ export const PostCard: React.FC<PostCardProps> = ({
                             onTogglePin(post.id);
                             setIsMenuOpen(false);
                           }}
-                          className={`w-full px-4 py-2.5 text-left text-xs font-bold flex items-center space-x-2 transition-colors ${isPinned ? 'text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'}`}
+                          className={`w-full px-4 py-2.5 text-left text-xs font-bold flex items-center space-x-2 transition-colors ${isPinned ? 'text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                            }`}
                         >
                           <Pin size={14} className={isPinned ? "fill-current" : ""} />
                           <span className="whitespace-nowrap">{isPinned ? t('unpin_post') : t('pin_post')}</span>
@@ -274,7 +267,6 @@ export const PostCard: React.FC<PostCardProps> = ({
                         <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">{post.linkedEvent.event_time.substring(0, 5)}h</span>
                       </div>
                     </div>
-
                     <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">
                       <span className="flex items-center">
                         <Clock size={12} className="mr-1 text-slate-300" />
@@ -291,9 +283,38 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           )}
 
-          {post.imageUrl && (
-            <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
-              <img src={post.imageUrl} alt="Content" className="w-full h-auto max-h-[500px] object-cover" />
+          {post.imageUrl && post.imageUrl.length > 0 && (
+            <div className={`mb-3 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/30 ${post.imageUrl.length === 1 ? '' : 'grid gap-1'
+              } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[200px]' :
+                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[300px]' :
+                  post.imageUrl.length === 4 ? 'grid-cols-2 h-[300px]' : 'h-[300px]'
+              }`}>
+              {post.imageUrl.length === 1 ? (
+                <img
+                  src={post.imageUrl[0]}
+                  alt="Content"
+                  className="w-full h-[300px] object-cover transition-all hover:scale-[1.02] rounded-2xl"
+                />
+              ) : post.imageUrl.length === 2 ? (
+                post.imageUrl.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt=""
+                    className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                  />
+                ))
+              ) : post.imageUrl.length === 3 ? (
+                <>
+                  <img src={post.imageUrl[0]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  <img src={post.imageUrl[1]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  <img src={post.imageUrl[2]} alt="" className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity" />
+                </>
+              ) : post.imageUrl.length === 4 ? (
+                post.imageUrl.map((url, i) => (
+                  <img key={i} src={url} alt="" className="w-full h-[150px] object-cover hover:opacity-90 transition-opacity" />
+                ))
+              ) : null}
             </div>
           )}
 
@@ -302,18 +323,20 @@ export const PostCard: React.FC<PostCardProps> = ({
               onClick={(e) => { e.stopPropagation(); onLike(post.id); }}
               className={`flex items-center space-x-2 transition-colors group/btn ${post.userLiked ? 'text-pink-600' : 'hover:text-pink-600'}`}
             >
-              <div className={`p-2 rounded-full transition-all ${post.userLiked ? 'bg-pink-50 dark:bg-pink-900/20' : 'group-hover/btn:bg-pink-50 dark:group-hover/btn:bg-pink-900/20'}`}><Heart size={18} fill={post.userLiked ? "currentColor" : "none"} /></div>
+              <div className={`p-2 rounded-full transition-all ${post.userLiked ? 'bg-pink-50 dark:bg-pink-900/20' : 'group-hover/btn:bg-pink-50 dark:group-hover/btn:bg-pink-900/20'}`}>
+                <Heart size={18} fill={post.userLiked ? "currentColor" : "none"} />
+              </div>
               <span className="text-sm font-medium">{post.likes}</span>
             </button>
-
             <button
               onClick={(e) => { e.stopPropagation(); handlePostClick(); }}
               className="flex items-center space-x-2 hover:text-blue-500 transition-colors group/btn"
             >
-              <div className="p-2 group-hover/btn:bg-blue-50 dark:group-hover/btn:bg-zinc-800 rounded-full transition-all"><MessageSquare size={18} /></div>
+              <div className="p-2 group-hover/btn:bg-blue-50 dark:group-hover/btn:bg-zinc-800 rounded-full transition-all">
+                <MessageSquare size={18} />
+              </div>
               <span className="text-sm font-medium">{post.comments}</span>
             </button>
-
             <button
               onClick={(e) => { e.stopPropagation(); onRepost(post.id); }}
               className={`flex items-center space-x-2 transition-all group/btn ${post.userReposted ? 'text-emerald-500' : 'hover:text-emerald-500'}`}
@@ -323,12 +346,13 @@ export const PostCard: React.FC<PostCardProps> = ({
               </div>
               <span className={`text-sm font-medium ${post.userReposted ? 'font-black' : ''}`}>{post.reposts}</span>
             </button>
-
             <button
               onClick={(e) => { e.stopPropagation(); onOpenShare(post); }}
               className="flex items-center space-x-2 hover:text-blue-500 transition-colors group/btn"
             >
-              <div className="p-2 group-hover/btn:bg-blue-50 dark:group-hover/btn:bg-zinc-800 rounded-full transition-all"><Share2 size={18} /></div>
+              <div className="p-2 group-hover/btn:bg-blue-50 dark:group-hover/btn:bg-zinc-800 rounded-full transition-all">
+                <Share2 size={18} />
+              </div>
             </button>
           </div>
         </div>

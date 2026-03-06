@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Share2, Repeat, Reply, ChevronRight, Calendar, Clock, MapPin, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, MessageCircle, Heart, Share2, Repeat, Reply, Calendar, Clock, MapPin, Trash2, MoreHorizontal, Pin, ExternalLink, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { Language, useTranslation } from '../utils/translations';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
+import { ImageLightbox } from './ImageLightbox';
 
 interface FullPostViewProps {
   post: Post;
@@ -88,6 +89,8 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
   const mainInputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const t = useTranslation(language);
 
   const mentionSuggestions = useMemo(() => {
@@ -290,9 +293,61 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             {renderContentWithHashtags(post.content)}
           </div>
 
-          {post.imageUrl && (
-            <div className="mb-8 rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900">
-              <img src={post.imageUrl} className="w-full h-auto object-cover max-h-[700px]" alt="" />
+          {post.imageUrl && post.imageUrl.length > 0 && (
+            <div className={`mb-8 rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30 ${post.imageUrl.length === 1 ? '' : 'grid gap-2'
+              } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[350px]' :
+                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[500px]' :
+                  post.imageUrl.length === 4 ? 'grid-cols-2 h-[500px]' : 'h-[500px]'
+              }`}>
+              {post.imageUrl.length === 1 ? (
+                <img
+                  src={post.imageUrl[0]}
+                  className="w-full h-[500px] object-cover transition-all hover:scale-[1.01] rounded-3xl cursor-zoom-in"
+                  alt=""
+                  onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                />
+              ) : post.imageUrl.length === 2 ? (
+                post.imageUrl.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt=""
+                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                    onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                  />
+                ))
+              ) : post.imageUrl.length === 3 ? (
+                <>
+                  <img
+                    src={post.imageUrl[0]}
+                    alt=""
+                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                    onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                  />
+                  <img
+                    src={post.imageUrl[1]}
+                    alt=""
+                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                    onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
+                  />
+                  <img
+                    src={post.imageUrl[2]}
+                    alt=""
+                    className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity cursor-zoom-in"
+                    onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
+                  />
+                </>
+              ) : post.imageUrl.length === 4 ? (
+                post.imageUrl.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt=""
+                    className="w-full h-[250px] object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                    onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                  />
+                ))
+              ) : null}
             </div>
           )}
 
@@ -481,6 +536,13 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
           </div>
         </div>
       </div>
+
+      <ImageLightbox
+        images={post.imageUrl || []}
+        initialIndex={currentImgIndex}
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+      />
     </>
   );
 };

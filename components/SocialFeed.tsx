@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Post, User, CalendarEvent } from '../types';
+import { Post, User, CalendarEvent, Chat } from '../types';
 import { ImageIcon, Clapperboard, Smile, X, Users, Sparkles, Plus, AtSign, Calendar, MapPin, Loader2, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { getMentionSuggestions, MENTION_REGEX } from '../utils/mentionUtils';
@@ -18,7 +18,7 @@ interface SocialFeedProps {
   onLike: (postId: string) => void;
   onVote: (postId: string, optionId: string) => void;
   onRepost: (postId: string) => void;
-  onAddPost: (content: string, type: 'post' | 'news', tags?: string[], imageUrl?: string, docUrl?: string, docName?: string, eventId?: string) => void;
+  onAddPost: (content: string, type: 'post' | 'news', tags?: string[], imageUrl?: string, docUrl?: string, docName?: string, eventId?: string) => Promise<void>;
   onAddComment: (postId: string, content: string) => void;
   onDeletePost: (postId: string) => void;
   onSearchHashtag: (hashtag: string) => void;
@@ -44,12 +44,13 @@ interface SocialFeedProps {
   onRefresh?: () => void;
   pinnedPosts?: Set<string>;
   onTogglePin?: (postId: string) => void;
+  chats?: Chat[];
 }
 
 export const SocialFeedV2: React.FC<SocialFeedProps> = ({
   posts, user, onLike, onVote, onRepost, onAddPost, onAddComment, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, users = [], initialContent, prefilledEvent, onClearInitialContent, onViewCalendar, onNavigateToEvent, onShareViaChat, globalEvents = [],
   onLoadMore, hasMore = false, isLoadingMore = false, language, hasNewContent = false, onRefresh,
-  pinnedPosts = new Set(), onTogglePin
+  pinnedPosts = new Set(), onTogglePin, chats = []
 }) => {
   console.log('SocialFeed: Rendering with', { postsCount: posts.length, userId: user.id });
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
@@ -70,19 +71,21 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
   }, [onLoadMore, isLoadingMore, hasMore]);
 
   const [content, setContent] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedDoc, setSelectedDoc] = useState<{ name: string, url: string } | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<{ url: string, name: string } | null>(null);
   const [sharingPost, setSharingPost] = useState<Post | null>(null);
   const [linkedEvent, setLinkedEvent] = useState<CalendarEvent | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [userEvents, setUserEvents] = useState<CalendarEvent[]>([]);
   const [showEventDropdown, setShowEventDropdown] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const eventButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const fetchUserEvents = async () => {
@@ -112,7 +115,8 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+        eventButtonRef.current && !eventButtonRef.current.contains(event.target as Node)) {
         setShowEventDropdown(false);
       }
     };
@@ -201,13 +205,19 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
     textareaRef.current?.focus();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() && !selectedImage && !selectedDoc && !linkedEvent) return;
-    const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
-    onAddPost(content, 'post', tags, selectedImage || undefined, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id);
-    setMentionQuery(null);
-    setContent(''); setSelectedImage(null); setSelectedDoc(null); setLinkedEvent(null);
+    if ((!content.trim() && selectedImages.length === 0 && !selectedDoc && !linkedEvent) || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
+      await onAddPost(content, 'post', tags, selectedImages, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id);
+      setMentionQuery(null);
+      setContent(''); setSelectedImages([]); setSelectedDoc(null); setLinkedEvent(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -218,6 +228,26 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
       e.preventDefault();
       handleSubmit(e as any);
     }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const remainingSlots = 4 - selectedImages.length;
+      const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+      filesToProcess.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setSelectedImages(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file as File);
+      });
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -262,9 +292,25 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
                     onChange={handleTextChange}
                     onKeyDown={handleKeyDown}
                     placeholder={`${t('post_placeholder')}`}
-                    className="w-full bg-transparent border-none text-base md:text-xl dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[60px] md:min-h-[80px] mt-1 p-2"
+                    className={`w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[80px] p-0 transition-all duration-200 ${selectedImages.length > 0 ? 'pr-24 pb-4' : 'pr-4'}`}
                   />
 
+                  {/* Image Preview - Small & Floating */}
+                  {selectedImages.length > 0 && (
+                    <div className="absolute top-4 right-4 z-20 flex flex-wrap gap-1 max-w-[120px] justify-end">
+                      {selectedImages.map((img, idx) => (
+                        <div key={idx} className="relative group/img">
+                          <img src={img} alt="Preview" className="w-12 h-12 rounded-lg object-cover ring-2 ring-white dark:ring-zinc-800 shadow-lg" />
+                          <button
+                            onClick={() => removeImage(idx)}
+                            className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {mentionQuery !== null && (
                     <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
                       {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
@@ -300,7 +346,7 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
 
 
                 {showEventDropdown && (
-                  <div ref={dropdownRef} className="absolute bottom-16 left-20 w-72 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div ref={dropdownRef} className="absolute bottom-16 left-20 w-72 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="px-4 py-3 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between bg-gray-50 dark:bg-zinc-900/50">
                       <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{t('your_events')}</span>
                       <button type="button" onClick={() => setShowEventDropdown(false)}><X size={14} className="text-gray-400" /></button>
@@ -331,14 +377,33 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
                   </div>
                 )}
 
-                {selectedImage && <div className="relative mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800"><img src={selectedImage} alt="Preview" className="w-full h-auto max-h-80 object-cover" /><button type="button" onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 p-1.5 bg-gray-900/60 text-white rounded-full hover:bg-gray-900"><X size={14} /></button></div>}
                 <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800">
                   <div className="flex items-center space-x-1">
-                    <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onloadend = () => setSelectedImage(r.result as string); r.readAsDataURL(f); } }} />
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors"><ImageIcon size={20} /></button>
-                    <button type="button" onClick={() => setShowEventDropdown(!showEventDropdown)} className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}><Calendar size={20} /></button>
+                    <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={handleImageUpload} />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors" disabled={selectedImages.length >= 4}><ImageIcon size={20} /></button>
+                    <button
+                      ref={eventButtonRef}
+                      type="button"
+                      onClick={() => setShowEventDropdown(!showEventDropdown)}
+                      className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
+                    >
+                      <Calendar size={20} />
+                    </button>
                   </div>
-                  <button type="submit" disabled={!content.trim() && !selectedImage && !selectedDoc && !linkedEvent} className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 transition-all hover:bg-blue-700">{t('post_button')}</button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || (!content.trim() && selectedImages.length === 0 && !selectedDoc && !linkedEvent)}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 transition-all hover:bg-blue-700 flex items-center space-x-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>{t('publishing')}...</span>
+                      </>
+                    ) : (
+                      <span>{t('post_button')}</span>
+                    )}
+                  </button>
                 </div>
               </form>
             </div>
@@ -396,8 +461,23 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
               </div>
             )}
 
+            {isLoadingMore && (
+              <div className="py-6 flex justify-center">
+                <Loader2 className="animate-spin text-blue-600" size={24} />
+              </div>
+            )}
 
-            {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={onShareViaChat} currentUser={user} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />}
+            {!hasMore && filteredPosts.length > 0 && (
+              <div className="py-12 text-center">
+                <div className="w-1.5 h-1.5 bg-slate-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">
+                  {t('end_of_results')}
+                </p>
+              </div>
+            )}
+
+
+            {sharingPost && <ShareModal post={sharingPost} onClose={() => setSharingPost(null)} onShare={onShareViaChat} currentUser={user} users={users} followedUserIds={followedUserIds} followerUserIds={followerUserIds} chats={chats} />}
 
 
 

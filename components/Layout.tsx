@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, User, MessageCircle, Newspaper, Bell, Search, Settings, LogOut, MoreVertical, Calendar, Clock, Briefcase, TrendingUp, X, AlertCircle, ShoppingBag, Menu, ArrowLeft, Monitor, Pin, Loader2, ChevronRight } from 'lucide-react';
-import { User as UserType, Notification, CalendarEvent, Post } from '../types';
+import { User as UserType, Notification, CalendarEvent, Post, Chat } from '../types';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
 import { useScrollDirection } from '../hooks/useScrollDirection';
@@ -15,6 +15,7 @@ interface LayoutProps {
   notifications?: Notification[];
   globalEvents?: CalendarEvent[];
   posts?: Post[];
+  chats?: Chat[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchSubmit?: (query: string) => void;
@@ -23,14 +24,16 @@ interface LayoutProps {
   language: Language;
   onThemeChange: (theme: 'light' | 'dark') => void;
   onRefresh?: () => void;
+  isLoading?: boolean;
+  trendingTags?: { tag: string, count: number }[];
 }
 
 const Logo = () => (
   <div className="w-10 h-10 flex items-center justify-center overflow-hidden rounded-lg bg-brand/10 p-1">
     <img
-      src="https://novagob.org/wp-content/uploads/2022/02/TRANPARENTE-BLANCO-1.png"
+      src="/img/novagob.brand_isotipo_black.svg"
       alt="Red Social Logo"
-      className="w-full h-full object-contain brightness-0 dark:brightness-100 invert-0 dark:invert"
+      className="w-full h-full object-contain dark:brightness-200 dark:invert"
     />
   </div>
 );
@@ -41,6 +44,7 @@ export const Layout: React.FC<LayoutProps> = ({
   notifications = [],
   globalEvents = [],
   posts = [],
+  chats = [],
   searchQuery,
   onSearchChange,
   onSearchSubmit,
@@ -48,12 +52,19 @@ export const Layout: React.FC<LayoutProps> = ({
   theme,
   language,
   onThemeChange,
-  onRefresh
+  onRefresh,
+  isLoading = false,
+  trendingTags = []
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   useScrollLock(showLogoutConfirm);
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadMessagesCount = chats.filter(c =>
+    c.messages.length > 0 &&
+    c.messages[c.messages.length - 1].senderId !== user.id &&
+    !c.messages[c.messages.length - 1].isRead
+  ).length;
   const location = useLocation();
   const navigate = useNavigate();
   const t = useTranslation(language);
@@ -116,44 +127,6 @@ export const Layout: React.FC<LayoutProps> = ({
     }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
   }, [globalEvents]);
 
-  const trendingTags = useMemo(() => {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
-
-    const relevantPosts = posts.filter(p => {
-      const postDate = new Date(p.timestamp).getTime();
-      return postDate >= startOfDay && postDate <= endOfDay;
-    });
-
-    const countTags = (text: string, counts: Record<string, number>) => {
-      if (!text) return;
-      const matches = text.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g);
-      if (matches) {
-        matches.forEach(t => {
-          const cleanTag = t.slice(1);
-          counts[cleanTag] = (counts[cleanTag] || 0) + 1;
-        });
-      }
-    };
-
-    const counts: Record<string, number> = {};
-    relevantPosts.forEach(post => {
-      post.tags?.forEach(tag => {
-        const cleanTag = tag.trim();
-        if (cleanTag) counts[cleanTag] = (counts[cleanTag] || 0) + 1;
-      });
-
-      post.commentsList?.forEach(comment => {
-        countTags(comment.text, counts);
-      });
-    });
-
-    return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5) // Mostramos 5 en lugar de 3 para mejor visibilidad si hay muchos
-      .map(([tag, count]) => ({ tag, count }));
-  }, [posts]);
 
   const getEventTimeLabel = (dateStr: string) => {
     const now = new Date();
@@ -219,7 +192,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <NavItem to="/feed" icon={Home} label={t('home')} />
             <NavItem to="/news" icon={Newspaper} label={t('news')} />
             <NavItem to="/calendar" icon={Calendar} label={t('nav_calendar')} />
-            <NavItem to="/messages" icon={MessageCircle} label={t('messages')} />
+            <NavItem to="/messages" icon={MessageCircle} label={t('messages')} badge={unreadMessagesCount} />
             <NavItem to="/notifications" icon={Bell} label={t('notifications')} badge={unreadCount} />
             <NavItem to={`/${user.username || user.id}`} icon={User} label={t('profile')} />
             <NavItem to="/settings" icon={Settings} label={t('settings')} />
@@ -330,7 +303,19 @@ export const Layout: React.FC<LayoutProps> = ({
                   <div className="absolute top-[calc(100%+8px)] left-[-15%] right-[-15%] bg-white dark:bg-[#111] border border-slate-100 dark:border-zinc-800 rounded-xl overflow-hidden z-[80] animate-in fade-in slide-in-from-top-1 duration-200 shadow-xl">
                     {!searchQuery ? (
                       <div className="bg-white dark:bg-[#111]">
-                        {trendingTags.length > 0 ? (
+                        {isLoading ? (
+                          <div className="p-4 space-y-4">
+                            {[1, 2, 3].map(i => (
+                              <div key={i} className="flex items-center space-x-3 animate-pulse">
+                                <div className="w-8 h-8 bg-slate-100 dark:bg-zinc-800 rounded-lg"></div>
+                                <div className="flex-1 space-y-2">
+                                  <div className="h-3 bg-slate-100 dark:bg-zinc-800 rounded w-24"></div>
+                                  <div className="h-2 bg-slate-100 dark:bg-zinc-800 rounded w-12"></div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : trendingTags.length > 0 ? (
                           <div className="divide-y divide-slate-50 dark:divide-zinc-900">
                             {trendingTags.map(({ tag, count }) => (
                               <button
@@ -435,7 +420,7 @@ export const Layout: React.FC<LayoutProps> = ({
                         .from('profiles')
                         .select('id, name, last_name, username, avatar, position')
                         .or(`name.ilike.%${query}%,last_name.ilike.%${query}%,username.ilike.%${query}%`)
-                        .limit(10)
+                        .limit(5)
                         .then(({ data }) => {
                           const users = data as any[] || [];
                           const sortedResults = sortUsersByRelevance(users, query);
@@ -497,7 +482,16 @@ export const Layout: React.FC<LayoutProps> = ({
                   <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('trending')}</h3>
                 </div>
                 <div className="space-y-4">
-                  {trendingTags.length > 0 ? trendingTags.map(({ tag, count }) => (
+                  {isLoading ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="animate-pulse flex flex-col space-y-2">
+                          <div className="h-4 bg-slate-200 dark:bg-zinc-800 rounded w-3/4"></div>
+                          <div className="h-2.5 bg-slate-100 dark:bg-zinc-800 rounded w-1/4"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : trendingTags.length > 0 ? trendingTags.map(({ tag, count }) => (
                     <button
                       key={tag}
                       onClick={() => onSearchSubmit?.(`#${tag}`)}
@@ -570,8 +564,8 @@ export const Layout: React.FC<LayoutProps> = ({
           { to: '/feed', icon: Home },
           { to: '/news', icon: Newspaper },
           { to: '/calendar', icon: Calendar },
-          { to: '/messages', icon: MessageCircle },
-        ].map(({ to, icon: Icon }) => (
+          { to: '/messages', icon: MessageCircle, badge: unreadMessagesCount },
+        ].map(({ to, icon: Icon, badge }) => (
           <button
             key={to}
             onClick={() => {
@@ -585,20 +579,25 @@ export const Layout: React.FC<LayoutProps> = ({
                 navigate(to);
               }
             }}
-            className={location.pathname === to ? 'text-blue-600' : 'text-slate-300'}
+            className={`relative ${location.pathname === to ? 'text-blue-600' : 'text-slate-300'}`}
           >
             <Icon size={22} />
+            {badge !== undefined && badge > 0 && (
+              <span className="absolute -top-1 -right-1.5 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-[#0a0a0a]">
+                {badge}
+              </span>
+            )}
           </button>
         ))}
         <button onClick={() => navigate(`/${user?.username || user?.id}`)} className={`rounded-full p-0.5 border-2 transition-all ${location.pathname === `/${user?.username || user?.id}` ? 'border-blue-600' : 'border-transparent'}`}>
-          <img src={user?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'} alt="Profile" className="w-6 h-6 rounded-full object-cover" />
+          <img src={user?.avatar || '/img/imagen-por-defecto.png'} alt="Profile" className="w-6 h-6 rounded-full object-cover" />
         </button>
       </nav>
 
 
 
       {showLogoutConfirm && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setShowLogoutConfirm(false)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setShowLogoutConfirm(false)}>
           <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-sm rounded-[2.5rem] overflow-hidden border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="p-8 text-center space-y-6">
               <div className="mx-auto w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center"><AlertCircle size={32} /></div>

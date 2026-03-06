@@ -135,7 +135,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
 
 
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-300">
             <div
                 className="bg-white dark:bg-[#111] w-full max-w-2xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[85vh] border border-white dark:border-zinc-800 animate-in zoom-in-95 duration-300"
                 onClick={e => e.stopPropagation()}
@@ -192,15 +192,19 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                         ) : winners.length > 0 ? (
                             <div className="space-y-4">
                                 {winners.map((winner, index) => {
-                                    const badgeInfo = BADGE_CATALOG.find(b => b.id === winner.badgeId);
-                                    if (!badgeInfo) return null;
+                                    const rankNum = winner.badgeId === 'ranking_top1' ? 1 : winner.badgeId === 'ranking_top2' ? 2 : 3;
+                                    const rankColor = rankNum === 1
+                                        ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                        : rankNum === 2
+                                            ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                                            : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400';
 
                                     return (
-                                        <div key={`${winner.user.id}-${index}`} className="flex items-center p-4 bg-white dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800">
+                                        <div key={`${winner.user.id}-${index}`} className="flex items-center p-4 bg-white dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:bg-slate-50 dark:hover:bg-zinc-800/80">
                                             <div className="relative mr-4">
                                                 <img src={winner.user.avatar} className="w-12 h-12 rounded-xl object-cover" alt={winner.user.name} />
                                                 <div className="absolute -bottom-2 -right-2 bg-white dark:bg-zinc-900 rounded-full p-1 border border-slate-100 dark:border-zinc-800">
-                                                    <div className={`${badgeInfo.color.split(' ')[1]} p-1 rounded-full`}>
+                                                    <div className={`${rankColor} p-1 rounded-full`}>
                                                         <Trophy size={10} fill="currentColor" />
                                                     </div>
                                                 </div>
@@ -212,8 +216,8 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                                 <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium truncate">{winner.user.position}</p>
                                             </div>
                                             <div className="flex flex-col items-end">
-                                                <span className={`text-[10px] font-black px-2 py-1 border rounded-md ${badgeInfo.color} bg-opacity-20`}>
-                                                    {badgeInfo.label}
+                                                <span className={`text-[10px] font-black px-3 py-1 border rounded-xl ${rankColor} bg-opacity-20`}>
+                                                    TOP {rankNum}
                                                 </span>
                                             </div>
                                         </div>
@@ -309,16 +313,21 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                                     }
 
                                                     const rankNum = badge.id === 'ranking_top1' ? 1 : badge.id === 'ranking_top2' ? 2 : 3;
+                                                    const rankColor = rankNum === 1
+                                                        ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                                        : rankNum === 2
+                                                            ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                                                            : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400';
 
                                                     return (
-                                                        <div key={`${badge.id}-${index}`} className="flex items-center p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                                            <div className={`p-3 rounded-xl ${badgeInfo.color} mr-4`}>
-                                                                <img src="/img/novagob.brand_isotipo_black.svg" className="w-6 h-6 dark:invert opacity-80" alt="" />
+                                                        <div key={`${badge.id}-${index}`} className="flex items-center p-3 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                            <div className={`p-2 rounded-xl ${rankColor} mr-3`}>
+                                                                <Trophy size={18} fill="currentColor" />
                                                             </div>
                                                             <div className="flex-1">
                                                                 {dateDisplay}
                                                             </div>
-                                                            <div className="text-2xl font-black text-slate-400 dark:text-zinc-600">
+                                                            <div className="text-xl font-black text-slate-400 dark:text-zinc-600">
                                                                 #{rankNum}
                                                             </div>
                                                         </div>

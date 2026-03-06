@@ -99,10 +99,14 @@ BEGIN
     SET status = v_status
     WHERE user_id = p_user_id AND reward_id = p_reward_id AND status = 'solicitado';
 
-    -- Update the triggering notification to reflect it's been handled
+    -- Update all admin notifications for this reward request to reflect it's been handled
     UPDATE public.notifications 
-    SET content = content || ' (' || v_status || ')', is_read = true
-    WHERE id = p_notification_id;
+    SET content = CASE 
+        WHEN content NOT LIKE '%(%)' THEN content || ' (' || v_status || ')'
+        ELSE content 
+    END, 
+    is_read = true
+    WHERE type = 'reward_request' AND sender_id = p_user_id AND post_id = p_reward_id;
 
     -- Notify the user
     INSERT INTO public.notifications (user_id, sender_id, type, post_id, content, is_read)
@@ -121,6 +125,7 @@ DECLARE
     v_admin_id UUID := auth.uid();
     v_status TEXT;
     v_content TEXT;
+    v_status_label TEXT;
 BEGIN
     -- Check if caller is admin
     IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = v_admin_id AND is_admin = true) THEN
@@ -129,21 +134,28 @@ BEGIN
 
     IF p_approve THEN
         v_status := 'active';
-        v_content := 'Tu solicitud de registro ha sido aprobada. ¡Bienvenido a la red!';
+        v_status_label := 'aceptado';
+        v_content := '¡Bienvenido/a! Tu solicitud ha sido aprobada y ya formas parte de la Red Social.';
     ELSE
         v_status := 'rejected';
+        v_status_label := 'rechazado';
         v_content := 'Tu solicitud de registro ha sido rechazada.';
     END IF;
 
     -- Update profile status
     UPDATE public.profiles 
-    SET status = v_status
+    SET status = v_status,
+        username = CASE WHEN NOT p_approve THEN NULL ELSE username END
     WHERE id = p_user_id;
 
-    -- Update the triggering notification
+    -- Update all admin notifications for this registration request
     UPDATE public.notifications 
-    SET content = content || ' (' || CASE WHEN p_approve THEN 'aceptado' ELSE 'rechazado' END || ')', is_read = true
-    WHERE id = p_notification_id;
+    SET content = CASE 
+        WHEN content NOT LIKE '%(%)' THEN content || ' (' || v_status_label || ')'
+        ELSE content 
+    END, 
+    is_read = true
+    WHERE type = 'registration_request' AND sender_id = p_user_id;
 
     -- Notify the user
     INSERT INTO public.notifications (user_id, sender_id, type, content, is_read)

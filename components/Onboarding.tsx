@@ -5,11 +5,10 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { User as UserType } from '../types';
 import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
 import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw, AlertCircle, Eye, EyeOff, MapPin, Camera } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 interface OnboardingProps {
-  onComplete: () => void;
-  onCancel: () => void;
 }
 
 
@@ -144,7 +143,8 @@ import { ImageCropModal } from './ImageCropModal'; // Import ImageCropModal
 
 // ... existing imports ...
 
-export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) => {
+export const Onboarding: React.FC<OnboardingProps> = () => {
+  const navigate = useNavigate();
   const [step, setStep] = useState(0); // Start at 0 for selection/privacy
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,7 +208,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
     country: 'España',
     region: '',
     interests: [],
-    avatar: '/default_avatar.png', // Changed default avatar
+    avatar: '/img/imagen-por-defecto.png', // Changed default avatar
     organizationName: '',
     bio: ''
   });
@@ -368,8 +368,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
             ...profileData,
             email: formData.email,
             avatar: formData.avatar,
-            username: formData.username!.toLowerCase(),
-            status: 'pending' // Enforce pending status
+            status: 'pending'
           });
 
         if (profileError) {
@@ -482,8 +481,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
 
   return (
-    <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
-      <div className="w-full bg-white rounded-[40px] p-8 md:p-12 relative overflow-hidden border border-slate-100">
+    <div className="min-h-screen bg-transparent flex items-center justify-center p-6">
+      <div className="max-w-3xl w-full bg-white dark:bg-[#0a0a0a] rounded-3xl px-10 py-8 relative overflow-hidden border border-slate-100 dark:border-zinc-900">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
           <div
             className="h-full bg-blue-600 transition-all duration-700 ease-in-out"
@@ -500,38 +499,37 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           </div>
         )}
 
-        <div className="mb-10 min-h-[520px] flex flex-col justify-center">
+        <div className="mb-6 min-h-[400px] flex flex-col justify-start pt-2">
 
           {/* ACCOUNT SELECTION - NOW THE FIRST SCREEN */}
           {step === 0 && registrationType === null && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Selecciona el tipo de cuenta</h2>
-                <p className="text-slate-500 font-medium">Elige cómo quieres participar en la red</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Selecciona el tipo de cuenta</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <button
                   onClick={() => { setRegistrationType('personal'); setStep(1); }}
-                  className="p-8 rounded-[2.5rem] border-2 border-slate-100 bg-white hover:border-blue-500 hover:bg-blue-50/50 transition-all group text-left relative overflow-hidden"
+                  className="p-5 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-blue-500 hover:bg-blue-50/50 transition-all group text-left relative overflow-hidden"
                 >
-                  <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <UserIcon size={32} />
+                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <UserIcon size={24} />
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 mb-2">Cuenta Personal</h3>
-                  <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">Cuenta Personal</h3>
+                  <p className="text-slate-500 dark:text-gray-400 text-xs font-medium leading-relaxed">
                     Para profesionales del sector público que quieren conectar, aprender y compartir.
                   </p>
                 </button>
 
                 <button
                   onClick={() => { setRegistrationType('organization'); setStep(1); }}
-                  className="p-8 rounded-[2.5rem] border-2 border-slate-100 bg-white hover:border-purple-500 hover:bg-purple-50/50 transition-all group text-left relative overflow-hidden"
+                  className="p-6 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-purple-500 hover:bg-purple-50/50 transition-all group text-left relative overflow-hidden"
                 >
-                  <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                    <Building size={32} />
+                  <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <Building size={24} />
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 mb-2">Cuenta Organización</h3>
-                  <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">Cuenta Organización</h3>
+                  <p className="text-slate-500 dark:text-gray-400 text-xs font-medium leading-relaxed">
                     Para instituciones y entidades que desean tener presencia oficial en la red.
                   </p>
                 </button>
@@ -552,25 +550,24 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           {/* PERSONAL FLOW */}
           {registrationType === 'personal' && step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center mb-8">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Crea tu cuenta</h2>
-                <p className="text-slate-500 font-medium mt-2">Datos personales</p>
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Crea tu cuenta</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre</label>
-                  <input type="text" value={formData.name} onChange={e => updateField('name', e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Ej. Ana" />
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre</label>
+                  <input type="text" value={formData.name} onChange={e => updateField('name', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. Ana" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Apellidos</label>
-                  <input type="text" value={formData.lastName} onChange={e => updateField('lastName', e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="Ej. García López" />
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Apellidos</label>
+                  <input type="text" value={formData.lastName} onChange={e => updateField('lastName', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. García López" />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de usuario</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de usuario</label>
                   <div className="relative">
                     <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
@@ -578,7 +575,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                       value={formData.username}
                       onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
                       onBlur={() => { if (formData.username) checkAvailability(); }}
-                      className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="anagarcia"
                     />
                   </div>
@@ -590,13 +587,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   )}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de nacimiento</label>
-                  <input type="date" value={formData.birthDate} onChange={e => updateField('birthDate', e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Fecha de nacimiento</label>
+                  <input type="date" value={formData.birthDate} onChange={e => updateField('birthDate', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo institucional</label>
+                <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Correo institucional</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                   <input
@@ -604,7 +601,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                     value={formData.email}
                     onChange={e => updateField('email', e.target.value)}
                     onBlur={() => { if (formData.email) checkAvailability(); }}
-                    className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                    className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                     placeholder="nombre@gob.es"
                   />
                 </div>
@@ -618,14 +615,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Contraseña</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type={showPassword ? "text" : "password"}
                       value={formData.password}
                       onChange={e => updateField('password', e.target.value)}
-                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="Mínimo 8 caracteres"
                     />
                     <button
@@ -644,14 +641,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   )}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="Repite la contraseña"
                     />
                     <button
@@ -668,10 +665,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 2 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de puesto que desempeñas</h2>
-                <p className="text-slate-500 font-medium">Indica tu nivel de responsabilidad actual</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight mb-2">Tipo de puesto que desempeñas</h2>
+                <p className="text-slate-500 dark:text-gray-400 font-medium text-sm">Indica tu nivel de responsabilidad actual</p>
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {['Directivo', 'Técnico', 'Administrativo', 'Otro'].map(cat => (
@@ -705,12 +702,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 3 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mb-2">Tipo de organización</h2>
-                <p className="text-slate-500 font-medium">¿En qué tipo de entidad prestas servicio?</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight mb-2">Tipo de organización</h2>
               </div>
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3 w-full">
                 {[
                   'Administración Pública central',
                   'Administración Pública regional',
@@ -731,7 +727,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               </div>
 
               {formData.administrationType === 'Otra' && (
-                <div className="animate-in slide-in-from-top-4 duration-300 space-y-2">
+                <div className="animate-in slide-in-from-top-4 duration-300 space-y-2 w-full">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Especifica el tipo de administración</label>
                   <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
@@ -740,7 +736,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                       value={customAdminInput}
                       onChange={(e) => setCustomAdminInput(e.target.value)}
                       placeholder="Escribe el tipo de entidad aquí..."
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-slate-900"
                     />
                   </div>
                 </div>
@@ -749,24 +745,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 4 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tu puesto actual</h2>
-                <p className="text-slate-500 font-medium mt-2">Define tu posición dentro de la estructura pública</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tu puesto actual</h2>
               </div>
               <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Especialización</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Especialización</label>
                   <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                    <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ej. Responsable de Innovación" />
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm" placeholder="Ej. Responsable de Innovación" />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de la organización</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de la organización</label>
                   <div className="relative">
-                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                    <input type="text" value={formData.department} onChange={e => updateField('department', e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Ej. Ayuntamiento de Madrid" />
+                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input type="text" value={formData.department} onChange={e => updateField('department', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm" placeholder="Ej. Ayuntamiento de Madrid" />
                   </div>
                 </div>
               </div>
@@ -774,32 +769,32 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 5 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tu ubicación</h2>
-                <p className="text-slate-500 font-medium mt-2">Conecta con otras personas innovadoras de tu región</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tu ubicación</h2>
               </div>
               <div className="space-y-6">
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">País</label>
                   <select
                     value={formData.country}
                     onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                   >
-                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="" className="bg-white dark:bg-zinc-900">Selecciona un país...</option>
+                    {COUNTRIES.map(c => <option key={c} value={c} className="bg-white dark:bg-zinc-900">{c}</option>)}
                   </select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Región / Comunidad</label>
                   <select
                     value={formData.region}
                     onChange={e => updateField('region', e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                   >
-                    <option value="">Selecciona una región...</option>
+                    <option value="" className="bg-white dark:bg-zinc-900">Selecciona una región...</option>
                     {formData.country && COUNTRIES_DATA[formData.country]?.map(r => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
                     ))}
                   </select>
                 </div>
@@ -808,10 +803,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 6 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Tus intereses</h2>
-                <p className="text-slate-500 font-medium mt-2">Elige al menos 1 tema para personalizar tu feed</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tus intereses</h2>
               </div>
               <div className="flex flex-wrap gap-2.5 justify-center">
                 {PUBLIC_INTERESTS.map(topic => {
@@ -823,7 +817,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                         const current = formData.interests || [];
                         updateField('interests', isSelected ? current.filter(i => i !== topic) : [...current, topic]);
                       }}
-                      className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:border-blue-100'}`}
+                      className={`px-4 py-2 rounded-xl border-2 text-xs font-black transition-all transform active:scale-95 ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white dark:bg-[#0a0a0a] border-slate-100 dark:border-zinc-800 text-slate-500 dark:text-gray-400 hover:border-blue-100'}`}
                     >
                       {topic}
                     </button>
@@ -835,13 +829,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'personal' && step === 7 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 text-center">
-              <div>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Foto de perfil</h2>
-                <p className="text-slate-500 font-medium mt-2">Añade una foto para que te reconozcan</p>
+            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-500 text-center">
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Foto de perfil</h2>
               </div>
 
-              <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
                     <img
@@ -865,10 +858,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   accept="image/*"
                   onChange={handleFileSelect}
                 />
-
-                <p className="text-xs text-slate-400 font-medium max-w-xs">
-                  Haz clic en la imagen para subir una nueva foto. Recomendamos una imagen cuadrada de al menos 400x400px.
-                </p>
               </div>
             </div>
           )}
@@ -876,35 +865,35 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           {/* ORGANIZATION FLOW */}
           {registrationType === 'organization' && step === 1 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center mb-6">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Crea tu cuenta de Organización</h2>
-                <p className="text-slate-500 font-medium mt-2">Registra tu entidad en NovaGob</p>
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Crea tu cuenta de Organización</h2>
+                <p className="text-slate-500 dark:text-gray-400 font-medium mt-2 text-sm">Registra tu entidad en NovaGob</p>
               </div>
 
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de tu organización</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de tu organización</label>
                   <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type="text"
                       value={formData.organizationName}
                       onChange={e => updateField('organizationName', e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                       placeholder="Ej. Ayuntamiento de..."
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Biografía</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Biografía</label>
                   <div className="relative">
                     <input
                       type="text"
                       maxLength={160}
                       value={formData.bio || ''}
                       onChange={e => updateField('bio', e.target.value)}
-                      className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                       placeholder="Ej. Descripción de la entidad..."
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
@@ -915,33 +904,33 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">País</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">País</label>
                     <div className="relative">
                       <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <select
                         value={formData.country}
                         onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
-                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none dark:text-white"
                       >
-                        <option value="">Selecciona...</option>
-                        {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="" className="bg-white dark:bg-zinc-900">Selecciona...</option>
+                        {COUNTRIES.map(c => <option key={c} value={c} className="bg-white dark:bg-zinc-900">{c}</option>)}
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Región</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Región</label>
                     <div className="relative">
                       <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <select
                         value={formData.region}
                         onChange={e => updateField('region', e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none dark:text-white"
                         disabled={!formData.country}
                       >
-                        <option value="">Selecciona...</option>
+                        <option value="" className="bg-white dark:bg-zinc-900">Selecciona...</option>
                         {formData.country && COUNTRIES_DATA[formData.country]?.map(r => (
-                          <option key={r} value={r}>{r}</option>
+                          <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
                         ))}
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
@@ -951,7 +940,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre de usuario</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de usuario</label>
                     <div className="relative">
                       <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
@@ -959,7 +948,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                         value={formData.username}
                         onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
                         onBlur={() => { if (formData.username) checkAvailability(); }}
-                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="ayuntamientex"
                       />
                     </div>
@@ -972,7 +961,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo electrónico</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Correo electrónico</label>
                     <div className="relative">
                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
@@ -980,7 +969,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                         value={formData.email}
                         onChange={e => updateField('email', e.target.value)}
                         onBlur={() => { if (formData.email) checkAvailability(); }}
-                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="contacto@organizacion.com"
                       />
                     </div>
@@ -995,14 +984,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Contraseña</label>
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
                         type={showPassword ? "text" : "password"}
                         value={formData.password}
                         onChange={e => updateField('password', e.target.value)}
-                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="Mínimo 8 caracteres"
                       />
                       <button
@@ -1015,14 +1004,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
                         type={showConfirmPassword ? "text" : "password"}
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all`}
+                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="Repite la contraseña"
                       />
                       <button
@@ -1040,10 +1029,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'organization' && step === 2 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Intereses de la organización</h2>
-                <p className="text-slate-500 font-medium mt-2">Selecciona temas relevantes para tu entidad</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Intereses de la organización</h2>
               </div>
               <div className="flex flex-wrap gap-2.5 justify-center">
                 {PUBLIC_INTERESTS.map(topic => {
@@ -1055,7 +1043,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                         const current = formData.interests || [];
                         updateField('interests', isSelected ? current.filter(i => i !== topic) : [...current, topic]);
                       }}
-                      className={`px-6 py-3 rounded-2xl border-2 text-sm font-black transition-all transform active:scale-95 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-slate-100 text-slate-500 hover:border-purple-100'}`}
+                      className={`px-4 py-2 rounded-xl border-2 text-xs font-black transition-all transform active:scale-95 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white dark:bg-[#0a0a0a] border-slate-100 dark:border-zinc-800 text-slate-500 dark:text-gray-400 hover:border-purple-100'}`}
                     >
                       {topic}
                     </button>
@@ -1066,13 +1054,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
           )}
 
           {registrationType === 'organization' && step === 3 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500 text-center">
-              <div>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Logo de la organización</h2>
-                <p className="text-slate-500 font-medium mt-2">Sube el escudo o logotipo oficial</p>
+            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-500 text-center">
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Logo de la organización</h2>
               </div>
 
-              <div className="flex flex-col items-center justify-center space-y-6">
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
                     <img
@@ -1096,10 +1083,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                   accept="image/*"
                   onChange={handleFileSelect}
                 />
-
-                <p className="text-xs text-slate-400 font-medium max-w-xs">
-                  Haz clic en la imagen para subir una nueva foto. Recomendamos una imagen cuadrada de al menos 400x400px.
-                </p>
               </div>
             </div>
           )}
@@ -1118,15 +1101,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 if (registrationType === 'personal') {
                   setRegistrationType(null); setStep(0);
                 } else {
-                  onCancel();
+                  navigate('/login');
                 }
               } else if (step === 0) {
-                onCancel();
+                navigate('/login');
               } else {
                 prevStep();
               }
             }}
-            className="flex-1 py-4 rounded-[1.5rem] bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
+            className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
           >
             <ArrowLeft size={20} />
             <span>{(step === 0 && registrationType === null) ? 'Cancelar' : 'Atrás'}</span>
@@ -1224,7 +1207,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
                 }
               }}
               disabled={loading || isChecking}
-              className={`flex-[2] py-4 rounded-[1.5rem] font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : (registrationType === 'organization' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700') + ' text-white shadow-lg'}`}
+              className={`flex-[2] py-3.5 rounded-2xl font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : (registrationType === 'organization' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700') + ' text-white shadow-lg'}`}
             >
               {loading || isChecking ? (
                 <Loader2 className="animate-spin text-white" size={24} />
@@ -1248,7 +1231,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
       {
         showPolicyOverlay && createPortal(
           <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
             onClick={() => setShowPolicyOverlay(false)}
           >
             <div
@@ -1288,7 +1271,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
 
       {
         showPendingApprovalModal && createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
             <div className="bg-white max-w-md w-full rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95">
               <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Clock size={32} />
@@ -1296,10 +1279,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onCancel }) 
               <h3 className="text-2xl font-black text-slate-900 mb-2">Solicitud enviada</h3>
               <p className="text-slate-600 mb-6 leading-relaxed">
                 Tu registro ha sido completado con éxito. Ahora, un administrador debe revisar y aprobar tu solicitud.
-                Recibirás un correo electrónico cuando tu cuenta esté activa.
+                Recibirás una notificación cuando tu cuenta esté activa.
               </p>
               <button
-                onClick={onCancel}
+                onClick={() => navigate('/login')}
                 className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
               >
                 Entendido

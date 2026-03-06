@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
-import { Post, User } from '../types';
+import { Post, User, Chat } from '../types';
 
 interface ShareModalProps {
   post?: Post;
@@ -15,6 +15,7 @@ interface ShareModalProps {
   users?: User[]; // All users to search/filter from
   followedUserIds?: Set<string>;
   followerUserIds?: Set<string>;
+  chats?: Chat[];
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({
@@ -26,7 +27,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   currentUser,
   users = [],
   followedUserIds = new Set(),
-  followerUserIds = new Set()
+  followerUserIds = new Set(),
+  chats = []
 }) => {
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,22 +79,28 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   // Logic to filter and sort contacts
+  const chatUserIds = new Set(chats.map(c => c.participant.id));
+
   const contacts = users
     .filter(u => u.id !== currentUser?.id) // Exclude self
     .map(u => {
       const isFollowing = followedUserIds.has(u.id);
       const isFollower = followerUserIds.has(u.id);
       const isFriend = isFollowing && isFollower; // Mutual follow = Friend
+      const hasChat = chatUserIds.has(u.id);
 
       return {
         ...u,
         isFriend,
-        isFollowing
+        isFollowing,
+        hasChat
       };
     })
-    .filter(u => u.isFollowing) // Only show people I follow (Friends included)
+    .filter(u => u.isFollowing || u.hasChat) // Show people I follow OR have a chat with
     .sort((a, b) => {
-      // Prioritize Friends (Mutual) -> Then just Following
+      // Prioritize Chats -> Then Friends (Mutual) -> Then just Following
+      if (a.hasChat && !b.hasChat) return -1;
+      if (!a.hasChat && b.hasChat) return 1;
       if (a.isFriend && !b.isFriend) return -1;
       if (!a.isFriend && b.isFriend) return 1;
       return 0;
@@ -100,12 +108,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   const filteredContacts = contacts.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.lastName?.toLowerCase().includes(searchTerm.toLowerCase())
+    c.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.username?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return ReactDOM.createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-300"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       onClick={onClose}
     >
@@ -209,7 +218,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 </div>
               )) : (
                 <div className="text-center py-8 text-slate-400 text-xs italic">
-                  No se encontraron usuarios a los que sigas.
+                  {searchTerm
+                    ? "No se encontraron usuarios que coincidan con la búsqueda."
+                    : "No se encontraron usuarios a los que sigas o con los que hayas chateado."}
                 </div>
               )}
             </div>

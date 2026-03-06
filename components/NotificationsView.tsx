@@ -5,7 +5,7 @@ import { Language, useTranslation } from '../utils/translations';
 
 interface NotificationsViewProps {
   notifications: Notification[];
-  onMarkAllRead: () => void;
+  onMarkAllRead: (tab?: string, adminSubTab?: string) => void;
   onNotificationClick?: (postId?: string) => void;
   onLoadMore?: () => void;
   hasMore?: boolean;
@@ -37,11 +37,61 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   const [activeTab, setActiveTab] = useState<Tab>('all');
   const [adminTab, setAdminTab] = useState<'solicitudes' | 'recompensas'>('solicitudes');
 
+  // Calculate unread counts for each tab
+  const getUnreadCounts = () => {
+    const counts = {
+      all: 0,
+      mentions: 0,
+      followers: 0,
+      admin: 0,
+      solicitudes: 0,
+      recompensas: 0
+    };
+
+    notifications.forEach(n => {
+      if (n.isRead) return;
+
+      const content = n.content || '';
+      const isAdminMsg = n.type === 'registration_request' ||
+        n.type === 'reward_request' ||
+        (n.type === 'system' && (content.includes('aprobado en la red') ||
+          content.includes('rechazado en la red') ||
+          content.includes('Solicitud de') ||
+          content.includes('Canje de')));
+
+      if (isAdminMsg) {
+        counts.admin++;
+        const isSolicitud = n.type === 'registration_request' ||
+          (n.type === 'system' && content.includes('Solicitud de') && !content.includes('Canje de')) ||
+          (n.type === 'system' && (content.includes('aprobado en la red') || content.includes('rechazado en la red')));
+        const isRecompensa = n.type === 'reward_request' || content.includes('Canje de');
+
+        if (isSolicitud) counts.solicitudes++;
+        if (isRecompensa) counts.recompensas++;
+      } else {
+        if (n.type === 'mention') {
+          counts.mentions++;
+        } else if (n.type === 'follow') {
+          counts.followers++;
+        } else {
+          counts.all++;
+        }
+      }
+    });
+
+    return counts;
+  };
+
+  const unreadCounts = getUnreadCounts();
+
   useEffect(() => {
-    if (unreadCount > 0) {
-      onMarkAllRead();
+    // When the component mounts or activeTab changes, mark those specific notifications as read
+    if (activeTab === 'admin') {
+      onMarkAllRead(activeTab, adminTab);
+    } else {
+      onMarkAllRead(activeTab);
     }
-  }, [unreadCount, onMarkAllRead]);
+  }, [activeTab, adminTab, onMarkAllRead]);
 
   useEffect(() => {
     if (!onLoadMore) return;
@@ -106,23 +156,23 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   };
 
   const filteredNotifications = notifications.filter(n => {
-    const content = n.content || '';
     if (activeTab === 'all') {
-      // Exclude admin-related system messages from 'all'
-      const isAdminMsg = n.type === 'registration_request' || n.type === 'reward_request' || (n.type === 'system' && ((n.content || '').includes('aprobado en la red') || (n.content || '').includes('rechazado en la red') || (n.content || '').includes('Solicitud de') || (n.content || '').includes('Canje de')));
-      if (isAdminMsg) return false;
+      // Exclude admin-only tasks from "All" (Todo)
+      if (n.type === 'registration_request' || n.type === 'reward_request') return false;
 
-      return n.type === 'like' || n.type === 'vote' || n.type === 'comment' || n.type === 'repost' || n.type === 'system' || n.type === 'reward_accepted';
+      // Included: likes, votes, comments, reposts, system messages, reward_accepted
+      return true;
     } else if (activeTab === 'mentions') {
       return n.type === 'mention';
     } else if (activeTab === 'followers') {
       return n.type === 'follow';
     } else if (activeTab === 'admin') {
       if (adminTab === 'solicitudes') {
-        return n.type === 'registration_request' || (n.type === 'system' && ((n.content || '').includes('aprobado en la red') || (n.content || '').includes('rechazado en la red') || (n.content || '').includes('Solicitud de') && !(n.content || '').includes('Canje de')));
+        const c = (n.content || '').toLowerCase();
+        return n.type === 'registration_request' || (n.type === 'system' && (c.includes('solicitud') || c.includes('aprobado') || c.includes('rechazado'))) && !c.includes('canje');
       } else if (adminTab === 'recompensas') {
-        // Explicitly return true for reward_request down here so it isn't filtered
-        return n.type === 'reward_request' || n.type === 'reward_accepted' || (n.content || '').includes('Canje de');
+        const c = (n.content || '').toLowerCase();
+        return n.type === 'reward_request' || n.type === 'reward_accepted' || c.includes('canje');
       }
     }
     return true;
@@ -134,52 +184,82 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('notifications')}</h2>
       </div>
 
-      <div className="w-full max-w-full flex space-x-2 overflow-x-auto pb-2 scrollbar-hide px-1">
+      <div className="w-full max-w-full flex space-x-2 overflow-x-auto pt-2 pb-2 scrollbar-hide px-1">
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'all' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'all' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <Bell size={16} className={activeTab === 'all' ? 'fill-current' : ''} />
           <span>{t('notif_tab_all')}</span>
+          {unreadCounts.all > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111]">
+              {unreadCounts.all}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('mentions')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'mentions' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'mentions' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <MessageSquare size={16} />
           <span>{t('notif_tab_mentions')}</span>
+          {unreadCounts.mentions > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111]">
+              {unreadCounts.mentions}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('followers')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'followers' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'followers' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <UserPlus size={16} />
           <span>{t('notif_tab_followers')}</span>
+          {unreadCounts.followers > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111]">
+              {unreadCounts.followers}
+            </span>
+          )}
         </button>
         {currentUser?.isAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 ${activeTab === 'admin' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+            className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'admin' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
           >
             <ShieldCheck size={16} />
             <span>{t('notif_tab_admin')}</span>
+            {unreadCounts.admin > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111]">
+                {unreadCounts.admin}
+              </span>
+            )}
           </button>
         )}
       </div>
 
       {activeTab === 'admin' && currentUser?.isAdmin && (
-        <div className="flex space-x-2 px-1 mb-2">
+        <div className="flex space-x-2 px-1 pt-2 mb-2">
           <button
             onClick={() => setAdminTab('solicitudes')}
-            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${adminTab === 'solicitudes' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
+            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all relative ${adminTab === 'solicitudes' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
           >
             {language === 'es' ? 'Solicitudes' : 'Requests'}
+            {unreadCounts.solicitudes > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white border border-white dark:border-zinc-800">
+                {unreadCounts.solicitudes}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setAdminTab('recompensas')}
-            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${adminTab === 'recompensas' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
+            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all relative ${adminTab === 'recompensas' ? 'bg-purple-600 shadow-md text-white' : 'bg-slate-50 dark:bg-zinc-800 text-slate-500'}`}
           >
             {language === 'es' ? 'Recompensas' : 'Rewards'}
+            {unreadCounts.recompensas > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white border border-white dark:border-zinc-800">
+                {unreadCounts.recompensas}
+              </span>
+            )}
           </button>
         </div>
       )}
@@ -221,40 +301,64 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                     {n.type === 'reward_request' ? (
                       <div className="flex items-start justify-between gap-4">
                         <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                          El usuario <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> reclama: <span className="font-bold text-gray-900 dark:text-white">{(n.content || '').replace(/.*(ha solicitado|canjear la recompensa:)\s*(el canje de)?\s*/i, '').trim()}</span>
+                          El usuario <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> reclama: <span className="font-bold text-gray-900 dark:text-white">{(n.content || '').replace(/.*Ha solicitado canjear la recompensa:|Canje de recompensa:/i, '').replace(/\(aceptado\)|\(rechazado\)/gi, '').trim()}</span>
                         </p>
-                        {!(n.content || '').includes('(aceptado)') &&
-                          !(n.content || '').includes('(rechazado)') && (
+                        <div className="flex-shrink-0 flex items-center gap-2">
+                          {(n.content || '').includes('(aceptado)') ? (
+                            <button className="px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
+                              Aceptada
+                            </button>
+                          ) : !(n.content || '').includes('(rechazado)') && (
                             <button
                               onClick={(e) => { e.stopPropagation(); onApproveRedemption?.(n.senderId || '', n.postId || '', n.id); }}
-                              className="flex-shrink-0 px-6 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+                              className="px-6 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-sm whitespace-nowrap"
                             >
                               {t('accept_redemption')}
                             </button>
                           )}
+                        </div>
                       </div>
                     ) : n.type === 'reward_accepted' ? (
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
                         El canje solicitado ha sido <span className="text-emerald-500 font-bold">aceptado</span>.
                       </p>
                     ) : (n.type === 'system' && (n.content || '').includes('Canje de')) ? (
-                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                        {n.content}
-                      </p>
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                          {(n.content || '').replace(/\(aceptado\)|\(rechazado\)/gi, '').trim()}
+                        </p>
+                        {(n.content || '').includes('(aceptado)') && (
+                          <button className="flex-shrink-0 px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
+                            Aceptada
+                          </button>
+                        )}
+                      </div>
                     ) : n.type === 'registration_request' || (n.type === 'system' && (n.content || '').toLowerCase().includes('solicitud')) ? (
-                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                          Solicitud de <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span>
+                        </p>
                         {(() => {
                           const c = (n.content || '').toLowerCase();
                           const isAceptada = c.includes('aceptad') || c.includes('aprobad') || c.includes('bienvenido');
                           const isRechazada = c.includes('rechazad');
-                          const status = isAceptada ? 'aceptada' : (isRechazada ? 'rechazada' : '');
-                          return (
-                            <>
-                              Solicitud de <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span>{status ? ` ${status}` : ''}
-                            </>
-                          );
+                          if (isAceptada) {
+                            return (
+                              <button className="flex-shrink-0 px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
+                                Aceptada
+                              </button>
+                            );
+                          }
+                          if (isRechazada) {
+                            return (
+                              <button className="flex-shrink-0 px-4 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-lg cursor-default border border-red-200 transition-none whitespace-nowrap">
+                                Rechazada
+                              </button>
+                            );
+                          }
+                          return null;
                         })()}
-                      </p>
+                      </div>
                     ) : (
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
                         <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> {content}
@@ -262,8 +366,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                     )}
 
                     {n.type === 'registration_request' &&
-                      !(n.content || '').includes('aceptada') &&
-                      !(n.content || '').includes('rechazada') &&
+                      !(n.content || '').toLowerCase().includes('aceptada') &&
+                      !(n.content || '').toLowerCase().includes('rechazada') &&
+                      !(n.content || '').toLowerCase().includes('bienvenido') &&
+                      !(n.content || '').toLowerCase().includes('aprobad') &&
                       !(n.content || '').includes('(aceptado)') &&
                       !(n.content || '').includes('(rechazado)') && (
                         <div className="flex flex-wrap gap-2 mt-3">

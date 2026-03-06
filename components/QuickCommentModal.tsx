@@ -63,7 +63,7 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+    <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#111] w-full max-w-lg rounded-[2rem] flex flex-col animate-in zoom-in-95 duration-200 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 flex justify-between items-center">
           <span className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-[0.2em]">Respuesta rápida</span>

@@ -29,14 +29,13 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
         : 100;
 
     return createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
             <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
                     <div>
                         <h3 className="text-xl font-black text-slate-900 dark:text-white">Nivel Novagober</h3>
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Tu progreso en la comunidad</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"><X size={24} /></button>
                 </div>
@@ -48,12 +47,8 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-1">Nivel Actual</span>
-                                <h2
-                                    className="text-3xl font-black text-blue-900 dark:text-white cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-2"
-                                    onClick={() => setShowAllLevels(!showAllLevels)}
-                                >
+                                <h2 className="text-3xl font-black text-blue-900 dark:text-white flex items-center gap-2">
                                     {currentStatus.rank}
-                                    <ChevronRight size={24} className={`text-blue-500 transition-transform duration-300 ${showAllLevels ? 'rotate-90' : ''}`} />
                                 </h2>
                             </div>
                             <div className="text-right">
@@ -69,10 +64,29 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
-                            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">
-                                <span>{currentStatus.rank}</span>
-                                {nextThreshold ? <span>Siguiente: {currentStatus.nextLevelInfo?.name}</span> : <span>Nivel Máximo</span>}
+                            <div className="flex justify-between text-[10px] font-black tracking-widest text-slate-400 mt-1">
+                                {nextThreshold ? (
+                                    <span className="uppercase">{t('novas_remaining', { count: nextThreshold - currentNovas })}</span>
+                                ) : (
+                                    <span className="uppercase">{t('level_rank')}</span>
+                                )}
+                                {nextThreshold ? (
+                                    <span><span className="uppercase">{t('next')}:</span> {currentStatus.nextLevelInfo?.name}</span>
+                                ) : (
+                                    <span className="uppercase">{t('max_level')}</span>
+                                )}
                             </div>
+                        </div>
+
+                        {/* All Levels Toggle Button */}
+                        <div className="mt-4 pt-4 border-t border-blue-100 dark:border-blue-900/30">
+                            <button
+                                onClick={() => setShowAllLevels(!showAllLevels)}
+                                className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:text-blue-700 transition-colors flex items-center gap-2 group"
+                            >
+                                {t('all_levels')}
+                                <ChevronRight size={14} className={`transition-transform duration-300 ${showAllLevels ? 'rotate-90' : 'group-hover:translate-x-0.5'}`} />
+                            </button>
                         </div>
                     </div>
 

@@ -42,6 +42,7 @@ export const translations = {
         most_relevant: "Más relevante",
         share_your_news: "Comparte tu noticia",
         publish: "Publicar",
+        publishing: "Publicando",
         no_news_today: "Sin noticias de hoy",
         no_relevant_news_today: "No hay noticias relevantes hoy",
         no_news_today_description: "Parece que hoy está todo tranquilo. ¡Sé el primero en informar a tus colegas!",
@@ -70,6 +71,7 @@ export const translations = {
 
         // Common action / Misc
         save: "Guardar",
+        edit: "Editar",
         share: "Compartir",
         cancel: "Cancelar",
         delete: "Eliminar",
@@ -86,6 +88,7 @@ export const translations = {
         social_network: "Red Social",
         my_profile: "Mi Perfil",
         today: "Hoy",
+        yesterday: "Ayer",
         tomorrow: "Mañana",
         in_x_days: "En {{days}} días",
         search_in_network: "Buscar en la red...",
@@ -114,6 +117,7 @@ export const translations = {
         no_conversations: "Sin conversaciones",
         visto: "Visto",
         enviado: "Enviado",
+        editado: "Editado",
         new_label: "Nuevo",
         chats: "Chats",
         chat_theme: "Tema",
@@ -141,8 +145,8 @@ export const translations = {
         no_bio: "Sin biografía profesional todavía.",
 
         // Modals / Warnings
-        delete_post_confirm_title: "¿Eliminar publicación?",
-        delete_post_confirm_description: "¿Seguro que quieres eliminar este post? Esta acción no se puede deshacer.",
+        delete_post_confirm_title: "¿Estás seguro?",
+        delete_post_confirm_description: "Esta publicación se moverá a la papelera.",
 
         // Calendar
         community_agenda: "Agenda Comunitaria NovaGob",
@@ -230,6 +234,11 @@ export const translations = {
         // Profile
         influence_level: "Nivel Novagober",
         level_label: "Nivel {{level}}",
+        novas_remaining: "Faltan {{count}} Novas",
+        level_rank: "Nivel",
+        next: "Siguiente",
+        max_level: "Nivel Máximo",
+        all_levels: "Todos los niveles",
         rewards: "Recompensas",
         organize_event: "Organizar Evento",
         event_details_desc: "Define los detalles de tu evento",
@@ -362,6 +371,7 @@ export const translations = {
         most_relevant: "Most relevant",
         share_your_news: "Share your news",
         publish: "Publish",
+        publishing: "Publishing",
         no_news_today: "No news today",
         no_relevant_news_today: "No relevant news today",
         no_news_today_description: "It seems everything is quiet today. Be the first to inform your colleagues!",
@@ -390,6 +400,7 @@ export const translations = {
 
         // Common action / Misc
         save: "Save",
+        edit: "Edit",
         share: "Share",
         cancel: "Cancel",
         delete: "Delete",
@@ -406,6 +417,7 @@ export const translations = {
         social_network: "Red Social",
         my_profile: "My Profile",
         today: "Today",
+        yesterday: "Yesterday",
         tomorrow: "Tomorrow",
         in_x_days: "In {{days}} days",
         search_in_network: "Search in network...",
@@ -434,6 +446,7 @@ export const translations = {
         no_conversations: "No conversations",
         visto: "Seen",
         enviado: "Sent",
+        editado: "Edited",
         new_label: "New",
         chats: "Chats",
         chat_theme: "Theme",
@@ -461,8 +474,8 @@ export const translations = {
         no_bio: "No professional bio yet.",
 
         // Modals / Warnings
-        delete_post_confirm_title: "Delete post?",
-        delete_post_confirm_description: "Are you sure you want to delete this post? This action cannot be undone.",
+        delete_post_confirm_title: "Are you sure?",
+        delete_post_confirm_description: "This post will be moved to the trash.",
 
         // Calendar
         community_agenda: "Community Agenda",
@@ -550,6 +563,11 @@ export const translations = {
         // Profile
         influence_level: "Novagober Level",
         level_label: "Level {{level}}",
+        novas_remaining: "{{count}} Novas remaining",
+        level_rank: "Level",
+        next: "Next",
+        max_level: "Max Level",
+        all_levels: "All levels",
         rewards: "Rewards",
         organize_event: "Organize Event",
         event_details_desc: "Define your event details",

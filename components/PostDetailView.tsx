@@ -1,11 +1,12 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Loader2, Trash2 } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
+import { ImageLightbox } from './ImageLightbox';
 import { timeAgo } from '../utils/stringUtils';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
 import { Language, useTranslation } from '../utils/translations';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface PostDetailViewProps {
     posts: Post[];
@@ -14,6 +15,8 @@ interface PostDetailViewProps {
     onAddReply: (commentId: string, text: string, parentReplyId?: string) => void;
     onLike?: (id: string) => void;
     onVote?: (id: string, dir: 'up' | 'down') => void;
+    onRepost?: (id: string) => void;
+    onDeletePost?: (postId: string) => void;
     onSearchHashtag?: (tag: string) => void;
     onNavigateToProfile?: (id: string) => void;
     users?: User[];
@@ -21,7 +24,7 @@ interface PostDetailViewProps {
 }
 
 export const PostDetailView: React.FC<PostDetailViewProps> = ({
-    posts, user, onAddComment, onAddReply, onLike, onVote, onSearchHashtag, onNavigateToProfile, users = [], language
+    posts, user, onAddComment, onAddReply, onLike, onVote, onRepost, onDeletePost, onSearchHashtag, onNavigateToProfile, users = [], language
 }) => {
     const { postId } = useParams<{ postId: string }>();
     const navigate = useNavigate();
@@ -33,6 +36,9 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     const [replyingTo, setReplyingTo] = useState<string | null>(null); // commentId
     const [replyingToParentReplyId, setReplyingToParentReplyId] = useState<string | undefined>(undefined); // replyId if replying to a reply
     const [replyText, setReplyText] = useState('');
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+    const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
@@ -238,22 +244,96 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                             alt=""
                             onClick={() => onNavigateToProfile?.(post.authorId)}
                         />
-                        <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
-                            <h4 className="font-black text-slate-900 dark:text-white text-xl group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
-                            <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
-                            <p className="text-[10px] text-gray-400 font-bold mt-1">Publicado {timeAgo(post.timestamp, language)}</p>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                                <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
+                                    <h4 className="font-black text-slate-900 dark:text-white text-xl group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
+                                    <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold mt-1">Publicado {timeAgo(post.timestamp, language)}</p>
+                                </div>
+                                {post.authorId === user.id && onDeletePost && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsDeleteModalOpen(true);
+                                        }}
+                                        className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all"
+                                        title="Eliminar post"
+                                    >
+                                        <Trash2 size={24} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
+
+                    {post.type === 'news' && post.title && (
+                        <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white mb-6 leading-tight">
+                            {post.title}
+                        </h2>
+                    )}
+
+                    {post.imageUrl && post.imageUrl.length > 0 && (
+                        <div className={`mb-8 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 ${post.imageUrl.length === 1 ? '' : 'grid gap-2'
+                            } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[300px]' :
+                                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[450px]' :
+                                    post.imageUrl.length === 4 ? 'grid-cols-2 h-[450px]' : 'h-[450px]'
+                            }`}>
+                            {post.imageUrl.length === 1 ? (
+                                <img
+                                    src={post.imageUrl[0]}
+                                    className="w-full h-[450px] object-cover transition-all hover:scale-[1.01] rounded-[2rem] cursor-zoom-in"
+                                    alt=""
+                                    onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                                />
+                            ) : post.imageUrl.length === 2 ? (
+                                post.imageUrl.map((url, i) => (
+                                    <img
+                                        key={i}
+                                        src={url}
+                                        alt=""
+                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                        onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                                    />
+                                ))
+                            ) : post.imageUrl.length === 3 ? (
+                                <>
+                                    <img
+                                        src={post.imageUrl[0]}
+                                        alt=""
+                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                        onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                                    />
+                                    <img
+                                        src={post.imageUrl[1]}
+                                        alt=""
+                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                        onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
+                                    />
+                                    <img
+                                        src={post.imageUrl[2]}
+                                        alt=""
+                                        className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity cursor-zoom-in"
+                                        onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
+                                    />
+                                </>
+                            ) : post.imageUrl.length === 4 ? (
+                                post.imageUrl.map((url, i) => (
+                                    <img
+                                        key={i}
+                                        src={url}
+                                        alt=""
+                                        className="w-full h-[225px] object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                        onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                                    />
+                                ))
+                            ) : null}
+                        </div>
+                    )}
 
                     <div className="text-gray-800 dark:text-gray-200 leading-relaxed text-lg md:text-xl font-medium mb-8 whitespace-pre-wrap">
                         {renderContentWithHashtags(post.content)}
                     </div>
-
-                    {post.imageUrl && (
-                        <div className="mb-8 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800">
-                            <img src={post.imageUrl} className="w-full h-auto object-cover max-h-[800px]" alt="" />
-                        </div>
-                    )}
 
                     <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900">
                         <div className="flex items-center space-x-8">
@@ -361,7 +441,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                     </div>
                 </div>
 
-                <div className="p-6 md:p-10 bg-slate-50/50 dark:bg-zinc-900/20 border-t border-slate-50 dark:border-zinc-900 sticky bottom-0 z-10 backdrop-blur-md">
+                <div className="p-6 md:p-10 bg-slate-50/50 dark:bg-zinc-900/20 border-t border-slate-50 dark:border-zinc-900 sticky bottom-0 z-10 backdrop-blur-sm">
                     <form onSubmit={handleSubmit} className="flex items-center space-x-4 bg-white dark:bg-[#0a0a0a] rounded-[1.5rem] p-2 md:p-3 border border-slate-100 dark:border-zinc-800 shadow-lg shadow-black/5">
                         <input
                             ref={mainInputRef}
@@ -396,6 +476,18 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                     )}
                 </div>
             </div>
+            <DeleteConfirmationModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onConfirm={() => onDeletePost?.(post.id)}
+                language={language}
+            />
+            <ImageLightbox
+                images={post.imageUrl || []}
+                initialIndex={currentImgIndex}
+                isOpen={isLightboxOpen}
+                onClose={() => setIsLightboxOpen(false)}
+            />
         </div>
     );
 };

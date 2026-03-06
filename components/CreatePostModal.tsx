@@ -9,7 +9,7 @@ import { MENTION_REGEX, getMentionSuggestions } from '../utils/mentionUtils';
 interface CreatePostModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, eventId?: string) => void;
+    onPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
     user: UserType;
     type?: 'post' | 'news';
     language: Language;
@@ -27,9 +27,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     userEvents = [],
     users = []
 }) => {
+    const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [selectedImages, setSelectedImages] = useState<string[]>([]);
     const [linkedEvent, setLinkedEvent] = useState<CalendarEvent | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [showEventDropdown, setShowEventDropdown] = useState(false);
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionStartIndex, setMentionStartIndex] = useState(-1);
@@ -37,6 +39,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const eventButtonRef = useRef<HTMLButtonElement>(null);
     const t = useTranslation(language);
 
     useScrollLock(isOpen);
@@ -56,7 +59,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+                eventButtonRef.current && !eventButtonRef.current.contains(event.target as Node)) {
                 setShowEventDropdown(false);
             }
         };
@@ -92,18 +96,51 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         textareaRef.current?.focus();
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!content.trim() && !selectedImage && !linkedEvent) return;
+        if (isSubmitting) return;
 
-        const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
-        onPost(content, type, tags, selectedImage || undefined, undefined, undefined, linkedEvent?.id);
+        // If it's a news item, require both title and content
+        if (type === 'news') {
+            if (!title.trim() || !content.trim()) return;
+        }
+        if (!content.trim() && selectedImages.length === 0 && !linkedEvent) return;
 
-        setMentionQuery(null);
-        setContent('');
-        setSelectedImage(null);
-        setLinkedEvent(null);
-        onClose();
+
+        setIsSubmitting(true);
+        try {
+            const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
+            await onPost(content, type, tags, selectedImages, undefined, undefined, linkedEvent?.id, title);
+
+            setMentionQuery(null);
+            setTitle('');
+            setContent('');
+            setSelectedImages([]);
+            setLinkedEvent(null);
+            onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files) {
+            const remainingSlots = 4 - selectedImages.length;
+            const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+            filesToProcess.forEach(file => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setSelectedImages(prev => [...prev, reader.result as string]);
+                };
+                reader.readAsDataURL(file as File);
+            });
+        }
+    };
+
+    const removeImage = (index: number) => {
+        setSelectedImages(prev => prev.filter((_, i) => i !== index));
     };
 
     if (!isOpen) return null;
@@ -125,10 +162,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                     </span>
                     <button
                         onClick={handleSubmit}
-                        disabled={!content.trim() && !selectedImage && !linkedEvent}
-                        className={`px-4 py-1.5 ${type === 'news' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white text-sm font-bold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
+                        disabled={isSubmitting || (!content.trim() && selectedImages.length === 0 && !linkedEvent)}
+                        className={`px-4 py-1.5 ${type === 'news' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white text-sm font-bold rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2`}
                     >
-                        {t('publish')}
+                        {isSubmitting ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <span>{t('publishing')}...</span>
+                            </>
+                        ) : (
+                            t('publish')
+                        )}
                     </button>
                 </div>
 
@@ -136,7 +180,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <div className="flex-1 overflow-y-auto px-4 pt-4 pb-0 custom-scrollbar relative">
                     <div className="flex space-x-3">
                         <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 relative">
+                            {type === 'news' && (
+                                <input
+                                    type="text"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    maxLength={100}
+                                    placeholder="Título de la noticia"
+                                    className="w-full bg-transparent border-none text-xl font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none mb-2"
+                                />
+                            )}
                             <textarea
                                 ref={textareaRef}
                                 value={content}
@@ -147,8 +201,26 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                     }
                                 }}
                                 placeholder={`${type === 'post' ? t('post_placeholder') : t('share_your_news')}`}
-                                className="w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[80px] p-0 transition-colors"
+                                className={`w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[80px] p-0 transition-all duration-200 ${selectedImages.length > 0 ? 'pr-24 pb-4' : 'pr-4'}`}
                             />
+
+                            {/* Multi-Image Preview */}
+                            {selectedImages.length > 0 && (
+                                <div className="absolute top-4 right-4 z-20 flex flex-wrap gap-1 max-w-[120px] justify-end">
+                                    {selectedImages.map((img, idx) => (
+                                        <div key={idx} className="relative group/img">
+                                            <img src={img} alt="Preview" className="w-12 h-12 rounded-lg object-cover ring-2 ring-white dark:ring-zinc-800 shadow-lg" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeImage(idx)}
+                                                className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity"
+                                            >
+                                                <X size={10} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* Mention Suggestions */}
                             {mentionQuery !== null && (
@@ -185,20 +257,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                     </div>
                                 </div>
                             )}
-
-                            {/* Image Preview */}
-                            {selectedImage && (
-                                <div className="relative mt-2 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
-                                    <img src={selectedImage} alt="Preview" className="w-full h-auto max-h-60 object-cover" />
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedImage(null)}
-                                        className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-black/70 backdrop-blur-sm"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -218,19 +276,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                             ref={fileInputRef}
                             hidden
                             accept="image/*"
-                            onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) {
-                                    const r = new FileReader();
-                                    r.onloadend = () => setSelectedImage(r.result as string);
-                                    r.readAsDataURL(f);
-                                }
-                            }}
+                            multiple
+                            onChange={handleImageUpload}
                         />
 
                         {type === 'post' && (
                             <div className="relative">
                                 <button
+                                    ref={eventButtonRef}
                                     type="button"
                                     onClick={() => setShowEventDropdown(!showEventDropdown)}
                                     className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
@@ -274,7 +327,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                     </div>
                 </div>
             </div>
-        </div>,
+        </div >,
         document.body
     );
 };
