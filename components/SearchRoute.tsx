@@ -63,7 +63,7 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onAddComment={onAddComment}
             onDeletePost={onDeletePost}
             onViewChange={(view) => {
-                if (view === 'feed') navigate('/feed');
+                if (view === 'feed') navigate('/inicio');
                 else onViewChange(view);
             }}
             currentUser={currentUser}

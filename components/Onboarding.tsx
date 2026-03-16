@@ -7,6 +7,7 @@ import { COUNTRIES, COUNTRIES_DATA, PUBLIC_INTERESTS } from '../constants';
 import { Mail, Lock, Briefcase, Building, Globe, Check, Calendar, User as UserIcon, Loader2, ArrowRight, ArrowLeft, Pencil, AtSign, ShieldCheck, Clock, CheckCircle2, ChevronDown, FileText, X, RefreshCw, AlertCircle, Eye, EyeOff, MapPin, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface OnboardingProps {
 }
@@ -143,6 +144,53 @@ import { ImageCropModal } from './ImageCropModal'; // Import ImageCropModal
 
 // ... existing imports ...
 
+const SelectDrop: React.FC<{
+  label: string,
+  value: string,
+  options: string[],
+  onChange: (val: string) => void,
+  placeholder: string,
+  disabled?: boolean,
+  icon?: React.ReactNode
+}> = ({ label, value, options, onChange, placeholder, disabled, icon }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="space-y-1 relative">
+      <label className="text-[9px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1 tracking-wider">{label}</label>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-4 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl font-bold dark:text-white text-[11px] outline-none focus:ring-2 focus:ring-blue-500/50 transition-all flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        <div className="flex items-center space-x-2">
+          {icon && <div className="text-slate-400">{icon}</div>}
+          <span className={!value ? 'text-slate-400' : ''}>{value || placeholder}</span>
+        </div>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && !disabled && (
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-xl z-[101] max-h-48 overflow-y-auto animate-in fade-in zoom-in-95 duration-200 scrollbar-hide">
+            {options.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { onChange(opt); setIsOpen(false); }}
+                className={`w-full text-left px-4 py-2 text-[11px] font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors ${value === opt ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-slate-600 dark:text-gray-300'}`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export const Onboarding: React.FC<OnboardingProps> = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(0); // Start at 0 for selection/privacy
@@ -157,6 +205,12 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [showPendingApprovalModal, setShowPendingApprovalModal] = useState(false);
+  
+  // Organization Mention State
+  const [orgResults, setOrgResults] = useState<{ id: string, name: string }[]>([]);
+  const [isSearchingOrgs, setIsSearchingOrgs] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<{ id: string, name: string } | null>(null);
+
   useScrollLock(showPolicyOverlay || showPendingApprovalModal);
 
   const [registrationType, setRegistrationType] = useState<'personal' | 'organization' | null>(null);
@@ -257,6 +311,29 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
     }
   };
 
+  const searchOrganizations = async (query: string) => {
+    if (query.length < 2) {
+      setOrgResults([]);
+      return;
+    }
+    setIsSearchingOrgs(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .eq('is_organization', true)
+        .ilike('name', `%${query}%`)
+        .limit(5);
+
+      if (error) throw error;
+      setOrgResults(data || []);
+    } catch (err) {
+      console.error("Error searching organizations:", err);
+    } finally {
+      setIsSearchingOrgs(false);
+    }
+  };
+
   const nextStep = () => setStep(s => s + 1);
   const prevStep = () => setStep(s => s - 1);
 
@@ -285,7 +362,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
       name: registrationType === 'organization' ? formData.organizationName : formData.name,
       last_name: registrationType === 'organization' ? '' : formData.lastName,
       username: formData.username,
-      // avatar_url: formData.avatar, // Removed: Column likely doesn't exist, causing 400
+      avatar: formData.avatar,
       position: formData.position,
       department: formData.department,
       job_category: finalJobCategory,
@@ -295,6 +372,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
       interests: formData.interests,
       birth_date: formData.birthDate || null, // Ensure empty string becomes null
       is_organization: registrationType === 'organization',
+      linked_organization_id: selectedOrg?.id || null,
       // Extra fields if needed for future
       // Map Organization Objective to Bio column
       bio: formData.bio || '',
@@ -455,19 +533,28 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
     }
 
     switch (step) {
-      case 1: return !!(
-        formData.name &&
-        formData.lastName &&
-        formData.username &&
-        formData.email &&
-        formData.password &&
-        formData.birthDate &&
-        confirmPassword &&
-        formData.password === confirmPassword &&
-        !usernameError &&
-        !emailError &&
-        !passwordError
-      );
+      case 1: {
+        const isBasicValid = !!(
+          formData.name &&
+          formData.lastName &&
+          formData.username &&
+          formData.email &&
+          formData.password &&
+          formData.birthDate &&
+          confirmPassword &&
+          formData.password === confirmPassword &&
+          !usernameError &&
+          !emailError &&
+          !passwordError
+        );
+
+        if (!isBasicValid) return false;
+
+        const birthDate = new Date(formData.birthDate);
+        const eighteenYearsAgo = new Date();
+        eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+        return birthDate <= eighteenYearsAgo;
+      }
       case 2: return formData.jobCategory === 'Otro' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
       case 4: return !!(formData.position && formData.department);
@@ -588,7 +675,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Fecha de nacimiento</label>
-                  <input type="date" value={formData.birthDate} onChange={e => updateField('birthDate', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" />
+                  <input
+                    type="date"
+                    value={formData.birthDate}
+                    max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+                    onChange={e => updateField('birthDate', e.target.value)}
+                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                  />
                 </div>
               </div>
 
@@ -757,12 +850,65 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <input type="text" value={formData.position} onChange={e => updateField('position', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm" placeholder="Ej. Responsable de Innovación" />
                   </div>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                   <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de la organización</label>
                   <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input type="text" value={formData.department} onChange={e => updateField('department', e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm" placeholder="Ej. Ayuntamiento de Madrid" />
+                    <input
+                      type="text"
+                      value={formData.department}
+                      onChange={e => {
+                        updateField('department', e.target.value);
+                        searchOrganizations(e.target.value);
+                        if (selectedOrg) setSelectedOrg(null);
+                      }}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm"
+                      placeholder="Ej. Ayuntamiento de Madrid"
+                    />
+                    {isSearchingOrgs && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <Loader2 size={16} className="animate-spin text-blue-500" />
+                      </div>
+                    )}
                   </div>
+
+                  {orgResults.length > 0 && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                      {orgResults.map(org => (
+                        <button
+                          key={org.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOrg(org);
+                            updateField('department', org.name);
+                            setOrgResults([]);
+                          }}
+                          className="w-full text-left px-5 py-3 text-sm font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors flex items-center space-x-3"
+                        >
+                          <Building size={16} className="text-blue-500" />
+                          <span className="text-slate-700 dark:text-slate-200">{org.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedOrg && (
+                    <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-xl flex items-center justify-between animate-in zoom-in-95">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle2 size={16} className="text-blue-600" />
+                        <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Cuenta oficial vinculada: {selectedOrg.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOrg(null);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 p-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -773,31 +919,22 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
               <div className="text-center">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tu ubicación</h2>
               </div>
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">País</label>
-                  <select
-                    value={formData.country}
-                    onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
-                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
-                  >
-                    <option value="" className="bg-white dark:bg-zinc-900">Selecciona un país...</option>
-                    {COUNTRIES.map(c => <option key={c} value={c} className="bg-white dark:bg-zinc-900">{c}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Región / Comunidad</label>
-                  <select
-                    value={formData.region}
-                    onChange={e => updateField('region', e.target.value)}
-                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
-                  >
-                    <option value="" className="bg-white dark:bg-zinc-900">Selecciona una región...</option>
-                    {formData.country && COUNTRIES_DATA[formData.country]?.map(r => (
-                      <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="space-y-6 relative">
+                <SelectDrop
+                  label="País"
+                  value={formData.country || ''}
+                  options={COUNTRIES}
+                  onChange={val => { updateField('country', val); updateField('region', ''); }}
+                  placeholder="Selecciona un país..."
+                />
+                <SelectDrop
+                  label="Región / Comunidad"
+                  value={formData.region || ''}
+                  options={formData.country ? COUNTRIES_DATA[formData.country] || [] : []}
+                  onChange={val => updateField('region', val)}
+                  placeholder="Selecciona una región..."
+                  disabled={!formData.country}
+                />
               </div>
             </div>
           )}
@@ -838,7 +975,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
                     <img
-                      src={formData.avatar}
+                      src={getSafeAvatar(formData.avatar)}
                       alt="Avatar Preview"
                       className="w-full h-full object-cover"
                     />
@@ -902,40 +1039,24 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">País</label>
-                    <div className="relative">
-                      <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <select
-                        value={formData.country}
-                        onChange={e => { updateField('country', e.target.value); updateField('region', ''); }}
-                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none dark:text-white"
-                      >
-                        <option value="" className="bg-white dark:bg-zinc-900">Selecciona...</option>
-                        {COUNTRIES.map(c => <option key={c} value={c} className="bg-white dark:bg-zinc-900">{c}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Región</label>
-                    <div className="relative">
-                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <select
-                        value={formData.region}
-                        onChange={e => updateField('region', e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none dark:text-white"
-                        disabled={!formData.country}
-                      >
-                        <option value="" className="bg-white dark:bg-zinc-900">Selecciona...</option>
-                        {formData.country && COUNTRIES_DATA[formData.country]?.map(r => (
-                          <option key={r} value={r} className="bg-white dark:bg-zinc-900">{r}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                  <SelectDrop
+                    label="País"
+                    value={formData.country || ''}
+                    options={COUNTRIES}
+                    onChange={val => { updateField('country', val); updateField('region', ''); }}
+                    placeholder="Selecciona..."
+                    icon={<Globe size={16} />}
+                  />
+                  <SelectDrop
+                    label="Región"
+                    value={formData.region || ''}
+                    options={formData.country ? COUNTRIES_DATA[formData.country] || [] : []}
+                    onChange={val => updateField('region', val)}
+                    placeholder="Selecciona..."
+                    disabled={!formData.country}
+                    icon={<MapPin size={16} />}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1063,7 +1184,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
                     <img
-                      src={formData.avatar}
+                      src={getSafeAvatar(formData.avatar)}
                       alt="Avatar Preview"
                       className="w-full h-full object-cover"
                     />
@@ -1101,10 +1222,10 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 if (registrationType === 'personal') {
                   setRegistrationType(null); setStep(0);
                 } else {
-                  navigate('/login');
+                  navigate('/inicio-sesion');
                 }
               } else if (step === 0) {
-                navigate('/login');
+                navigate('/inicio-sesion');
               } else {
                 prevStep();
               }
@@ -1129,10 +1250,17 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       else if (!formData.lastName) setError("Por favor, introduce tus apellidos.");
                       else if (!formData.username) setError("Por favor, elige un nombre de usuario.");
                       else if (!formData.birthDate) setError("Por favor, selecciona tu fecha de nacimiento.");
-                      else if (!formData.email) setError("Por favor, introduce tu correo institucional.");
-                      else if (!formData.password) setError("Por favor, crea una contraseña.");
-                      else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
-                      else setError("Por favor, completa todos los campos.");
+                      else {
+                        const birthDate = new Date(formData.birthDate);
+                        const eighteenYearsAgo = new Date();
+                        eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+                        if (birthDate > eighteenYearsAgo) {
+                          setError("Debes tener al menos 18 años para registrarte.");
+                        } else if (!formData.email) setError("Por favor, introduce tu correo institucional.");
+                        else if (!formData.password) setError("Por favor, crea una contraseña.");
+                        else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
+                        else setError("Por favor, completa todos los campos.");
+                      }
                     } else if (step === 2) {
                       setError("Por favor, selecciona una categoría profesional.");
                     } else if (step === 3) {
@@ -1282,7 +1410,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 Recibirás una notificación cuando tu cuenta esté activa.
               </p>
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/inicio-sesion')}
                 className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
               >
                 Entendido

@@ -3,8 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, calculateNovas } from '../types';
-import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck, Mic } from 'lucide-react';
+import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, Badge, calculateNovas } from '../types';
+import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck, Mic, GraduationCap } from 'lucide-react';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { PreferencesModal } from './PreferencesModal';
 import { ShareModal } from './ShareModal';
@@ -13,9 +13,47 @@ import { PostCard } from './PostCard';
 import { NewsCard } from './NewsCard';
 import { ImageCropModal } from './ImageCropModal';
 import { LevelsListModal } from './LevelsListModal';
-import { getLevelInfo } from '../utils/gamificationUtils';
+import { getLevelInfo, getBannerStyle } from '../utils/gamificationUtils';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
+import { getSafeAvatar } from '../utils/avatarUtils';
+
+const BADGE_IMAGES: Record<string, string> = {
+  'congress_2024': '/img/insignias/Congreso_2024.png',
+  'congress_2024_speaker': '/img/insignias/Congreso_2024.png',
+  'congress_2025': '/img/insignias/Congreso_2025.png',
+  'congress_2025_speaker': '/img/insignias/Congreso_2025.png',
+  'event_burocracia': '/img/insignias/Burocrac_IA.png',
+  'event_burocracia_speaker': '/img/insignias/Burocrac_IA.png',
+  'event_innovalencia': '/img/insignias/InnoValencia.png',
+  'event_innovalencia_speaker': '/img/insignias/InnoValencia.png',
+  'event_innovamos': '/img/insignias/InnovamosLab.png',
+  'event_innovamos_speaker': '/img/insignias/InnovamosLab.png',
+  'award_innovator': '/img/insignias/Excelencia_2025.png',
+  'award_woman': '/img/insignias/Excelencia_2025.png',
+  'award_talent': '/img/insignias/Excelencia_2025.png',
+  'award_excellence': '/img/insignias/Excelencia_2025.png',
+  'award_special': '/img/insignias/Excelencia_2025.png',
+  'award_creativity': '/img/insignias/Excelencia_2025.png',
+  'award_transformative_project': '/img/insignias/Excelencia_2025.png',
+  'award_efficiency': '/img/insignias/Excelencia_2025.png',
+  'award_digital_transformation': '/img/insignias/Excelencia_2025.png',
+  'award_people_management': '/img/insignias/Excelencia_2025.png',
+  'award_good_government': '/img/insignias/Excelencia_2025.png',
+};
+
+const getBadgeImage = (b: any) => {
+  const id = (b.id || '').toLowerCase();
+  const label = (b.label || '').toLowerCase();
+  if (BADGE_IMAGES[id]) return BADGE_IMAGES[id];
+  if (id.includes('innovamos') || label.includes('innovamos')) return '/img/insignias/InnovamosLab.png';
+  if (id.includes('innovalencia') || label.includes('innovalencia')) return '/img/insignias/InnoValencia.png';
+  if (id.includes('burocrac') || label.includes('burocrac')) return '/img/insignias/Burocrac_IA.png';
+  if (id.includes('2024') && (id.includes('congres') || label.includes('congres'))) return '/img/insignias/Congreso_2024.png';
+  if (id.includes('2025') && (id.includes('congres') || label.includes('congres'))) return '/img/insignias/Congreso_2025.png';
+  if (b.category === 'premios_excelencia' || id.startsWith('award_') || label.includes('excelencia')) return '/img/insignias/Excelencia_2025.png';
+  return '/img/novagob.brand_isotipo_black.svg';
+};
 
 type ProfileTab = 'posts' | 'news' | 'reposts' | 'events' | 'badges';
 
@@ -53,10 +91,7 @@ interface ProfileViewProps {
   pinnedPosts?: Set<string>;
   onTogglePin?: (postId: string) => void;
 }
-// ... (skip down to ShareModal usage) -> Actually I need to split this into two chunks (Interface and Usage) or use multi_replace.
-// Since they are far apart, I'll use multi_replace.
 
-// getStatusInfo logic removed and replaced by getLevelInfo from utils
 
 const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language: Language }> = ({ user, onClose, language }) => {
   const navigate = useNavigate();
@@ -85,12 +120,16 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
           <div className="space-y-3">
             <div className="flex justify-between items-end px-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{novas} Novas</span>
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{t('level_label', { level: status.level })}</span>
+              <span className={`text-[10px] font-black ${status.color} uppercase tracking-widest`}>{t('level_label', { level: status.level })}</span>
             </div>
             <div className="h-4 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden p-1 border border-slate-50 dark:border-zinc-900">
               <div
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-1000 ease-out"
-                style={{ width: `${progress}%` }}
+                className="h-full rounded-full transition-all duration-1000 ease-out"
+                style={{
+                  width: `${progress}%`,
+                  backgroundColor: status.currentLevelInfo.bannerColor || '#3b82f6',
+                  boxShadow: `0 0 10px ${status.currentLevelInfo.bannerColor}80`
+                }}
               />
             </div>
           </div>
@@ -102,7 +141,7 @@ const NovagoberStatusModal: React.FC<{ user: User, onClose: () => void, language
           <div className="pt-4">
             <button
               onClick={() => {
-                navigate('/store');
+                navigate('/recompensas');
                 onClose();
               }}
               className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all active:scale-95"
@@ -364,10 +403,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showRankingModal, setShowRankingModal] = useState(false);
   const [showLevelsModal, setShowLevelsModal] = useState(false);
-  const [dbBadges, setDbBadges] = useState<{ id: string, created_at?: string, label?: string, description?: string }[]>([]);
+  const [allBadges, setAllBadges] = useState<Badge[]>(BADGE_CATALOG);
+  const [userBadgeIds, setUserBadgeIds] = useState<Set<string>>(new Set());
+  const [badgeAssignmentDates, setBadgeAssignmentDates] = useState<Map<string, string>>(new Map());
   const [rankingHistory, setRankingHistory] = useState<{ id: string, badge_id: string, created_at: string }[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estado local para que la foto de perfil se actualice al instante en este componente
+  const [localAvatar, setLocalAvatar] = useState<string>(user.avatar);
+
+  // Si el usuario cambia (por ejemplo, se visita otro perfil), sincronizamos el avatar local
+  useEffect(() => {
+    setLocalAvatar(user.avatar);
+  }, [user.avatar, user.id]);
 
   // Persistence Logic for Profile
   const location = useLocation();
@@ -436,39 +485,51 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setRepostedPostIds(Array.from(ids));
       }
 
-      // 1. Fetch user's badge assignments
+      // 1. Fetch ALL badge definitions
+      const { data: allDbBadges } = await supabase
+        .from('badges')
+        .select('*')
+        .order('label');
+
+      const merged = [...BADGE_CATALOG];
+      if (allDbBadges && allDbBadges.length > 0) {
+        allDbBadges.forEach(dbB => {
+          const badgeIdLower = dbB.id.toLowerCase();
+          const existingIdx = merged.findIndex(m => m.id.toLowerCase() === badgeIdLower);
+          
+          if (existingIdx !== -1) {
+            merged[existingIdx] = {
+              ...merged[existingIdx],
+              label: dbB.label || merged[existingIdx].label,
+              color: dbB.color || merged[existingIdx].color,
+              nova_reward: dbB.nova_reward ?? merged[existingIdx].nova_reward
+            };
+          } else {
+            merged.push({
+              id: dbB.id,
+              label: dbB.label || dbB.id,
+              color: dbB.color || 'bg-slate-100 text-slate-500 border-slate-200',
+              category: 'general',
+              nova_reward: dbB.nova_reward
+            } as Badge);
+          }
+        });
+      }
+      setAllBadges(merged);
+
+      // 2. Fetch user's badge assignments with dates
       const { data: assignments } = await supabase
         .from('user_badges')
         .select('badge_id, created_at')
         .eq('user_id', user.id);
 
-      // 2. Fetch ALL badge definitions to ensure we have labels/desc
-      const { data: definitions } = await supabase
-        .from('badges')
-        .select('*');
-
-      if (assignments && assignments.length > 0 && definitions) {
-        const badgeMap = new Map(definitions.map(d => [d.id.toLowerCase(), d]));
-
-        setDbBadges(assignments.map(a => {
-          const badgeIdLower = a.badge_id.toLowerCase();
-          const def = badgeMap.get(badgeIdLower);
-
-          return {
-            id: a.badge_id,
-            created_at: a.created_at,
-            label: def?.label || a.badge_id,
-            description: def?.description
-          };
-        }));
-      } else if (assignments && assignments.length > 0) {
-        // Fallback if definitions fetch failed but we have assignments
-        setDbBadges(assignments.map(a => ({
-          id: a.badge_id,
-          created_at: a.created_at
-        })));
-      } else {
-        setDbBadges([]);
+      if (assignments) {
+        setUserBadgeIds(new Set(assignments.map(a => a.badge_id.toLowerCase())));
+        const datesMap = new Map<string, string>();
+        assignments.forEach(a => {
+          datesMap.set(a.badge_id.toLowerCase(), a.created_at);
+        });
+        setBadgeAssignmentDates(datesMap);
       }
 
       const { data: rankHistory } = await supabase
@@ -517,7 +578,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .filter((d: any) => d.profiles)
         .map((d: any) => ({
           id: d.profiles.id,
-          avatar: d.profiles.avatar
+          avatar: getSafeAvatar(d.profiles.avatar)
         }));
 
       setCommonFollowers(mutuals);
@@ -551,6 +612,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
     setLoadingEvents(false);
   };
+
+  const categories = [
+    { id: 'congresos', label: 'Congreso', icon: Calendar },
+    { id: 'premios_excelencia', label: 'Premios', icon: Medal },
+    { id: 'eventos', label: 'Eventos', icon: GraduationCap },
+    { id: 'ranking', label: 'Ranking', icon: Trophy }
+  ];
 
   const handleSupportEvent = async (eventId: string) => {
     const isSupported = supportedEventIds.has(eventId);
@@ -607,39 +675,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const novas = useMemo(() => {
     if (user.novas !== undefined && user.novas !== null) return user.novas;
 
+    const earnedBadges = allBadges
+      .filter(b => userBadgeIds.has(b.id.toLowerCase()))
+      .map(b => ({ id: b.id }));
+
     const combinedBadges = [
-      ...dbBadges.map(b => ({ id: b.id })),
+      ...earnedBadges,
       ...rankingHistory.map(rh => ({ id: rh.badge_id }))
     ];
 
-    // If we have fetched DB data, use it. Otherwise fallback to user.badges (if any)
-    if (dbBadges.length > 0 || rankingHistory.length > 0) {
+    if (earnedBadges.length > 0 || rankingHistory.length > 0) {
       return calculateNovas(combinedBadges.length > 0 ? combinedBadges : (user.badges || []));
     }
 
     return calculateNovas(user.badges || []);
-  }, [user.novas, user.badges, dbBadges, rankingHistory]);
+  }, [user.novas, user.badges, allBadges, userBadgeIds, rankingHistory]);
 
   const status = useMemo(() => getLevelInfo(novas, language), [novas, language]);
 
-  const bannerStyle = useMemo(() => {
-    // Gold gradient only for levels HIGHER than 10 (if any)
-    if (status.level > 10) {
-      return {
-        background: 'linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%)',
-        border: '4px solid #000000',
-        borderTopLeftRadius: 'inherit',
-        borderTopRightRadius: 'inherit',
-        boxShadow: 'inset 0 0 15px rgba(0,0,0,0.1)'
-      };
-    }
-    // Level colors now come from status.currentLevelInfo (LEVELS array)
-    return {
-      backgroundColor: status.currentLevelInfo.bannerColor,
-      borderBottom: '1px solid currentColor',
-      borderColor: 'rgba(0,0,0,0.05)'
-    };
-  }, [status.level, status.currentLevelInfo.bannerColor]);
+  const bannerStyle = useMemo(() => getBannerStyle(status), [status]);
 
   const joinedDateFormatted = useMemo(() => {
     const rawDate = user.joinedDate || new Date().toISOString();
@@ -721,6 +775,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleCropComplete = (croppedImage: string) => {
+    // Actualizamos primero el estado local para ver el cambio al instante en el perfil
+    setLocalAvatar(croppedImage);
     onUpdateUser({ ...user, avatar: croppedImage });
     setImageToCrop(null);
   };
@@ -765,7 +821,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="relative flex-shrink-0">
               <div className="group relative">
                 <img
-                  src={user.avatar}
+                  src={getSafeAvatar(localAvatar)}
                   className="w-20 h-20 md:w-44 md:h-44 rounded-2xl md:rounded-[2.5rem] border-4 md:border-8 border-white dark:border-zinc-800 object-cover transition-all cursor-pointer hover:opacity-95 active:scale-95"
                   alt=""
                   onClick={handlePhotoClick}
@@ -785,7 +841,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   >
                     <button
                       onClick={() => {
-                        setFullScreenImage(user.avatar);
+                        setFullScreenImage(localAvatar);
                         setShowPhotoOptions(false);
                       }}
                       className={`w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all ${isCurrentUser ? 'border-b border-gray-50 dark:border-zinc-900' : ''}`}
@@ -821,7 +877,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="flex flex-col space-y-1 items-center md:items-start">
                 {!user.isOrganization && (
                   <div className="flex items-start md:items-center space-x-2 text-blue-600 dark:text-blue-400 font-bold text-xs md:text-base flex-wrap justify-center md:justify-start w-full">
-                    <span className="break-words max-w-full leading-tight">{user.position} {user.username === 'novagob' ? 'de' : 'en'} {user.department}</span>
+                    <span className="break-words max-w-full leading-tight">
+                      {user.position} {user.username === 'novagob' ? 'de' : 'en'}{' '}
+                      {user.linkedOrganizationId ? (
+                        <button
+                          onClick={() => onNavigateToProfile?.(user.linkedOrganizationId!)}
+                          className="text-blue-700 dark:text-blue-300 font-extrabold cursor-pointer inline-flex items-center"
+                        >
+                          {user.department}
+                        </button>
+                      ) : (
+                        <span>{user.department} (DEBUG: ID={user.linkedOrganizationId === undefined ? 'und' : (user.linkedOrganizationId === null ? 'null' : (user.linkedOrganizationId === '' ? 'empty' : user.linkedOrganizationId))})</span>
+                      )}
+                    </span>
                   </div>
                 )}
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-3 gap-y-1 text-gray-400 dark:text-zinc-500 font-medium text-[10px] md:text-sm w-full">
@@ -848,7 +916,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {isCurrentUser ? (
                   <>
                     <button onClick={() => setIsShareModalOpen(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center min-w-fit whitespace-nowrap"><Share2 size={12} className="md:w-[14px] md:h-[14px]" /></button>
-                    <button onClick={() => navigate('/settings', { state: { openPersonalData: true } })} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
+                    <button onClick={() => navigate('/configuracion', { state: { openPersonalData: true } })} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
                   </>
                 ) : (
                   <>
@@ -888,7 +956,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       commonFollowers.slice(0, 3).map((follower) => (
                         <img
                           key={follower.id}
-                          src={follower.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${follower.id}`}
+                          src={follower.avatar || `/img/imagen-por-defecto.png`}
                           className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-white dark:border-[#111] object-cover ring-2 ring-transparent group-hover:ring-blue-500/30 transition-all"
                           alt=""
                         />
@@ -938,7 +1006,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <button onClick={() => setActiveTab('badges')} className={`flex-1 min-w-fit px-4 py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all ${activeTab === 'badges' ? 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-600' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-900 hover:text-gray-600'}`}>
             <Medal size={18} />
-            <span className="font-bold text-sm">{t('badges_label')} ({dbBadges.length > 0 ? dbBadges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : (user.badges ? user.badges.filter((b: any) => !BADGE_CATALOG.find(c => c.id === b.id && c.category === 'ranking')).length : 0)})</span>
+            <span className="font-bold text-sm">{t('badges_label')} ({allBadges.filter(b => userBadgeIds.has(b.id.toLowerCase())).length})</span>
           </button>
         </div>
 
@@ -1137,45 +1205,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )
           )}
 
-          {activeTab === 'badges' && (() => {
-            const currentBadges = dbBadges.length > 0 ? dbBadges : (user.badges || []);
-            const userBadges = currentBadges
-              .map(ub => {
-                const info = BADGE_CATALOG.find(c => c.id === ub.id);
-                return info ? info : {
-                  id: ub.id,
-                  label: (ub as any).label || ub.id,
-                  description: '', // Removed default description
-                  color: 'bg-slate-100 text-slate-500 border-slate-200',
-                  category: ((ub as any).label || '').toLowerCase().includes('congreso') ? 'congresos' :
-                    ((ub as any).label || '').toLowerCase().includes('premio') ? 'premios' :
-                      ((ub as any).label || '').toLowerCase().includes('evento') ? 'eventos' : 'general' as const
-                };
-              })
-              .filter(b => b.category !== 'ranking');
+          {activeTab === 'badges' && (
+            <div className="space-y-12 pb-10">
+              {(() => {
+                const earnedBadges = allBadges
+                  .filter(b => userBadgeIds.has(b.id.toLowerCase()))
+                  .sort((a, b) => {
+                    const dateA = badgeAssignmentDates.get(a.id.toLowerCase()) || '';
+                    const dateB = badgeAssignmentDates.get(b.id.toLowerCase()) || '';
+                    return dateB.localeCompare(dateA); // Sort descending (most recent first)
+                  });
 
-            if (userBadges.length > 0) {
-              return (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {userBadges.map(badge => {
-                      const isSpeaker = badge.label.toLowerCase().includes('ponente');
-                      const isAssistant = badge.label.toLowerCase().includes('asistente');
-                      const isAward = badge.category === 'premios';
-                      const isNovas = badge.category === 'novas';
+                if (earnedBadges.length === 0) {
+                  return (
+                    <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
+                      <Medal className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
+                      <p className="text-slate-400 font-bold italic">{language === 'es' ? 'No has recibido ninguna insignia todavía.' : 'You haven\'t received any badges yet.'}</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {earnedBadges.map(badge => {
+                      const isSpeaker = (badge.label || '').toLowerCase().includes('ponente');
+                      const isAward = badge.category === 'premios' || badge.category === 'premios_excelencia';
+                      const isNovas = badge.category?.toLowerCase() === 'novas';
                       const isVerified = badge.id === 'verified';
                       const isPioneer = badge.id === 'pioneer';
-                      const isTraining = badge.category === 'formacion';
-                      const isEvent = badge.category === 'eventos';
+                      const isTraining = badge.category?.toLowerCase() === 'formacion';
+                      const isEvent = badge.category?.toLowerCase() === 'eventos';
 
-                      // Determine Gradient & Icon based on Category/Label
                       let gradient = 'from-blue-500 to-indigo-600';
                       let IconComponent = Award;
 
                       if (isSpeaker) {
                         gradient = 'from-amber-400 via-orange-500 to-amber-600';
                         IconComponent = Mic;
-                      } else if (isAssistant) {
+                      } else if (badge.label.toLowerCase().includes('asistente')) {
                         gradient = 'from-slate-400 to-slate-600';
                         IconComponent = Users;
                       } else if (isAward) {
@@ -1198,54 +1265,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         IconComponent = Calendar;
                       }
 
+                      const frameGradient = 'from-purple-500 via-indigo-500 to-purple-600';
+
                       return (
-                        <div key={badge.id} className="group bg-white dark:bg-[#111] rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 p-6 flex flex-col items-center text-center transition-all hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2">
-                          {/* Logo Area (The colorful part) - Wider and taller */}
-                          <div className={`w-full h-32 mb-6 rounded-[2rem] bg-gradient-to-br ${gradient} p-0.5 shadow-lg group-hover:shadow-2xl transition-all duration-500`}>
-                            <div className="w-full h-full bg-white dark:bg-[#0a0a0a] rounded-[1.9rem] flex items-center justify-center relative overflow-hidden">
-                              {/* Soft Glow Background */}
-                              <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-10`}></div>
-                              <div className={`p-5 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg transform rotate-2 group-hover:rotate-0 transition-transform duration-500`}>
-                                <IconComponent size={40} strokeWidth={2.5} />
+                        <div key={badge.id} className="group p-5 rounded-[2rem] border transition-all relative flex flex-col items-center text-center h-full bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2">
+                          <div className={`w-full h-28 md:h-32 mb-4 rounded-[1.8rem] bg-gradient-to-br ${frameGradient} p-0.5 relative overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-700 perspective-1000`}>
+                            <div className="w-full h-full relative preserve-3d hover:rotate-y-180 transition-transform duration-700 cursor-pointer">
+                              {/* Front Side */}
+                              <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.7rem] flex items-center justify-center overflow-hidden backface-hidden border-2 border-purple-500/20 dark:border-purple-400/20">
+                                <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-10`}></div>
+                                {(() => {
+                                  const badgeImg = getBadgeImage(badge);
+                                  return badgeImg ? (
+                                    <img
+                                      src={badgeImg}
+                                      className="w-full h-full object-cover relative z-10"
+                                      alt={badge.label}
+                                    />
+                                  ) : (
+                                    <div className={`p-4 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg transform rotate-6 group-hover:rotate-0 transition-transform duration-500`}>
+                                      <IconComponent size={32} strokeWidth={2.5} />
+                                    </div>
+                                  );
+                                })()}
+                                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 z-20 pointer-events-none"></div>
+                              </div>
+
+                              {/* Back Side */}
+                              <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.7rem] flex items-center justify-center overflow-hidden backface-hidden rotate-y-180 border-2 border-purple-500/20 dark:border-purple-400/20">
+                                <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-20`}></div>
+                                <img 
+                                  src="/img/novagob.brand_isotipo_black.svg" 
+                                  className="w-1/2 h-1/2 object-contain opacity-40 dark:invert" 
+                                  alt="NovaGob"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent translate-x-full group-hover:-translate-x-full transition-transform duration-1000 z-20 pointer-events-none delay-300"></div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Info Area */}
-                          <div className="space-y-3">
-                            <h4 className="text-lg font-black text-slate-900 dark:text-white leading-tight px-4">
-                              {badge.label}
-                            </h4>
-                            <p className="text-xs text-slate-400 dark:text-zinc-500 font-bold leading-relaxed px-2 italic uppercase tracking-wider">
-                              {badge.description}
-                            </p>
+                          <div className="space-y-2 mb-4">
+                            <h4 className="text-[13px] font-black text-slate-900 dark:text-white leading-tight break-words px-2">{badge.label}</h4>
                           </div>
 
-                          {/* Decorative Elements */}
-                          <div className="mt-8 pt-6 border-t border-slate-50 dark:border-zinc-900 w-full flex justify-center">
-                            <div className={`text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full ${isSpeaker ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'} dark:bg-zinc-900`}>
-                              {badge.category.toLowerCase() === 'congresos' ? 'Congreso' :
-                                badge.category.toLowerCase() === 'premios' ? 'Premio' :
-                                  badge.category.toLowerCase() === 'eventos' ? 'Evento' :
-                                    badge.category.toLowerCase() === 'formacion' ? 'Formación' :
-                                      badge.category.toLowerCase() === 'novas' ? 'Novas' : ''}
+                          <div className="mt-auto w-full">
+                            <div className="pt-4 border-t border-slate-50 dark:border-zinc-900 w-full flex justify-center h-10 items-center">
+                              {badge.nova_reward !== undefined && badge.nova_reward !== null && badge.nova_reward > 0 && (
+                                <div className="bg-slate-50 dark:bg-zinc-900/50 px-3 py-1 rounded-full border border-slate-100 dark:border-zinc-800 flex items-center space-x-2">
+                                  <span className="text-[10px] font-black text-blue-600 leading-none">{badge.nova_reward} Novas</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
-              );
-            } else {
-              return (
-                <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                  <Medal className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
-                  <p className="text-slate-400 font-bold italic">{language === 'es' ? 'No hay insignias disponibles.' : 'No badges available.'}</p>
-                </div>
-              );
-            }
-          })()}
+                );
+              })()}
+            </div>
+          )}
 
 
         </div>
@@ -1326,11 +1405,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         showRankingModal && createPortal(
           <RankingHistoryModal
             badges={rankingHistory.map(rh => {
-              const catalogBadge = BADGE_CATALOG.find(c => c.id === rh.badge_id);
+              const badgeIdLower = rh.badge_id.toLowerCase();
+              const catalogBadge = BADGE_CATALOG.find(c => c.id.toLowerCase() === badgeIdLower);
               return {
-                ...catalogBadge!,
+                ...(catalogBadge || { id: rh.badge_id, label: rh.badge_id, color: 'bg-slate-100', category: 'ranking' }),
                 created_at: rh.created_at
-              };
+              } as any;
             })}
             onClose={() => setShowRankingModal(false)}
             mode="personal"

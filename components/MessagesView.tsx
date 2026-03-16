@@ -6,6 +6,7 @@ import { normalizeString, timeAgo, extractFirstUrl, isExternalUrl } from '../uti
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
 import { LinkPreview } from './LinkPreview';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface MessagesViewProps {
   user: User;
@@ -104,7 +105,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         id: data.id,
         name: data.name,
         lastName: data.last_name,
-        avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
+        avatar: getSafeAvatar(data.avatar),
         position: data.position,
         department: data.department,
         followers: data.followers_count,
@@ -316,10 +317,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   return (
     <div className="h-full w-full bg-white dark:bg-black overflow-hidden flex flex-row border border-gray-100 dark:border-zinc-800 rounded-[2rem] shadow-sm">
-      <div className="w-20 sm:w-72 md:w-80 border-r border-gray-100 dark:border-zinc-900 flex flex-col min-w-0 shrink-0">
+      <div className={`md:w-80 border-r border-gray-100 dark:border-zinc-900 flex-col min-w-0 shrink-0 ${participant ? 'hidden md:flex' : 'flex w-full'} pb-24 md:pb-0`}>
         <div className="p-4 md:p-6 border-b border-gray-50 dark:border-zinc-900">
-          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4 hidden sm:block">{t('messages_title')}</h2>
-          <div className="relative hidden sm:block">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-4">{t('messages_title')}</h2>
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input
               type="text"
@@ -333,10 +334,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         <div className="flex-1 overflow-y-auto">
           {temporaryParticipant && !chats.find(c => c.id === temporaryParticipant.id) && (
             <button
-              onClick={() => navigate(`/messages/${temporaryParticipant.username || temporaryParticipant.id}`)}
+              onClick={() => navigate(`/mensajes/${temporaryParticipant.username || temporaryParticipant.id}`)}
               className={`w-full max-w-full p-4 flex items-center space-x-3 bg-blue-50/30 dark:bg-zinc-800/30 border-r-4 border-blue-600 transition-all overflow-hidden`}
             >
-              <img src={temporaryParticipant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
+              <img src={getSafeAvatar(temporaryParticipant.avatar)} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
               <div className="flex-1 text-left min-w-0 overflow-hidden">
                 <div className="flex justify-between items-center mb-0.5 gap-2">
                   <span className="font-bold text-gray-900 dark:text-white text-sm truncate min-w-0 flex-1">{temporaryParticipant.name}</span>
@@ -352,10 +353,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             return (
               <button
                 key={chat.id}
-                onClick={() => navigate(`/messages/${chat.participant.username || chat.id}`)}
+                onClick={() => navigate(`/mensajes/${chat.participant.username || chat.id}`)}
                 className={`w-full max-w-full p-4 flex items-center space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all overflow-hidden ${selectedId === chat.id ? 'bg-blue-50/50 dark:bg-zinc-800/50 border-r-4 border-blue-600' : ''}`}
               >
-                <img src={chat.participant.avatar} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
+                <img src={getSafeAvatar(chat.participant.avatar)} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
                 <div className="flex-1 text-left min-w-0 overflow-hidden">
                   <div className="flex justify-between items-center mb-0.5 gap-2">
                     <span className="font-bold text-gray-900 dark:text-white text-sm truncate min-w-0 flex-1">{chat.participant.name} {chat.participant.lastName}</span>
@@ -387,19 +388,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0 bg-slate-50/30 dark:bg-black/20 h-full relative overflow-hidden">
+      <div className={`flex flex-col min-h-0 bg-slate-50/30 dark:bg-black/20 h-full relative overflow-hidden ${participant ? 'flex-1' : 'hidden md:flex flex-1'}`}>
         {participant ? (
           <>
             <div className="sticky top-0 z-20 p-4 bg-white dark:bg-[#111] border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
               <div className="flex items-center space-x-3 flex-1 min-w-0 mr-2">
                 <button
-                  onClick={() => navigate('/messages')}
+                  onClick={() => navigate('/mensajes')}
                   className="p-2 -ml-2 text-slate-400 hover:text-blue-600 md:hidden shrunk-0"
                 >
                   <ArrowLeft size={20} />
                 </button>
                 <img
-                  src={participant.avatar}
+                  src={getSafeAvatar(participant.avatar)}
                   className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all shrink-0"
                   alt=""
                   onClick={() => participant.id && onNavigateToProfile?.(participant.id)}
@@ -559,7 +560,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     >
                                       <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl">
                                         <div className="flex items-center space-x-2 mb-2">
-                                          <img src={sharedPost.authorAvatar} className="w-6 h-6 rounded-lg object-cover" alt="" />
+                                          <img src={getSafeAvatar(sharedPost.authorAvatar)} className="w-6 h-6 rounded-lg object-cover" alt="" />
                                           <div className="min-w-0">
                                             <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{sharedPost.authorName}</p>
                                             <p className="text-[9px] text-gray-400 font-bold uppercase truncate">{sharedPost.authorPosition}</p>
@@ -579,7 +580,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   onClick={() => m.sharedProfile?.id && onNavigateToProfile?.(m.sharedProfile.id)}
                                 >
                                   <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
-                                    <img src={m.sharedProfile.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                                    <img src={getSafeAvatar(m.sharedProfile.avatar)} className="w-12 h-12 rounded-xl object-cover" alt="" />
                                     <div className="min-w-0">
                                       <p className="text-sm font-black text-gray-900 dark:text-white truncate">{m.sharedProfile.name} {m.sharedProfile.lastName}</p>
                                       <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{m.sharedProfile.position}</p>
@@ -812,7 +813,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               </div>
             </div>
 
-            <div className="p-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-zinc-900">
+            <div className="p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,24px))] md:pb-4 bg-white dark:bg-[#111] border-t border-gray-100 dark:border-zinc-900">
               <form onSubmit={handleSend} className="flex items-center space-x-3 bg-gray-50 dark:bg-zinc-900 rounded-2xl p-2 border border-gray-100 dark:border-zinc-800">
                 <button
                   type="button"

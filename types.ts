@@ -23,60 +23,58 @@ export interface ProjectDraft {
 export interface Badge {
   id: string;
   label: string;
-  description: string;
+  description?: string;
   color: string;
-  category: 'general' | 'novas' | 'congresos' | 'premios' | 'eventos' | 'formacion' | 'ranking';
+  category: 'general' | 'novas' | 'congresos' | 'premios' | 'premios_excelencia' | 'eventos' | 'formacion' | 'ranking';
   value?: number;
   iconUrl?: string;
+  nova_reward?: number;
 }
 
 export const BADGE_CATALOG: Badge[] = [
-  // General (Cuenta)
-  { id: 'verified', label: 'Verificado', description: 'Identidad verificada por la administración.', color: 'bg-green-100 text-green-600 border-green-200', category: 'general' },
-  { id: 'pioneer', label: 'Pionero', description: 'Uno de los primeros 100 usuarios.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'general' },
-
   // Novas
-  { id: 'contributor', label: 'Colaborador', description: 'Ha realizado más de 50 publicaciones.', color: 'bg-blue-100 text-blue-600 border-blue-200', category: 'novas' },
-  { id: 'influencer', label: 'Influyente', description: 'Sus publicaciones han recibido más de 1000 likes.', color: 'bg-purple-100 text-purple-600 border-purple-200', category: 'novas' },
 
   // Congresos NovaGob
-  { id: 'congress_2021_speaker', label: 'Ponente Congreso 2021', description: 'Ponente en el Congreso NovaGob 2021.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2021', label: 'Asistente Congreso 2021', description: 'Asistente al Congreso NovaGob 2021.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
-  { id: 'congress_2022_speaker', label: 'Ponente Congreso 2022', description: 'Ponente en el Congreso NovaGob 2022.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2022', label: 'Asistente Congreso 2022', description: 'Asistente al Congreso NovaGob 2022.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
-  { id: 'congress_2023_speaker', label: 'Ponente Congreso 2023', description: 'Ponente en el Congreso NovaGob 2023.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2023', label: 'Asistente Congreso 2023', description: 'Asistente al Congreso NovaGob 2023.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
-  { id: 'congress_2024_speaker', label: 'Ponente Congreso 2024', description: 'Ponente en el Congreso NovaGob 2024.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2024', label: 'Asistente Congreso 2024', description: 'Asistente al Congreso NovaGob 2024.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
-  { id: 'congress_2025_speaker', label: 'Ponente Congreso 2025', description: 'Ponente en el Congreso NovaGob 2025.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2025', label: 'Asistente Congreso 2025', description: 'Asistente al Congreso NovaGob 2025.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
-  { id: 'congress_2026_speaker', label: 'Ponente Congreso 2026', description: 'Ponente en el Congreso NovaGob 2026.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
-  { id: 'congress_2026', label: 'Asistente Congreso 2026', description: 'Asistente al Congreso NovaGob 2026.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2021_speaker', label: 'Ponente Congreso 2021', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2021', label: 'Asistente Congreso 2021', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2022_speaker', label: 'Ponente Congreso 2022', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2022', label: 'Asistente Congreso 2022', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2023_speaker', label: 'Ponente Congreso 2023', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2023', label: 'Asistente Congreso 2023', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2024_speaker', label: 'Ponente Congreso 2024', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2024', label: 'Asistente Congreso 2024', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2025_speaker', label: 'Ponente Congreso 2025', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2025', label: 'Asistente Congreso 2025', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
+  { id: 'congress_2026_speaker', label: 'Ponente Congreso 2026', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'congresos', value: 15 },
+  { id: 'congress_2026', label: 'Asistente Congreso 2026', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'congresos', value: 10 },
 
   // Premios Individuales
-  { id: 'award_innovator', label: 'Innovador del Año', description: 'Premio a la persona innovadora del año.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'premios', value: 20 },
-  { id: 'award_woman', label: 'Mujer Destacada', description: 'Mujer destacada del sector público.', color: 'bg-pink-100 text-pink-600 border-pink-200', category: 'premios', value: 20 },
-  { id: 'award_talent', label: 'Nuevo Talento', description: 'Nuevo talento público.', color: 'bg-cyan-100 text-cyan-600 border-cyan-200', category: 'premios', value: 20 },
-  { id: 'award_excellence', label: 'Excelencia', description: 'Valor de las personas excelentes.', color: 'bg-emerald-100 text-emerald-600 border-emerald-200', category: 'premios', value: 20 },
-  { id: 'award_special', label: 'Mención Especial', description: 'Categoría especial del jurado.', color: 'bg-indigo-100 text-indigo-600 border-indigo-200', category: 'premios', value: 20 },
+  { id: 'award_innovator', label: 'Persona innovadora del año', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_woman', label: 'Mujer destacada del Sector Publico', color: 'bg-pink-100 text-pink-600 border-pink-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_talent', label: 'Nuevo Talento Publico', color: 'bg-cyan-100 text-cyan-600 border-cyan-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_excellence', label: 'Valor de las personas Excelentes', color: 'bg-emerald-100 text-emerald-600 border-emerald-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_special', label: 'Categoría especial', color: 'bg-indigo-100 text-indigo-600 border-indigo-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_creativity', label: 'Creatividad en la innovación', color: 'bg-yellow-100 text-yellow-600 border-yellow-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_transformative_project', label: 'Proyecto más transformador', color: 'bg-blue-100 text-blue-600 border-blue-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_efficiency', label: 'Eficiencia en las AA.PP.', color: 'bg-green-100 text-green-600 border-green-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_digital_transformation', label: 'Transformación Digital', color: 'bg-purple-100 text-purple-600 border-purple-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_people_management', label: 'Gestión de Personas', color: 'bg-orange-100 text-orange-600 border-orange-200', category: 'premios_excelencia', value: 20 },
+  { id: 'award_good_government', label: 'Buen Gobierno', color: 'bg-slate-100 text-slate-600 border-slate-200', category: 'premios_excelencia', value: 20 },
 
   // Eventos Especiales
-  { id: 'event_innovalencia_speaker', label: 'Ponente InnoValencia', description: 'Ponente en InnoValencia.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 15 },
-  { id: 'event_innovalencia', label: 'Asistente InnoValencia', description: 'Asistente a InnoValencia.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 10 },
-  { id: 'event_burocracia_speaker', label: 'Ponente Burocrac_IA', description: 'Ponente en el Festival Burocrac_IA.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 15 },
-  { id: 'event_burocracia', label: 'Asistente Burocrac_IA', description: 'Asistente al Festival Burocrac_IA.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 10 },
-  { id: 'event_innovamos_speaker', label: 'Ponente Foro Innovamos', description: 'Ponente en Foro Innovamos Lab.', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 15 },
-  { id: 'event_innovamos', label: 'Asistente Foro Innovamos', description: 'Asistente al Foro Innovamos Lab.', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 10 },
+  { id: 'event_innovalencia_speaker', label: 'Ponente InnoValencia', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 10 },
+  { id: 'event_innovalencia', label: 'Asistente InnoValencia', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 5 },
+  { id: 'event_burocracia_speaker', label: 'Ponente Burocrac_IA', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 10 },
+  { id: 'event_burocracia', label: 'Asistente Burocrac_IA', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 5 },
+  { id: 'event_innovamos_speaker', label: 'Ponente Foro Innovamos', color: 'bg-amber-100 text-amber-600 border-amber-200', category: 'eventos', value: 10 },
+  { id: 'event_innovamos', label: 'Asistente Foro Innovamos', color: 'bg-slate-100 text-slate-500 border-slate-200', category: 'eventos', value: 5 },
 
   // Formación
-  { id: 'training_basic', label: 'Curso Básico', description: 'Completó la formación básica de la red.', color: 'bg-indigo-100 text-indigo-600 border-indigo-200', category: 'formacion', value: 10 },
-  { id: 'training_advanced', label: 'Curso Avanzado', description: 'Completó la formación avanzada.', color: 'bg-violet-100 text-violet-600 border-violet-200', category: 'formacion', value: 15 },
 
   // Ranking Semanal
-  { id: 'ranking_top1', label: 'TOP 1', description: 'Primer lugar en el ranking semanal.', color: 'bg-yellow-100 text-yellow-600 border-yellow-200', category: 'ranking', value: 5 },
-  { id: 'ranking_top2', label: 'TOP 2', description: 'Segundo lugar en el ranking semanal.', color: 'bg-slate-200 text-slate-500 border-slate-300', category: 'ranking', value: 3 },
-  { id: 'ranking_top3', label: 'TOP 3', description: 'Tercer lugar en el ranking semanal.', color: 'bg-orange-100 text-orange-700 border-orange-200', category: 'ranking', value: 1 },
-  { id: 'legendary_contributor', label: 'Leyenda de la Red', description: 'Nivel legendario alcanzado por contribuciones excepcionales.', color: 'bg-rose-100 text-rose-600 border-rose-200', category: 'novas', value: 1000 },
+  { id: 'ranking_top1', label: 'TOP 1', color: 'bg-yellow-100 text-yellow-600 border-yellow-200', category: 'ranking', value: 10 },
+  { id: 'ranking_top2', label: 'TOP 2', color: 'bg-slate-200 text-slate-500 border-slate-300', category: 'ranking', value: 7 },
+  { id: 'ranking_top3', label: 'TOP 3', color: 'bg-orange-100 text-orange-700 border-orange-200', category: 'ranking', value: 5 },
 ];
 
 export const calculateNovas = (userBadges: { id: string }[] | undefined): number => {
@@ -104,9 +102,9 @@ export const calculateNovas = (userBadges: { id: string }[] | undefined): number
           points = 10;
           break;
         case 'ranking':
-          if (badge.id === 'ranking_top1') points = 5;
-          else if (badge.id === 'ranking_top2') points = 3;
-          else if (badge.id === 'ranking_top3') points = 1;
+          if (badge.id === 'ranking_top1') points = 10;
+          else if (badge.id === 'ranking_top2') points = 7;
+          else if (badge.id === 'ranking_top3') points = 5;
           break;
         case 'novas':
           points = 5;
@@ -135,7 +133,6 @@ export interface User {
   administrationType?: string;
   country?: string;
   region?: string;
-  roleDescription?: string;
   organizationName?: string;
   organizationObjective?: string;
   isOrganization?: boolean;
@@ -171,6 +168,7 @@ export interface User {
   };
   level_name?: string;
   novas?: number;
+  linkedOrganizationId?: string;
 }
 
 export interface CommentReply {
@@ -259,7 +257,7 @@ export interface Chat {
 
 export interface Notification {
   id: string;
-  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system' | 'reward_request';
+  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system' | 'reward_request' | 'reward_accepted';
   senderName: string;
   senderId?: string;
   senderAvatar: string;

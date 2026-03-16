@@ -8,6 +8,7 @@ import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { sortUsersByRelevance } from '../utils/mentionUtils';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -80,7 +81,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <NavLink
         to={to}
         onClick={(e) => {
-          if (to === '/feed' || to === '/news') {
+          if (to === '/inicio' || to === '/noticias') {
             onSearchChange('');
           }
           if (location.pathname === to) {
@@ -89,17 +90,21 @@ export const Layout: React.FC<LayoutProps> = ({
             if (onRefresh) onRefresh();
           }
         }}
-        className={({ isActive }) => `w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${isActive
-          ? 'bg-blue-600 text-white'
-          : 'text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-900 hover:text-blue-600'
-          }`}
+        className={({ isActive }) => {
+          const isInicioActive = to === '/inicio' && location.pathname.startsWith('/inicio/');
+          const isNoticiasActive = to === '/noticias' && location.pathname.startsWith('/noticias/');
+          return `w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${isActive || isInicioActive || isNoticiasActive
+            ? 'bg-blue-600 text-white'
+            : 'text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-900 hover:text-blue-600'
+            }`;
+        }}
       >
         <div className="flex items-center space-x-3">
           <Icon size={20} />
           <span className="font-bold text-sm">{label}</span>
         </div>
         {badge !== undefined && badge > 0 && (
-          <span className="bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+          <span className="bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
             {badge}
           </span>
         )}
@@ -160,7 +165,7 @@ export const Layout: React.FC<LayoutProps> = ({
     }
   };
 
-  const showSidebar = ['/feed', '/news'].includes(location.pathname) || location.pathname === '/';
+  const showSidebar = location.pathname.startsWith('/inicio') || location.pathname.startsWith('/noticias') || location.pathname === '/';
 
   React.useEffect(() => {
     if (!searchQuery) {
@@ -172,30 +177,30 @@ export const Layout: React.FC<LayoutProps> = ({
 
 
   return (
-    <div className="min-h-screen bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
-      <div className={`w-full flex relative ${location.pathname.startsWith('/messages') ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className="min-h-[100dvh] bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
+      <div className={`w-full flex relative ${location.pathname.startsWith('/mensajes') ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh]'}`}>
         {/* Sidebar Desktop */}
-        <aside className="w-56 xl:w-64 2xl:w-72 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 z-30">
+        <aside className="w-56 xl:w-64 2xl:w-72 sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 z-30">
           <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => {
             onSearchChange('');
-            if (location.pathname === '/feed') {
+            if (location.pathname === '/inicio') {
               window.scrollTo({ top: 0, behavior: 'smooth' });
               if (onRefresh) onRefresh();
             } else {
-              navigate('/feed');
+              navigate('/inicio');
             }
           }}>
             <Logo />
             <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Red Social</span>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-hide pr-2">
-            <NavItem to="/feed" icon={Home} label={t('home')} />
-            <NavItem to="/news" icon={Newspaper} label={t('news')} />
-            <NavItem to="/calendar" icon={Calendar} label={t('nav_calendar')} />
-            <NavItem to="/messages" icon={MessageCircle} label={t('messages')} badge={unreadMessagesCount} />
-            <NavItem to="/notifications" icon={Bell} label={t('notifications')} badge={unreadCount} />
+            <NavItem to="/inicio" icon={Home} label={t('home')} />
+            <NavItem to="/noticias" icon={Newspaper} label={t('news')} />
+            <NavItem to="/calendario" icon={Calendar} label={t('nav_calendar')} />
+            <NavItem to="/mensajes" icon={MessageCircle} label={t('messages')} badge={unreadMessagesCount} />
+            <NavItem to="/notificaciones" icon={Bell} label={t('notifications')} badge={unreadCount} />
             <NavItem to={`/${user.username || user.id}`} icon={User} label={t('profile')} />
-            <NavItem to="/settings" icon={Settings} label={t('settings')} />
+            <NavItem to="/configuracion" icon={Settings} label={t('settings')} />
           </nav>
 
           <div className="mt-auto pt-6 border-t border-slate-50 dark:border-zinc-900 relative">
@@ -226,7 +231,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer group"
               >
                 <div className="relative flex-shrink-0">
-                  <img src={user.avatar} className="w-10 h-10 rounded-xl object-cover border-2 border-transparent group-hover:border-blue-200 transition-all" alt="Avatar" />
+                  <img src={getSafeAvatar(user.avatar)} className="w-10 h-10 rounded-xl object-cover border-2 border-transparent group-hover:border-blue-200 transition-all" alt="Avatar" />
                 </div>
                 <div className="flex-1 text-left min-w-0">
                   <p className="text-xs font-black text-slate-900 dark:text-white leading-tight mb-1 group-hover:text-blue-600 transition-colors">
@@ -252,14 +257,14 @@ export const Layout: React.FC<LayoutProps> = ({
 
         <div className="flex-1 min-w-0 flex flex-col transition-all duration-300">
           {/* Mobile Header */}
-          <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
+          <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 transition-transform duration-300 ${(location.pathname.startsWith('/inicio') || location.pathname.startsWith('/noticias')) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'} ${location.pathname.startsWith('/mensajes') ? 'hidden' : ''}`}>
             <div className="flex-shrink-0 cursor-pointer" onClick={() => {
               onSearchChange('');
-              if (location.pathname === '/feed') {
+              if (location.pathname === '/inicio') {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 if (onRefresh) onRefresh();
               } else {
-                navigate('/feed');
+                navigate('/inicio');
               }
             }}>
               <Logo />
@@ -283,7 +288,10 @@ export const Layout: React.FC<LayoutProps> = ({
                         .or(`name.ilike.%${query}%,last_name.ilike.%${query}%,username.ilike.%${query}%`)
                         .limit(5)
                         .then(({ data }) => {
-                          const users = data as any[] || [];
+                          const users = (data as any[] || []).map(u => ({
+                            ...u,
+                            avatar: getSafeAvatar(u.avatar)
+                          }));
                           const sortedResults = sortUsersByRelevance(users, query);
                           setAutocompleteResults(sortedResults);
                           setShowAutocomplete(true);
@@ -379,17 +387,17 @@ export const Layout: React.FC<LayoutProps> = ({
               </form>
             </div>
 
-            {location.pathname === '/settings' ? (
+            {location.pathname === '/configuracion' ? (
               <button onClick={() => navigate(-1)} className="flex-shrink-0 p-2 text-slate-400">
                 <ArrowLeft size={22} />
               </button>
             ) : location.pathname === `/${user.username || user.id}` ? (
-              <Link to="/settings" className="flex-shrink-0 p-2 text-slate-400">
+              <Link to="/configuracion" className="flex-shrink-0 p-2 text-slate-400">
                 <Menu size={22} />
               </Link>
             ) : (
               <NavLink
-                to="/notifications"
+                to="/notificaciones"
                 className={({ isActive }) => `flex-shrink-0 p-2 relative ${isActive ? 'text-blue-600' : 'text-slate-400'}`}
               >
                 <Bell size={22} />
@@ -398,13 +406,13 @@ export const Layout: React.FC<LayoutProps> = ({
             )}
           </header>
 
-          <main className={`${location.pathname.startsWith('/messages') ? 'p-0 md:p-4 lg:p-8 h-full overflow-hidden' : (location.pathname === '/feed' || location.pathname === '/news' || location.pathname === '/') ? 'px-4 pb-4 md:px-8 md:pb-8 pt-16 md:pt-0' : 'px-4 pb-4 md:px-8 md:pb-8 pt-20 md:pt-8'} flex-1 min-h-0 w-full`}>
+          <main className={`${location.pathname.startsWith('/mensajes') ? 'p-4 md:p-4 lg:p-8 h-full overflow-hidden' : (location.pathname === '/calendario') ? 'px-4 md:pl-8 md:pr-8 pt-20 pb-28 lg:pt-8 lg:pb-8' : (location.pathname.startsWith('/inicio') || location.pathname.startsWith('/noticias') || location.pathname === '/') ? 'px-4 pb-28 md:px-8 md:pb-8 pt-16 md:pt-0' : 'px-4 pb-28 md:px-8 md:pb-8 pt-20 md:pt-8'} flex-1 min-h-0 w-full`}>
             {children}
           </main>
         </div>
 
         {showSidebar && (
-          <aside className="w-64 sticky top-0 h-screen bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-4 z-30 animate-in slide-in-from-right duration-300">
+          <aside className="w-64 sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-4 z-30 animate-in slide-in-from-right duration-300">
             <div className="mb-6">
               <form onSubmit={handleSearchFormSubmit} className="relative w-full z-50">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -422,7 +430,10 @@ export const Layout: React.FC<LayoutProps> = ({
                         .or(`name.ilike.%${query}%,last_name.ilike.%${query}%,username.ilike.%${query}%`)
                         .limit(5)
                         .then(({ data }) => {
-                          const users = data as any[] || [];
+                          const users = (data as any[] || []).map(u => ({
+                            ...u,
+                            avatar: getSafeAvatar(u.avatar)
+                          }));
                           const sortedResults = sortUsersByRelevance(users, query);
                           setAutocompleteResults(sortedResults);
                           setShowAutocomplete(true);
@@ -510,7 +521,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
               <div className="p-6 bg-white dark:bg-zinc-900/30 rounded-3xl border border-slate-100 dark:border-zinc-800">
                 <div className="mb-4">
-                  <Link to="/calendar" className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  <Link to="/calendario" className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                     {t('upcoming_events')}
                   </Link>
                 </div>
@@ -525,7 +536,7 @@ export const Layout: React.FC<LayoutProps> = ({
                     return (
                       <button
                         key={event.id}
-                        onClick={() => navigate('/calendar', { state: { date: event.event_date } })}
+                        onClick={() => navigate('/calendario', { state: { date: event.event_date } })}
                         className="w-full text-left cursor-pointer group p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:border-blue-200 dark:hover:border-blue-900/50"
                       >
                         <div className="flex items-center justify-between mb-2">
@@ -557,19 +568,18 @@ export const Layout: React.FC<LayoutProps> = ({
           </aside>
         )}
       </div>
-
       {/* Mobile Nav */}
-      <nav className={`md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-slate-100 dark:border-zinc-900 flex justify-around pt-3 pb-[calc(1rem+env(safe-area-inset-bottom,20px))] px-3 z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] transition-transform duration-300 ${['/feed', '/news'].includes(location.pathname) && scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'} ${location.pathname.startsWith('/messages/') && location.pathname.split('/').length > 2 ? 'hidden' : ''}`}>
+      <nav className={`md:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-[#0a0a0a] border-t border-slate-100 dark:border-zinc-900 flex justify-around pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom,24px))] px-3 z-50 transition-transform duration-300 ${['/inicio', '/noticias'].includes(location.pathname) && scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'} ${location.pathname.startsWith('/mensajes/') && location.pathname.split('/').length > 2 ? 'hidden' : ''}`}>
         {[
-          { to: '/feed', icon: Home },
-          { to: '/news', icon: Newspaper },
-          { to: '/calendar', icon: Calendar },
-          { to: '/messages', icon: MessageCircle, badge: unreadMessagesCount },
+          { to: '/inicio', icon: Home },
+          { to: '/noticias', icon: Newspaper },
+          { to: '/calendario', icon: Calendar },
+          { to: '/mensajes', icon: MessageCircle, badge: unreadMessagesCount },
         ].map(({ to, icon: Icon, badge }) => (
           <button
             key={to}
             onClick={() => {
-              if (to === '/feed' || to === '/news') {
+              if (to === '/inicio' || to === '/noticias') {
                 onSearchChange('');
               }
               if (location.pathname === to) {
@@ -579,7 +589,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 navigate(to);
               }
             }}
-            className={`relative ${location.pathname === to ? 'text-blue-600' : 'text-slate-300'}`}
+            className={`relative ${location.pathname === to || (to === '/inicio' && location.pathname.startsWith('/inicio/')) || (to === '/noticias' && location.pathname.startsWith('/noticias/')) ? 'text-blue-600' : 'text-slate-300'}`}
           >
             <Icon size={22} />
             {badge !== undefined && badge > 0 && (
@@ -590,7 +600,7 @@ export const Layout: React.FC<LayoutProps> = ({
           </button>
         ))}
         <button onClick={() => navigate(`/${user?.username || user?.id}`)} className={`rounded-full p-0.5 border-2 transition-all ${location.pathname === `/${user?.username || user?.id}` ? 'border-blue-600' : 'border-transparent'}`}>
-          <img src={user?.avatar || '/img/imagen-por-defecto.png'} alt="Profile" className="w-6 h-6 rounded-full object-cover" />
+          <img src={getSafeAvatar(user?.avatar)} alt="Profile" className="w-6 h-6 rounded-full object-cover" />
         </button>
       </nav>
 

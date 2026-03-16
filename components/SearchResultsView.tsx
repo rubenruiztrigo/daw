@@ -8,6 +8,7 @@ import { PostCard } from './PostCard';
 import { NewsCard } from './NewsCard';
 import { normalizeString } from '../utils/stringUtils';
 import { Language, useTranslation } from '../utils/translations';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface SearchResultsViewProps {
   query: string;
@@ -141,7 +142,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         const enrichedAuthor = {
           authorName: author ? `${author.name} ${author.lastName || ''}`.trim() : 'Usuario',
           authorUsername: author?.username,
-          authorAvatar: author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.author_id}`,
+          authorAvatar: getSafeAvatar(author?.avatar),
           authorPosition: author?.position || '',
         };
 
@@ -237,7 +238,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
     const url = new URL(window.location.href);
     url.searchParams.set('q', localQuery);
-    navigate(`/search${url.search}`);
+    navigate(`/buscar${url.search}`);
   };
 
   return (
@@ -396,7 +397,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
               return (
                 <div key={person.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-800 flex items-center justify-between transition-all cursor-pointer group" onClick={() => onNavigateToProfile?.(person.id!)}>
                   <div className="flex items-center space-x-4">
-                    <img src={person.avatar} className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-50 dark:border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity" alt="" onClick={(e) => { e.stopPropagation(); onPreviewImage?.(person.avatar || ''); }} />
+                    <img src={getSafeAvatar(person.avatar)} className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-50 dark:border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity" alt="" onClick={(e) => { e.stopPropagation(); onPreviewImage?.(getSafeAvatar(person.avatar)); }} />
                     <div className="min-w-0">
                       <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors truncate">{person.name} {person.lastName || ''}</h4>
                       <p className="text-xs text-blue-600 dark:text-blue-400 font-bold truncate">{person.position}</p>

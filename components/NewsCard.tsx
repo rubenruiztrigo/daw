@@ -5,6 +5,7 @@ import { MessageSquare, ChevronUp, ChevronDown } from 'lucide-react';
 import { timeAgo } from '../utils/stringUtils';
 import { Language } from '../utils/translations';
 import { RENDER_REGEX, getUserByMention } from '../utils/mentionUtils';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface NewsCardProps {
   post: Post;
@@ -31,7 +32,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   const handleAvatarClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onPreviewImage) {
-      onPreviewImage(post.authorAvatar);
+      onPreviewImage(getSafeAvatar(post.authorAvatar));
     } else {
       onNavigateToProfile?.(post.authorId);
     }
@@ -85,37 +86,37 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#111] p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 hover:bg-slate-50/50 hover:border-orange-200 dark:hover:border-orange-900/30 transition-all cursor-pointer" onClick={handleNewsClick}>
+    <div className="bg-white dark:bg-[#111] p-3 md:p-5 rounded-3xl border border-gray-100 dark:border-zinc-800 hover:bg-slate-50/50 hover:border-orange-200 dark:hover:border-orange-900/30 transition-all cursor-pointer" onClick={handleNewsClick}>
       <div className="flex space-x-4">
-        <img src={post.authorAvatar} className="w-12 h-12 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-orange-50 transition-all" alt="" onClick={handleAvatarClick} />
+        <img src={getSafeAvatar(post.authorAvatar)} className="w-10 h-10 md:w-12 md:h-12 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-orange-50 transition-all" alt="" onClick={handleAvatarClick} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center space-x-2">
               <span className="font-black text-slate-900 dark:text-white text-[15px] cursor-pointer hover:text-orange-600 transition-colors" onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(post.authorId); }}>{post.authorName}</span>
               <span className="text-orange-600 text-[12px] font-bold">@{post.authorUsername}</span>
             </div>
-            <span className="text-slate-400 text-[10px] uppercase font-bold text-right leading-tight">
+            <span className="text-slate-400 text-[11px] font-bold text-right leading-tight">
               {timeAgo(post.timestamp, language)}
             </span>
           </div>
           <p className="text-[10px] font-black mb-2 text-orange-600 uppercase tracking-widest">{post.authorPosition}</p>
 
-          <div className="flex space-x-4 items-start mb-4">
+          <div className="flex space-x-4 items-start mb-1 md:mb-4">
             <div className="flex-1 min-w-0">
               {post.title && (
-                <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white mb-2 leading-tight">
+                <h3 className="text-lg md:text-xl lg:text-2xl font-black text-slate-900 dark:text-white mb-1.5 md:mb-2 leading-tight">
                   {post.title}
                 </h3>
               )}
 
-              <div className="text-slate-800 dark:text-gray-200 text-[14px] font-medium leading-relaxed whitespace-pre-wrap break-words line-clamp-4">
+              <div className="text-slate-800 dark:text-gray-200 text-[13px] md:text-[14px] font-medium leading-relaxed whitespace-pre-wrap break-words line-clamp-3 md:line-clamp-4">
                 {renderContent(post.content)}
               </div>
             </div>
 
-            {post.imageUrl && (
-              <div className="w-24 h-24 md:w-32 md:h-32 shrink-0 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
-                <img src={post.imageUrl} className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" alt="" />
+            {post.imageUrl && post.imageUrl.length > 0 && post.imageUrl[0] && (
+              <div className="w-20 h-20 md:w-32 md:h-32 shrink-0 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
+                <img src={post.imageUrl[0]} className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" alt="" />
               </div>
             )}
           </div>
@@ -123,26 +124,26 @@ export const NewsCard: React.FC<NewsCardProps> = ({
           <div className="flex items-center justify-between text-slate-500" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center space-x-4">
               <button
-                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-2"
+                className="flex items-center space-x-2 hover:text-blue-600 transition-colors p-1.5 md:p-2"
                 onClick={handleNewsClick}
               >
-                <MessageSquare size={18} />
-                <span className="text-sm font-black">{post.comments}</span>
+                <MessageSquare size={17} />
+                <span className="text-xs md:text-sm font-black">{post.comments}</span>
               </button>
             </div>
 
             <div className="flex items-center bg-slate-50 dark:bg-zinc-900 rounded-2xl p-1 border border-slate-100 dark:border-zinc-800 ml-auto">
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-emerald-500'}`}>
-                <ChevronUp size={22} strokeWidth={3} />
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'up'); }} className={`p-1.5 md:p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-100 text-emerald-600' : 'hover:bg-emerald-50 dark:hover:bg-zinc-800 text-emerald-500'}`}>
+                <ChevronUp size={20} md:size={22} strokeWidth={3} />
               </button>
-              <span className={`px-2 font-black text-sm min-w-[2rem] text-center ${post.upvotes !== undefined
+              <span className={`px-1.5 md:px-2 font-black text-xs md:text-sm min-w-[1.5rem] md:min-w-[2rem] text-center ${post.upvotes !== undefined
                 ? (post.upvotes > 0 ? 'text-emerald-600' : post.upvotes < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white')
                 : (post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white')
                 }`}>
                 {post.upvotes !== undefined ? post.upvotes : post.likes}
               </span>
-              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-100 text-red-600' : 'hover:bg-red-50 dark:hover:bg-zinc-800 text-red-500'}`}>
-                <ChevronDown size={22} strokeWidth={3} />
+              <button onClick={(e) => { e.stopPropagation(); onVote(post.id, 'down'); }} className={`p-1.5 md:p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-100 text-red-600' : 'hover:bg-red-50 dark:hover:bg-zinc-800 text-red-500'}`}>
+                <ChevronDown size={20} md:size={22} strokeWidth={3} />
               </button>
             </div>
           </div>

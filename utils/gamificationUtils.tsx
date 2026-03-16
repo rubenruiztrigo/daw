@@ -55,3 +55,22 @@ export const getLevelInfo = (novas: number, language: Language = 'es') => {
         nextLevelInfo: nextLvl
     };
 };
+
+export const getBannerStyle = (status: any) => {
+    // Gold gradient only for levels HIGHER than 10 (if we add them later)
+    if (status.level > 10) {
+        return {
+            background: 'linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%)',
+            border: '4px solid #000000',
+            borderTopLeftRadius: 'inherit',
+            borderTopRightRadius: 'inherit',
+            boxShadow: 'inset 0 0 15px rgba(0,0,0,0.1)'
+        };
+    }
+    // Level colors now come from status.currentLevelInfo
+    return {
+        backgroundColor: status.currentLevelInfo.bannerColor,
+        borderBottom: '1px solid currentColor',
+        borderColor: 'rgba(0,0,0,0.05)'
+    };
+};

@@ -153,7 +153,7 @@ export const Login: React.FC<LoginProps> = () => {
 
   if (isForgotPassword) {
     return (
-      <div className="min-h-screen bg-transparent dark:bg-transparent flex items-center justify-center p-6">
+      <div className="min-h-screen bg-[#f0edff] dark:bg-[#13111a] flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-8 border border-gray-100 dark:border-zinc-900 animate-in fade-in zoom-in-95 duration-300">
           <button
             onClick={() => { setIsForgotPassword(false); setIsRecoverySent(false); setError(null); }}
@@ -258,8 +258,8 @@ export const Login: React.FC<LoginProps> = () => {
   }
 
   return (
-    <div className="min-h-screen bg-transparent dark:bg-transparent flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-3xl p-10 space-y-8 border border-gray-100 dark:border-zinc-900">
+    <div className="min-h-screen bg-[#f0edff] dark:bg-[#13111a] flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-3xl p-8 space-y-6 border border-gray-100 dark:border-zinc-900">
         <div className="text-center space-y-3">
           <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
             <ShieldCheck size={32} />
@@ -270,7 +270,7 @@ export const Login: React.FC<LoginProps> = () => {
           <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Acceso para personal de la administración pública.</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleLogin} className="space-y-5">
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-xl border border-red-100 dark:border-red-800">
               {error}
@@ -352,11 +352,11 @@ export const Login: React.FC<LoginProps> = () => {
           </button>
         </form>
 
-        <div className="text-center pt-4 border-t border-gray-50 dark:border-zinc-900">
+        <div className="text-center pt-3 border-t border-gray-50 dark:border-zinc-900">
           <p className="text-xs text-gray-400 font-medium">
             ¿No tienes cuenta?{' '}
             <button
-              onClick={() => navigate('/register')}
+              onClick={() => navigate('/registro')}
               className="text-blue-600 font-bold hover:underline transition-all"
             >
               Regístrate ahora

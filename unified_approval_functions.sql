@@ -135,7 +135,7 @@ BEGIN
     IF p_approve THEN
         v_status := 'active';
         v_status_label := 'aceptado';
-        v_content := '¡Bienvenido/a! Tu solicitud ha sido aprobada y ya formas parte de la Red Social.';
+        v_content := 'Tu solicitud ha sido aprobada y ya formas parte de la Red Social.';
     ELSE
         v_status := 'rejected';
         v_status_label := 'rechazado';

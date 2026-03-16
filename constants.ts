@@ -1,27 +1,7 @@
 
-export const COUNTRIES_DATA: Record<string, string[]> = {
-  "España": [
-    "Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria",
-    "Castilla-La Mancha", "Castilla y León", "Cataluña", "Comunidad Valenciana",
-    "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja",
-    "Ceuta", "Melilla"
-  ],
-  "Portugal": [
-    "Lisboa", "Oporto", "Braga", "Coímbra", "Faro (Algarve)", "Setúbal",
-    "Aveiro", "Leiria", "Santarém", "Viseu", "Madeira", "Azores", "Évora", "Viana do Castelo"
-  ],
-  "Perú": [
-    "Lima", "Arequipa", "Cusco", "La Libertad", "Piura", "Ica", "Lambayeque",
-    "Ancash", "Junín", "Callao", "Loreto", "San Martín", "Cajamarca", "Puno"
-  ],
-  "Brasil": [
-    "Brasilia", "São Paulo", "Rio de Janeiro", "Bahia", "Minas Gerais", "Amazonas", "Paraná"
-  ],
-  "México": [
-    "CDMX", "Jalisco", "Nuevo León", "Yucatán", "Puebla", "Estado de México", "Veracruz"
-  ]
-};
+import { COUNTRIES_DATA } from './utils/countriesData';
 
+export { COUNTRIES_DATA };
 export const COUNTRIES = Object.keys(COUNTRIES_DATA);
 
 export const PUBLIC_INTERESTS = [

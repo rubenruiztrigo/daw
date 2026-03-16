@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Loader2, Trash2, Calendar, Clock, MapPin } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { ImageLightbox } from './ImageLightbox';
 import { timeAgo } from '../utils/stringUtils';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
 import { Language, useTranslation } from '../utils/translations';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface PostDetailViewProps {
     posts: Post[];
@@ -17,14 +18,14 @@ interface PostDetailViewProps {
     onVote?: (id: string, dir: 'up' | 'down') => void;
     onRepost?: (id: string) => void;
     onDeletePost?: (postId: string) => void;
-    onSearchHashtag?: (tag: string) => void;
     onNavigateToProfile?: (id: string) => void;
+    onNavigateToEvent?: (userId: string, eventId: string) => void;
     users?: User[];
     language: Language;
 }
 
 export const PostDetailView: React.FC<PostDetailViewProps> = ({
-    posts, user, onAddComment, onAddReply, onLike, onVote, onRepost, onDeletePost, onSearchHashtag, onNavigateToProfile, users = [], language
+    posts, user, onAddComment, onAddReply, onLike, onVote, onRepost, onDeletePost, onSearchHashtag, onNavigateToProfile, onNavigateToEvent, users = [], language
 }) => {
     const { postId } = useParams<{ postId: string }>();
     const navigate = useNavigate();
@@ -39,6 +40,8 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isLightboxOpen, setIsLightboxOpen] = useState(false);
     const [currentImgIndex, setCurrentImgIndex] = useState(0);
+    const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
+    const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
 
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
@@ -116,6 +119,10 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
         setReplyingToParentReplyId(undefined);
     };
 
+    const toggleReplies = (commentId: string) => {
+        setExpandedReplies(prev => ({ ...prev, [commentId]: !prev[commentId] }));
+    };
+
     const renderContentWithHashtags = (content: string) => {
         if (!content) return null;
         const parts = content.split(RENDER_REGEX);
@@ -131,6 +138,44 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 const mentionedUser = getUserByMention(trimmedPart, users);
                 return (
                     <button key={i} onClick={(e) => { e.stopPropagation(); if (mentionedUser) { onNavigateToProfile?.(mentionedUser.id); } }} className="text-purple-600 dark:text-purple-400 font-bold hover:underline">
+                        {part}
+                    </button>
+                );
+            } else if (part.startsWith('http')) {
+                const profileEventMatch = part.match(/(?:\/u\/|\/@)([^\/]+)\/(?:e|evento)\/([^\/\?\s]+)/);
+                if (profileEventMatch && onNavigateToEvent) {
+                    const [, identifier, eventId] = profileEventMatch;
+                    const cleanIdentifier = identifier.startsWith('@') ? identifier.slice(1) : identifier;
+                    const eventOwner = users.find(u => u.username === cleanIdentifier || u.id === cleanIdentifier);
+                    const foundEvent = (window as any).globalEvents?.find((ev: any) => ev.id === eventId);
+                    const label = foundEvent ? foundEvent.title : (eventOwner ? t('view_event_of', { name: eventOwner.name }) : t('view_event'));
+                    return (
+                        <button
+                            key={i}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigateToEvent(cleanIdentifier, eventId);
+                            }}
+                            className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1"
+                        >
+                            <Calendar size={14} className="mr-1" />
+                            <span>{label}</span>
+                        </button>
+                    );
+                }
+                return (
+                    <button
+                        key={i}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (part.includes('/event/') || part.includes('/calendario/') || part.includes('/evento/')) {
+                                navigate('/calendario');
+                            } else {
+                                window.open(part, '_blank');
+                            }
+                        }}
+                        className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-medium break-all text-left"
+                    >
                         {part}
                     </button>
                 );
@@ -151,7 +196,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                     <div key={reply.id} className="animate-in fade-in slide-in-from-left-2 duration-500">
                         <div className="flex space-x-4 group/reply">
                             <img
-                                src={reply.authorAvatar}
+                                src={getSafeAvatar(reply.authorAvatar)}
                                 className="w-8 h-8 rounded-lg object-cover ring-2 ring-slate-50 dark:ring-zinc-800 cursor-pointer"
                                 alt=""
                                 onClick={() => onNavigateToProfile?.(reply.authorId)}
@@ -164,7 +209,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                     >
                                         {reply.authorName}
                                     </span>
-                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-tighter">{timeAgo(reply.timestamp, language)}</span>
+                                    <span className="text-[11px] text-slate-400 font-bold tracking-tighter">{timeAgo(reply.timestamp, language)}</span>
                                 </div>
                                 <div className="text-xs md:text-sm text-slate-600 dark:text-gray-400 font-medium bg-white dark:bg-zinc-900/30 p-4 rounded-2xl rounded-tl-none border border-slate-50 dark:border-zinc-800 shadow-sm">
                                     {renderContentWithHashtags(reply.text)}
@@ -203,7 +248,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                             <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-100 dark:border-zinc-800 z-[10] overflow-hidden shadow-2xl animate-in fade-in slide-in-from-top-2">
                                                 {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
                                                     <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-4 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left border-b border-slate-50 dark:border-zinc-900 last:border-0">
-                                                        <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                                                        <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
                                                         <div className="min-w-0"><p className="text-xs font-black text-gray-900 dark:text-white truncate">{u.name}</p><p className="text-[10px] text-purple-600 font-bold">@{u.username}</p></div>
                                                     </button>
                                                 )) : (
@@ -225,21 +270,117 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
         );
     };
 
+    const renderImages = () => {
+        if (!post?.imageUrl || post.imageUrl.length === 0) return null;
+        return (
+            <div className="mb-8">
+                {post.imageUrl.length === 1 && (
+                    <div className="relative w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                        <img
+                            src={post.imageUrl[0]}
+                            className="w-full h-full object-cover transition-all hover:scale-[1.01] cursor-zoom-in"
+                            alt=""
+                            onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                        />
+                    </div>
+                )}
+
+                {post.imageUrl.length === 2 && (
+                    <div className="grid grid-cols-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                        {post.imageUrl.map((url, i) => (
+                            <img
+                                key={i}
+                                src={url}
+                                alt=""
+                                className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {post.imageUrl.length === 3 && (
+                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                        <div className="relative row-span-2">
+                            <img
+                                src={post.imageUrl[0]}
+                                alt=""
+                                className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                            />
+                        </div>
+                        <div className="relative h-full">
+                            <img
+                                src={post.imageUrl[1]}
+                                alt=""
+                                className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
+                            />
+                        </div>
+                        <div className="relative h-full">
+                            <img
+                                src={post.imageUrl[2]}
+                                alt=""
+                                className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {post.imageUrl.length >= 4 && (
+                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                        {post.imageUrl.slice(0, 4).map((url, i) => (
+                            <div key={i} className="relative h-full">
+                                <img
+                                    src={url}
+                                    alt=""
+                                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                    onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                                />
+                                {i === 3 && post.imageUrl.length > 4 && (
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
+                                        <span className="text-white font-black text-2xl">+{post.imageUrl.length - 4}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="max-w-4xl mx-auto space-y-6">
-            <button
-                onClick={() => navigate(-1)}
-                className="flex items-center space-x-2 text-slate-500 hover:text-blue-600 transition-colors font-black text-xs uppercase tracking-widest mb-2"
+            <div
+                className="sticky top-16 md:top-0 z-40 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 -mx-4 px-4 md:-mx-8 md:px-8 py-3 transition-all"
             >
-                <ArrowLeft size={16} />
-                <span>Volver atrás</span>
-            </button>
+                <div className="max-w-4xl mx-auto flex items-center justify-between">
+                    <div
+                        className="flex-1 cursor-pointer group flex items-center gap-2 h-full"
+                        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    >
+                        <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                            {post.type === 'news' ? 'Noticia' : 'Post'}
+                        </h1>
+                    </div>
+
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="flex items-center space-x-2 text-slate-500 hover:text-blue-600 transition-colors font-black text-xs uppercase tracking-widest px-2 py-1"
+                    >
+                        <ArrowLeft size={16} />
+                        <span>Volver atrás</span>
+                    </button>
+                </div>
+            </div>
 
             <div className="bg-white dark:bg-[#111] rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
                 <div className="p-6 md:p-10">
                     <div className="flex items-center space-x-4 mb-8">
                         <img
-                            src={post.authorAvatar}
+                            src={getSafeAvatar(post.authorAvatar)}
                             className="w-16 h-16 rounded-2xl object-cover cursor-pointer hover:ring-4 hover:ring-blue-50 dark:hover:ring-blue-900/20 transition-all"
                             alt=""
                             onClick={() => onNavigateToProfile?.(post.authorId)}
@@ -249,20 +390,22 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                 <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
                                     <h4 className="font-black text-slate-900 dark:text-white text-xl group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
                                     <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
-                                    <p className="text-[10px] text-gray-400 font-bold mt-1">Publicado {timeAgo(post.timestamp, language)}</p>
                                 </div>
-                                {post.authorId === user.id && onDeletePost && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsDeleteModalOpen(true);
-                                        }}
-                                        className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all"
-                                        title="Eliminar post"
-                                    >
-                                        <Trash2 size={24} />
-                                    </button>
-                                )}
+                                <div className="flex flex-col items-end">
+                                    <p className="text-[11px] text-gray-400 font-bold mb-2">{timeAgo(post.timestamp, language)}</p>
+                                    {post.authorId === user.id && onDeletePost && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsDeleteModalOpen(true);
+                                            }}
+                                            className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all"
+                                            title="Eliminar post"
+                                        >
+                                            <Trash2 size={24} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -273,67 +416,51 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         </h2>
                     )}
 
-                    {post.imageUrl && post.imageUrl.length > 0 && (
-                        <div className={`mb-8 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50 ${post.imageUrl.length === 1 ? '' : 'grid gap-2'
-                            } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[300px]' :
-                                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[450px]' :
-                                    post.imageUrl.length === 4 ? 'grid-cols-2 h-[450px]' : 'h-[450px]'
-                            }`}>
-                            {post.imageUrl.length === 1 ? (
-                                <img
-                                    src={post.imageUrl[0]}
-                                    className="w-full h-[450px] object-cover transition-all hover:scale-[1.01] rounded-[2rem] cursor-zoom-in"
-                                    alt=""
-                                    onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
-                                />
-                            ) : post.imageUrl.length === 2 ? (
-                                post.imageUrl.map((url, i) => (
-                                    <img
-                                        key={i}
-                                        src={url}
-                                        alt=""
-                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                                        onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
-                                    />
-                                ))
-                            ) : post.imageUrl.length === 3 ? (
-                                <>
-                                    <img
-                                        src={post.imageUrl[0]}
-                                        alt=""
-                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                                        onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
-                                    />
-                                    <img
-                                        src={post.imageUrl[1]}
-                                        alt=""
-                                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                                        onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
-                                    />
-                                    <img
-                                        src={post.imageUrl[2]}
-                                        alt=""
-                                        className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity cursor-zoom-in"
-                                        onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
-                                    />
-                                </>
-                            ) : post.imageUrl.length === 4 ? (
-                                post.imageUrl.map((url, i) => (
-                                    <img
-                                        key={i}
-                                        src={url}
-                                        alt=""
-                                        className="w-full h-[225px] object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                                        onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
-                                    />
-                                ))
-                            ) : null}
-                        </div>
-                    )}
+                    {post.type === 'news' && renderImages()}
 
                     <div className="text-gray-800 dark:text-gray-200 leading-relaxed text-lg md:text-xl font-medium mb-8 whitespace-pre-wrap">
                         {renderContentWithHashtags(post.content)}
                     </div>
+
+                    {post.linkedEvent && (
+                        <div
+                            className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-zinc-900 overflow-hidden hover:border-slate-200 dark:hover:border-zinc-800 transition-all duration-200 cursor-pointer group/event mb-8"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onNavigateToEvent) {
+                                    onNavigateToEvent(post.authorId, post.linkedEvent!.id);
+                                }
+                            }}
+                        >
+                            <div className="p-4">
+                                <div className="flex items-start space-x-4">
+                                    <div className="flex-shrink-0 p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl">
+                                        <Calendar size={24} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="font-black text-slate-900 dark:text-white text-lg truncate pr-2 group-hover/event:text-blue-600 transition-colors">{post.linkedEvent.title}</h4>
+                                            <div className="bg-slate-50 dark:bg-zinc-800 px-2 py-1 rounded-md border border-slate-100 dark:border-zinc-700 flex-shrink-0">
+                                                <span className="text-xs font-black text-slate-500 dark:text-slate-400">{post.linkedEvent.event_time.substring(0, 5)}h</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-4 text-sm text-slate-500 dark:text-slate-400 font-bold">
+                                            <span className="flex items-center">
+                                                <Clock size={16} className="mr-2 text-slate-300" />
+                                                {new Date(post.linkedEvent.event_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'short' })}
+                                            </span>
+                                            <span className="flex items-center truncate">
+                                                <MapPin size={16} className="mr-2 text-slate-300" />
+                                                {post.linkedEvent.location}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {post.type !== 'news' && renderImages()}
 
                     <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900">
                         <div className="flex items-center space-x-8">
@@ -356,7 +483,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                 </div>
                             )}
                             <div className="flex items-center space-x-3 text-slate-400">
-                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl">
+                                <div className="p-3 text-slate-400 group-hover:text-blue-500 transition-colors">
                                     <MessageCircle size={28} />
                                 </div>
                                 <span className="font-black text-xl dark:text-white">{post.comments}</span>
@@ -364,37 +491,55 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         </div>
                     </div>
 
-                    <div className="mt-10">
-                        <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-8 px-2">Comentarios ({post.commentsList.length})</h5>
-                        <div className="space-y-8">
-                            {post.commentsList.map((comment) => (
+                    <div className="mt-8 bg-slate-50 dark:bg-zinc-900/40 rounded-3xl p-6 border border-slate-200 dark:border-zinc-800">
+                        <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 pb-6 border-b border-slate-200 dark:border-zinc-800 px-2">Comentarios ({post.commentsList.length})</h5>
+                        <div className="space-y-6 max-h-[550px] overflow-y-auto pr-2">
+                            {post.commentsList.slice(0, visibleCommentsCount).map((comment) => (
                                 <div key={comment.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <div className="flex space-x-5">
                                         <img
-                                            src={comment.authorAvatar}
+                                            src={getSafeAvatar(comment.authorAvatar)}
                                             className="w-12 h-12 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
                                             alt=""
                                             onClick={() => onNavigateToProfile?.(comment.authorId)}
                                         />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-2">
-                                                <span
-                                                    className="font-bold text-slate-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors"
-                                                    onClick={() => onNavigateToProfile?.(comment.authorId)}
-                                                >
-                                                    {comment.authorName}
-                                                </span>
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{timeAgo(comment.timestamp, language)}</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <span
+                                                        className="font-bold text-slate-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors"
+                                                        onClick={() => onNavigateToProfile?.(comment.authorId)}
+                                                    >
+                                                        {comment.authorName}
+                                                    </span>
+                                                    {comment.authorUsername && (
+                                                        <span className={`text-xs font-medium ${post.type === 'news' ? 'text-orange-500' : 'text-purple-500'}`}>
+                                                            @{comment.authorUsername}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[11px] text-slate-400 font-bold tracking-tighter">{timeAgo(comment.timestamp, language)}</span>
                                             </div>
-                                            <div className="text-sm md:text-base text-slate-700 dark:text-gray-300 font-medium bg-slate-50 dark:bg-zinc-900/50 p-5 rounded-3xl rounded-tl-none border border-slate-100 dark:border-zinc-800 mb-3 shadow-sm">
+                                            <div className="text-sm md:text-base text-slate-700 dark:text-gray-300 font-medium bg-white dark:bg-[#0a0a0a] p-5 rounded-3xl rounded-tl-none border border-slate-100 dark:border-zinc-800 mb-3 shadow-sm">
                                                 {renderContentWithHashtags(comment.text)}
                                             </div>
-                                            <button
-                                                onClick={() => { setReplyingTo(comment.id); setReplyingToParentReplyId(undefined); setReplyText(`@${comment.authorUsername || 'usuario'} `); setTimeout(() => replyInputRef.current?.focus(), 100); }}
-                                                className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-2 px-2"
-                                            >
-                                                <Reply size={14} /><span>Responder</span>
-                                            </button>
+                                            <div className="flex items-center space-x-6 px-2">
+                                                <button
+                                                    onClick={() => { setReplyingTo(comment.id); setReplyingToParentReplyId(undefined); setReplyText(`@${comment.authorUsername || 'usuario'} `); setTimeout(() => replyInputRef.current?.focus(), 100); }}
+                                                    className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-2"
+                                                >
+                                                    <Reply size={14} /><span>Responder</span>
+                                                </button>
+
+                                                {comment.replies && comment.replies.length > 0 && (
+                                                    <button
+                                                        onClick={() => toggleReplies(comment.id)}
+                                                        className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 hover:underline flex items-center space-x-1"
+                                                    >
+                                                        {expandedReplies[comment.id] ? 'Ocultar respuestas' : `Ver ${comment.replies.length} respuestas`}
+                                                    </button>
+                                                )}
+                                            </div>
 
                                             {replyingTo === comment.id && replyingToParentReplyId === undefined && (
                                                 <div className="relative mt-4 ml-2">
@@ -413,14 +558,14 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                                         </button>
                                                     </form>
                                                     {mentionTarget === 'reply' && mentionQuery !== null && (
-                                                        <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-100 dark:border-zinc-800 z-[10] overflow-hidden shadow-2xl animate-in fade-in slide-in-from-top-2">
+                                                        <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-[#1a1a1a] rounded-3xl border border-blue-100 dark:border-blue-900/30 z-[10] overflow-hidden shadow-2xl animate-in slide-in-from-top-4">
                                                             {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
-                                                                <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-4 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left border-b border-slate-50 dark:border-zinc-900 last:border-0">
-                                                                    <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
-                                                                    <div className="min-w-0"><p className="text-xs font-black text-gray-900 dark:text-white truncate">{u.name}</p><p className="text-[10px] text-purple-600 font-bold">@{u.username}</p></div>
+                                                                <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-4 px-5 py-4 hover:bg-slate-50 dark:hover:bg-zinc-900/50 text-left border-b border-slate-50 dark:border-zinc-900 last:border-0">
+                                                                    <img src={getSafeAvatar(u.avatar)} className="w-10 h-10 rounded-xl object-cover shadow-sm" alt="" />
+                                                                    <div className="min-w-0"><p className="text-sm font-black text-slate-800 dark:text-white truncate">{u.name}</p><p className="text-xs text-purple-600 font-bold">@{u.username}</p></div>
                                                                 </button>
                                                             )) : (
-                                                                <div className="px-4 py-3 text-[10px] text-gray-400 italic">No hay resultados</div>
+                                                                <div className="px-5 py-4 text-xs font-medium text-slate-400 italic">No hay resultados</div>
                                                             )}
                                                         </div>
                                                     )}
@@ -428,8 +573,8 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                             )}
 
                                             {/* Recursively render replies */}
-                                            {comment.replies && comment.replies.length > 0 && (
-                                                <div className="mt-4 space-y-4">
+                                            {comment.replies && comment.replies.length > 0 && expandedReplies[comment.id] && (
+                                                <div className="mt-4 ml-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                                     {renderRepliesList(comment.replies, comment.id, 0)}
                                                 </div>
                                             )}
@@ -437,11 +582,21 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                     </div>
                                 </div>
                             ))}
+                            {visibleCommentsCount < post.commentsList.length && (
+                                <div className="flex justify-center mt-6 pb-2">
+                                    <button
+                                        onClick={() => setVisibleCommentsCount(prev => prev + 10)}
+                                        className="px-6 py-2.5 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 rounded-2xl font-bold text-sm hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                    >
+                                        Cargar más comentarios
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                <div className="p-6 md:p-10 bg-slate-50/50 dark:bg-zinc-900/20 border-t border-slate-50 dark:border-zinc-900 sticky bottom-0 z-10 backdrop-blur-sm">
+                <div className="p-4 md:p-6 pb-6 md:pb-8 pt-0 md:pt-0 bg-slate-50/50 dark:bg-zinc-900/20 border-t-0 sticky bottom-0 z-10 backdrop-blur-sm">
                     <form onSubmit={handleSubmit} className="flex items-center space-x-4 bg-white dark:bg-[#0a0a0a] rounded-[1.5rem] p-2 md:p-3 border border-slate-100 dark:border-zinc-800 shadow-lg shadow-black/5">
                         <input
                             ref={mainInputRef}
@@ -463,7 +618,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                             </div>
                             {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
                                 <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-4 px-5 py-4 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left border-b border-slate-50 dark:border-zinc-900 last:border-0 transition-colors">
-                                    <img src={u.avatar} className="w-10 h-10 rounded-xl object-cover" alt="" />
+                                    <img src={getSafeAvatar(u.avatar)} className="w-10 h-10 rounded-xl object-cover" alt="" />
                                     <div className="min-w-0">
                                         <p className="text-sm font-black text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
                                         <p className="text-[11px] text-purple-600 dark:text-purple-400 font-bold tracking-tight">@{u.username}</p>
@@ -488,6 +643,6 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 isOpen={isLightboxOpen}
                 onClose={() => setIsLightboxOpen(false)}
             />
-        </div>
+        </div >
     );
 };

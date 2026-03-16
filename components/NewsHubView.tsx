@@ -9,13 +9,14 @@ import { Language, useTranslation } from '../utils/translations';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { supabase } from '../supabaseClient';
 import { BADGE_CATALOG } from '../types';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface NewsHubViewProps {
   posts: Post[];
   user: User;
   onVote: (id: string, direction: 'up' | 'down') => void;
   onRepost: (id: string) => void;
-  onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, eventId?: string) => Promise<void>;
+  onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
   onAddComment: (postId: string, text: string) => void;
   onDeletePost?: (postId: string) => void;
   onNavigateToProfile?: (userId: string) => void;
@@ -43,13 +44,29 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
 }) => {
   // ... inside component ...
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<NewsTab>('latest');
+  const [activeTab, setActiveTab] = useState<NewsTab>(() => {
+    const saved = sessionStorage.getItem('news_hub_tab') as NewsTab;
+    return saved || 'latest';
+  });
   const t = useTranslation(language);
   const scrollDirection = useScrollDirection();
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (formRef.current && !formRef.current.contains(event.target as Node)) {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = '';
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -92,27 +109,57 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   useEffect(() => {
     if (!onLoadMore) return;
     const handleScroll = () => {
+      // Save scroll position for the current tab
+      sessionStorage.setItem(`news_hub_scroll_${activeTab}`, window.scrollY.toString());
+
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400 && !isLoadingMore && hasMore) {
         onLoadMore();
       }
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [onLoadMore, isLoadingMore, hasMore]);
+  }, [onLoadMore, isLoadingMore, hasMore, activeTab]);
+
+  useEffect(() => {
+    const savedScroll = sessionStorage.getItem(`news_hub_scroll_${activeTab}`);
+    if (savedScroll) {
+      const timer = setTimeout(() => {
+        window.scrollTo({
+          top: parseInt(savedScroll, 10),
+          behavior: 'instant' as ScrollBehavior
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    }
+  }, [activeTab]);
 
   const [newsTitle, setNewsTitle] = useState('');
   const [newsContent, setNewsContent] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSelectedImage(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+          break; // News only allows one image in this desktop view
+        }
+      }
+    }
+  };
+
   const [showHistory, setShowHistory] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [rankingHistory, setRankingHistory] = useState<{ badge_id: string, created_at: string }[]>([]);
-
-  useEffect(() => {
-    const savedTab = sessionStorage.getItem('news_hub_tab') as NewsTab;
-    if (savedTab) setActiveTab(savedTab);
-  }, []);
 
   useEffect(() => {
     sessionStorage.setItem('news_hub_tab', activeTab);
@@ -145,11 +192,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     const endOfDay = endOfDayDate.getTime();
 
     if (activeTab === 'latest') {
-      const recent = filtered.filter(n => {
-        const t = new Date(n.timestamp).getTime();
-        return t >= startOfDay && t <= endOfDay;
-      });
-      return recent.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
 
     const getUpvotes = (n: Post) => {
@@ -163,34 +206,36 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
       const mondayStart = new Date(now);
       mondayStart.setDate(now.getDate() - daysSinceMonday);
       mondayStart.setHours(0, 0, 0, 0);
-      const fridayEnd = new Date(mondayStart);
-      fridayEnd.setDate(mondayStart.getDate() + 4);
-      fridayEnd.setHours(23, 59, 59, 999);
+      const sundayEnd = new Date(mondayStart);
+      sundayEnd.setDate(mondayStart.getDate() + 6);
+      sundayEnd.setHours(23, 59, 59, 999);
 
       return filtered
         .filter(n => {
           const t = new Date(n.timestamp).getTime();
-          return t >= mondayStart.getTime() && t <= fridayEnd.getTime();
+          return t >= mondayStart.getTime() && t <= sundayEnd.getTime();
         })
         .sort((a, b) => getUpvotes(b) - getUpvotes(a))
         .slice(0, 3);
     }
 
     if (activeTab === 'popular') {
-      return filtered
-        .filter(n => {
-          const t = new Date(n.timestamp).getTime();
-          return t >= startOfDay && t <= endOfDay;
-        })
-        .sort((a, b) => (getUpvotes(b) + b.comments) - (getUpvotes(a) + a.comments));
+      const calculateScore = (n: Post) => {
+        const interactions = getUpvotes(n) + n.comments;
+        const diffMs = now.getTime() - new Date(n.timestamp).getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1; // 1 for first 24h, 2 for 24-48h, etc.
+        return interactions / diffDays;
+      };
+
+      return filtered.sort((a, b) => calculateScore(b) - calculateScore(a));
     }
 
     return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [posts, activeTab]);
 
   return (
-    <div className="pb-20 pt-28 md:pt-0">
-      <div className={`fixed top-16 left-0 right-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 mb-4 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-[250%] md:translate-y-0' : 'translate-y-0'}`}>
+    <div className="pb-20 pt-0">
+      <div className={`sticky top-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-full md:translate-y-0' : 'translate-y-0'}`}>
         <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
           <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
@@ -238,103 +283,110 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         />
       )}
 
-      {hasNewContent && onRefresh && (
-        <div className="flex justify-center my-4">
-          <button
-            onClick={onRefresh}
-            className="bg-orange-600 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-lg shadow-orange-600/20 hover:bg-orange-700 transition-all flex items-center space-x-2 cursor-pointer"
-          >
-            <RefreshCw size={14} className="animate-spin-slow" />
-            <span>{t('update_available')}</span>
-          </button>
-        </div>
-      )}
-
-      <div className="max-w-2xl xl:max-w-3xl mx-auto space-y-4">
+      <div className="max-w-2xl xl:max-w-3xl mx-auto pt-3 md:pt-6 space-y-3 md:space-y-4">
+        {hasNewContent && onRefresh && (
+          <div className="flex justify-center my-4">
+            <button
+              onClick={onRefresh}
+              className="bg-orange-600 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-lg shadow-orange-600/20 hover:bg-orange-700 transition-all flex items-center space-x-2 cursor-pointer"
+            >
+              <RefreshCw size={14} className="animate-spin-slow" />
+              <span>{t('update_available')}</span>
+            </button>
+          </div>
+        )}
         {activeTab !== 'ranking' ? (
           <>
-            <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800">
+            <div ref={formRef} className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800">
               <div className="flex space-x-4 p-3 md:p-5">
-                <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
+                <img src={getSafeAvatar(user.avatar)} className="w-10 h-10 rounded-full object-cover" alt="" />
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newsTitle.trim() || !newsContent.trim() || isSubmitting) return;
                   setIsSubmitting(true);
                   try {
-                    await onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
+                    await onAddPost(newsContent, 'news', [], selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle);
                     setMentionQuery(null);
                     setNewsTitle('');
                     setNewsContent('');
                     setSelectedImage(null);
+                    if (textareaRef.current) textareaRef.current.style.height = '';
                   } finally {
                     setIsSubmitting(false);
                   }
                 }} className="flex-1">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={newsTitle}
-                      onChange={(e) => setNewsTitle(e.target.value)}
-                      maxLength={100}
-                      placeholder="Título de la noticia"
-                      className="w-full bg-transparent border-none text-lg font-bold dark:text-white placeholder-gray-400 focus:ring-0 p-2 mb-1"
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      value={newsContent}
-                      onChange={handleTextChange}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setMentionQuery(null);
-                        }
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (!newsTitle.trim() || !newsContent.trim()) return;
-                          onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
-                          setMentionQuery(null);
-                          setNewsTitle('');
-                          setNewsContent('');
-                          setSelectedImage(null);
-                        }
-                      }}
-                      placeholder={`${t('share_your_news')}`}
-                      className={`w-full bg-transparent border-none text-base dark:text-white placeholder-gray-400 focus:ring-0 resize-none min-h-[40px] p-2 transition-all duration-200 ${selectedImage ? 'pr-20 pb-4' : 'pr-4'}`}
-                    />
+                  <div className="flex space-x-4">
+                    <div className="flex-1 min-w-0 relative">
+                      <input
+                        type="text"
+                        value={newsTitle}
+                        onChange={(e) => setNewsTitle(e.target.value)}
+                        maxLength={100}
+                        placeholder="Título de la noticia"
+                        className="w-full bg-transparent border-none text-lg font-bold dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none p-2 mb-1"
+                      />
+                      <textarea
+                        ref={textareaRef}
+                        value={newsContent}
+                        onChange={handleTextChange}
+                        onPaste={handlePaste}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setMentionQuery(null);
+                          }
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (!newsTitle.trim() || !newsContent.trim()) return;
+                            onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
+                            setMentionQuery(null);
+                            setNewsTitle('');
+                            setNewsContent('');
+                            setSelectedImage(null);
+                            if (textareaRef.current) textareaRef.current.style.height = '';
+                          }
+                        }}
+                        placeholder={`${t('share_your_news')}`}
+                        className={`w-full bg-transparent border-none text-base dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none resize-y min-h-[40px] max-h-[400px] p-2 transition-all duration-200 pr-4`}
+                      />
 
-                    {/* Image Preview */}
-                    {selectedImage && (
-                      <div className="absolute right-2 bottom-4 z-10">
-                        <div className="relative inline-block">
-                          <img src={selectedImage} alt="Preview" className="h-14 w-auto rounded-lg object-cover border border-gray-100 dark:border-zinc-800 shadow-sm bg-white dark:bg-zinc-900" />
-                          <button
-                            type="button"
-                            onClick={() => setSelectedImage(null)}
-                            className="absolute -top-2 -right-2 p-1 bg-white dark:bg-zinc-800 text-gray-500 hover:text-red-500 rounded-full shadow-md border border-gray-100 dark:border-zinc-700 transition-colors"
-                          >
-                            <X size={12} />
-                          </button>
+
+                      {mentionQuery !== null && (
+                        <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
+                          {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
+                            <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
+                              <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                              <div className="min-w-0">
+                                <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                                <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
+                              </div>
+                            </button>
+                          )) : (
+                            <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
+                          )}
                         </div>
-                      </div>
-                    )}
-
-                    {mentionQuery !== null && (
-                      <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
-                        {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
-                          <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
-                            <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
-                            <div className="min-w-0">
-                              <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
-                              <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
-                            </div>
-                          </button>
-                        )) : (
-                          <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
-                        )}
+                      )}
+                    </div>
+                    {selectedImage && (
+                      <div className="w-24 md:w-32 shrink-0 relative group/img aspect-[4/3] self-start mt-2 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm animate-in fade-in zoom-in-95">
+                        <img src={selectedImage} alt="Preview" className="w-full h-full object-cover bg-white dark:bg-zinc-900" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedImage(null);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                          className="absolute top-1.5 right-1.5 p-1 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/img:opacity-100"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
                     )}
                   </div>
                   <div className="flex items-center justify-between mt-4">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full"><ImageIcon size={20} /></button>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full transition-colors"><ImageIcon size={20} /></button>
+                    </div>
+
                     <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
@@ -357,7 +409,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </form>
               </div>
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-4">
               {sortedNews.length > 0 ? (
                 sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} language={language} />)
               ) : (
@@ -399,7 +451,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             </div>
           </>
         ) : (
-          <div className="space-y-4 animate-in fade-in duration-500">
+          <div className="space-y-3 md:space-y-4 animate-in fade-in duration-500">
             <div className="flex items-center space-x-3 px-4 mb-2">
               <Trophy className="text-orange-500" size={24} />
               <h3 className="text-xl font-black text-gray-900 dark:text-white">{t('top_ranking')}</h3>
@@ -408,7 +460,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               sortedNews.map((post, index) => (
                 <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
                   <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
-                  <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={post.authorAvatar} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.title || post.content}</h4></div></div>
+                  <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={getSafeAvatar(post.authorAvatar)} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.title || post.content}</h4></div></div>
                   <div className="flex flex-col items-center justify-center min-w-[70px] h-[84px] rounded-3xl bg-orange-50 dark:bg-orange-900/20 text-orange-500 border border-orange-100 dark:border-orange-900/30"><ChevronUp size={24} strokeWidth={4} /><span className="text-lg font-black mt-1 leading-none">{post.upvotes !== undefined ? post.upvotes : post.likes}</span></div>
                 </div>
               ))
@@ -442,7 +494,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
       <CreatePostModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onPost={(content, type, tags, imageUrl) => onAddPost(content, type, tags, imageUrl)}
+        onPost={(content, type, tags, imageUrls) => onAddPost(content, type, tags, imageUrls)}
         user={user}
         type="news"
         language={language}

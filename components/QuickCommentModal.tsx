@@ -5,6 +5,7 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Send, AtSign } from 'lucide-react';
 import { Post, User } from '../types';
 import { getMentionSuggestions } from '../utils/mentionUtils';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface QuickCommentModalProps {
   post: Post;
@@ -62,6 +63,13 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
     onClose();
   };
 
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [text]);
+
   return createPortal(
     <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#111] w-full max-w-lg rounded-[2rem] flex flex-col animate-in zoom-in-95 duration-200 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
@@ -90,7 +98,8 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
                   }
                 }}
                 placeholder="Escribe tu comentario aquí..."
-                className="w-full p-0 bg-transparent border-none text-lg font-medium outline-none focus:ring-0 resize-none min-h-[120px] leading-relaxed text-slate-800 dark:text-white placeholder-slate-300"
+                maxLength={1000}
+                className="w-full p-0 bg-transparent border-none text-lg font-medium outline-none focus:ring-0 resize-none min-h-[40px] leading-relaxed text-slate-800 dark:text-white placeholder-slate-300 overflow-hidden"
               />
 
               {/* Sugerencias de mención */}
@@ -103,7 +112,7 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
                       onClick={() => selectMention(u)}
                       className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0"
                     >
-                      <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                      <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
                         <p className="text-[10px] text-purple-600 dark:text-purple-400 font-bold truncate">@{u.username}</p>
@@ -116,7 +125,7 @@ export const QuickCommentModal: React.FC<QuickCommentModalProps> = ({ post, onCl
               )}
             </div>
 
-            <div className="flex items-center justify-end space-x-3 pt-4">
+            <div className="flex items-center justify-end space-x-3 pt-2">
               <button type="button" onClick={onClose} className="px-5 py-2 text-slate-400 hover:text-slate-600 font-bold text-sm transition-all">Cancelar</button>
               <button type="submit" disabled={!text.trim()} className={`flex items-center space-x-2 px-8 py-3 rounded-full text-white font-black text-sm transition-all transform active:scale-95 ${post.type === 'news' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-20`}><span>Enviar</span><Send size={16} /></button>
             </div>

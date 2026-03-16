@@ -5,6 +5,7 @@ import { User, Post, Chat, CalendarEvent, Notification } from '../types';
 import { Language } from '../utils/translations';
 import { supabase } from '../supabaseClient';
 import { Loader2, User as UserIcon } from 'lucide-react';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface ProfileRouteProps {
     users: User[];
@@ -117,7 +118,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                         username: data.username,
                         position: data.position,
                         department: data.department,
-                        avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.id}`,
+                        avatar: getSafeAvatar(data.avatar),
                         bio: data.bio || '',
                         interests: data.interests || [],
                         followers: data.followers_count || 0,
@@ -132,7 +133,8 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                         level_name: data.level_name,
                         novas: data.novas,
                         birthDate: data.birth_date,
-                        notificationSettings: data.notification_settings
+                        notificationSettings: data.notification_settings,
+                        linkedOrganizationId: data.linked_organization_id || data.linkedOrganizationId || null
                     };
                     setFetchedUser(formattedUser);
                 } else {
@@ -173,7 +175,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                     El perfil que buscas no existe o el enlace es incorrecto.
                 </p>
                 <button
-                    onClick={() => navigate('/feed')}
+                    onClick={() => navigate('/inicio')}
                     className="px-8 py-4 bg-blue-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-blue-700 transition-all transform active:scale-95 shadow-xl shadow-blue-500/20"
                 >
                     Volver al Inicio

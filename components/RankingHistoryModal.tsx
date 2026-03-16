@@ -4,6 +4,7 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Trophy, Medal, Calendar, User as UserIcon, Loader2, ChevronRight, Clock } from 'lucide-react';
 import { Badge, BADGE_CATALOG, User } from '../types';
 import { supabase } from '../supabaseClient';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface RankingHistoryModalProps {
     badges: Badge[];
@@ -202,7 +203,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                                     return (
                                         <div key={`${winner.user.id}-${index}`} className="flex items-center p-4 bg-white dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:bg-slate-50 dark:hover:bg-zinc-800/80">
                                             <div className="relative mr-4">
-                                                <img src={winner.user.avatar} className="w-12 h-12 rounded-xl object-cover" alt={winner.user.name} />
+                                                <img src={getSafeAvatar(winner.user.avatar)} className="w-12 h-12 rounded-xl object-cover" alt={winner.user.name} />
                                                 <div className="absolute -bottom-2 -right-2 bg-white dark:bg-zinc-900 rounded-full p-1 border border-slate-100 dark:border-zinc-800">
                                                     <div className={`${rankColor} p-1 rounded-full`}>
                                                         <Trophy size={10} fill="currentColor" />

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, MessageCircle, Heart, Share2, Repeat, Reply, Calendar, Clock, MapPin, Trash2, MoreHorizontal, Pin, ExternalLink, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
@@ -6,6 +7,7 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { Language, useTranslation } from '../utils/translations';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
 import { ImageLightbox } from './ImageLightbox';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface FullPostViewProps {
   post: Post;
@@ -38,7 +40,7 @@ const NestedReply: React.FC<{
   return (
     <div className={`group/reply animate-in fade-in slide-in-from-left-1 duration-300 ${level > 0 ? 'mt-3 border-l-2 border-slate-100 dark:border-zinc-800 pl-4' : 'mt-4'}`}>
       <div className="flex space-x-3">
-        <img src={reply.authorAvatar} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-100 dark:ring-zinc-800 cursor-pointer" alt="" onClick={() => onNavigateToProfile?.(reply.authorId)} />
+        <img src={getSafeAvatar(reply.authorAvatar)} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-100 dark:ring-zinc-800 cursor-pointer" alt="" onClick={() => onNavigateToProfile?.(reply.authorId)} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[12px] font-black text-slate-900 dark:text-white cursor-pointer hover:text-blue-600" onClick={() => onNavigateToProfile?.(reply.authorId)}>{reply.authorName}</span>
@@ -92,6 +94,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const t = useTranslation(language);
+  const navigate = useNavigate();
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -222,20 +225,21 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
         );
       }
       else if (part.startsWith('http')) {
-        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/]+)/);
+        const profileEventMatch = part.match(/(?:\/u\/|\/@)([^\/]+)\/(?:e|evento)\/([^\/\?\s]+)/);
         if (profileEventMatch && onNavigateToEvent) {
-          const [, userId, eventId] = profileEventMatch;
-          const eventOwner = users.find(u => u.id === userId);
+          const [, identifier, eventId] = profileEventMatch;
+          const cleanIdentifier = identifier.startsWith('@') ? identifier.slice(1) : identifier;
+          const eventOwner = users.find(u => u.username === cleanIdentifier || u.id === cleanIdentifier);
           const foundEvent = globalEvents?.find(ev => ev.id === eventId);
           const label = foundEvent ? foundEvent.title : (eventOwner ? t('view_event_of', { name: eventOwner.name }) : t('view_event'));
           return (
-            <button key={i} onClick={(e) => { e.stopPropagation(); onNavigateToEvent(userId, eventId); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1">
+            <button key={i} onClick={(e) => { e.stopPropagation(); onNavigateToEvent(cleanIdentifier, eventId); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1">
               <Calendar size={14} className="mr-1" /><span className="truncate max-w-[150px]">{label}</span>
             </button>
           );
         }
         return (
-          <button key={i} onClick={(e) => { e.stopPropagation(); window.open(part, '_blank'); }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-medium">
+          <button key={i} onClick={(e) => { e.stopPropagation(); if (part.includes('/event/') || part.includes('/calendario/') || part.includes('/evento/')) { navigate?.('/calendario'); } else { window.open(part, '_blank'); } }} className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-medium">
             {part}
           </button>
         );
@@ -280,13 +284,15 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
         </div>
 
         <div className="p-8">
-          <div className="flex items-center space-x-4 mb-8">
-            <img src={post.authorAvatar} className="w-14 h-14 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(post.authorId)} />
-            <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
-              <h4 className="font-black text-slate-900 dark:text-white leading-tight text-lg group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
-              <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
-              <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">{t('published_on', { date: timeAgo(post.timestamp, language) })}</p>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <img src={getSafeAvatar(post.authorAvatar)} className="w-14 h-14 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(post.authorId)} />
+              <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
+                <h4 className="font-black text-slate-900 dark:text-white leading-tight text-lg group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
+                <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
+              </div>
             </div>
+            <p className="text-[11px] text-gray-400 font-bold self-start mt-1">{timeAgo(post.timestamp, language)}</p>
           </div>
 
           <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap text-lg font-medium mb-8">
@@ -294,60 +300,80 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
           </div>
 
           {post.imageUrl && post.imageUrl.length > 0 && (
-            <div className={`mb-8 rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30 ${post.imageUrl.length === 1 ? '' : 'grid gap-2'
-              } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[350px]' :
-                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[500px]' :
-                  post.imageUrl.length === 4 ? 'grid-cols-2 h-[500px]' : 'h-[500px]'
-              }`}>
-              {post.imageUrl.length === 1 ? (
-                <img
-                  src={post.imageUrl[0]}
-                  className="w-full h-[500px] object-cover transition-all hover:scale-[1.01] rounded-3xl cursor-zoom-in"
-                  alt=""
-                  onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
-                />
-              ) : post.imageUrl.length === 2 ? (
-                post.imageUrl.map((url, i) => (
-                  <img
-                    key={i}
-                    src={url}
-                    alt=""
-                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                    onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
-                  />
-                ))
-              ) : post.imageUrl.length === 3 ? (
-                <>
+            <div className="mb-8">
+              {post.imageUrl.length === 1 && (
+                <div className="relative w-full aspect-[2/1] rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30">
                   <img
                     src={post.imageUrl[0]}
+                    className="w-full h-full object-cover transition-all hover:scale-[1.01] cursor-zoom-in"
                     alt=""
-                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
                     onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
                   />
-                  <img
-                    src={post.imageUrl[1]}
-                    alt=""
-                    className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                    onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
-                  />
-                  <img
-                    src={post.imageUrl[2]}
-                    alt=""
-                    className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity cursor-zoom-in"
-                    onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
-                  />
-                </>
-              ) : post.imageUrl.length === 4 ? (
-                post.imageUrl.map((url, i) => (
-                  <img
-                    key={i}
-                    src={url}
-                    alt=""
-                    className="w-full h-[250px] object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
-                    onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
-                  />
-                ))
-              ) : null}
+                </div>
+              )}
+
+              {post.imageUrl.length === 2 && (
+                <div className="grid grid-cols-2 gap-2 w-full aspect-[2/1] rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30">
+                  {post.imageUrl.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {post.imageUrl.length === 3 && (
+                <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30">
+                  <div className="relative row-span-2">
+                    <img
+                      src={post.imageUrl[0]}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
+                    />
+                  </div>
+                  <div className="relative h-full">
+                    <img
+                      src={post.imageUrl[1]}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(1); setIsLightboxOpen(true); }}
+                    />
+                  </div>
+                  <div className="relative h-full">
+                    <img
+                      src={post.imageUrl[2]}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                      onClick={() => { setCurrentImgIndex(2); setIsLightboxOpen(true); }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {post.imageUrl.length >= 4 && (
+                <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-3xl overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/30">
+                  {post.imageUrl.slice(0, 4).map((url, i) => (
+                    <div key={i} className="relative h-full">
+                      <img
+                        src={url}
+                        alt=""
+                        className="w-full h-full object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                        onClick={() => { setCurrentImgIndex(i); setIsLightboxOpen(true); }}
+                      />
+                      {i === 3 && post.imageUrl.length > 4 && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
+                          <span className="text-white font-black text-2xl">+{post.imageUrl.length - 4}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -404,7 +430,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                 <div className="absolute left-0 bottom-full mb-2 w-72 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
                   {mentionSuggestions.map(u => (
                     <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
-                      <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                      <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
                         <p className="text-[10px] text-purple-600 font-bold">@{u.username}</p>
@@ -427,7 +453,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                     <div key={comment.id} className="group/comment animate-in fade-in slide-in-from-bottom-2">
                       <div className="flex space-x-4">
                         <div className="flex flex-col items-center shrink-0">
-                          <img src={comment.authorAvatar} className="w-11 h-11 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(comment.authorId || '')} />
+                          <img src={getSafeAvatar(comment.authorAvatar)} className="w-11 h-11 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(comment.authorId || '')} />
                           {(hasReplies && isExpanded) || (replyingTo?.commentId === comment.id) ? (
                             <div className="w-0.5 flex-1 bg-slate-100 dark:bg-zinc-800 mt-2 mb-1"></div>
                           ) : null}
@@ -435,7 +461,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="text-sm font-black text-slate-900 dark:text-white cursor-pointer hover:text-blue-600 transition-colors" onClick={() => onNavigateToProfile?.(comment.authorId || '')}>{comment.authorName}</span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{timeAgo(comment.timestamp, language)}</span>
+                            <span className="text-[11px] text-slate-400 font-bold tracking-tighter">{timeAgo(comment.timestamp, language)}</span>
                           </div>
                           <div className="text-sm text-slate-700 dark:text-gray-300 font-medium bg-slate-50 dark:bg-zinc-900 p-5 rounded-[1.5rem] rounded-tl-none border border-slate-100 dark:border-zinc-800 leading-relaxed mb-2">
                             {renderContentWithHashtags(comment.text)}
@@ -500,7 +526,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                                 <div className="absolute left-0 bottom-full mb-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[60] overflow-hidden animate-in slide-in-from-bottom-2 duration-100">
                                   {mentionSuggestions.map(u => (
                                     <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0">
-                                      <img src={u.avatar} className="w-7 h-7 rounded-lg object-cover" alt="" />
+                                      <img src={getSafeAvatar(u.avatar)} className="w-7 h-7 rounded-lg object-cover" alt="" />
                                       <div className="min-w-0">
                                         <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
                                         <p className="text-[9px] text-purple-600 dark:text-purple-400 font-bold">@{u.username}</p>

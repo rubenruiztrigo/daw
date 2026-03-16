@@ -2,6 +2,7 @@ import React from 'react';
 import { User, MapPin, UserPlus, UserMinus, ArrowRight } from 'lucide-react';
 import { User as UserType } from '../types';
 import { Language, useTranslation } from '../utils/translations';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface UserInfoDropdownProps {
   userId: string;
@@ -40,7 +41,7 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
       <div className="px-6 pb-6">
         <div className="relative -mt-8 mb-3">
           <img
-            src={userInfo.avatar}
+            src={getSafeAvatar(userInfo.avatar)}
             className="w-16 h-16 rounded-2xl border-4 border-white dark:border-zinc-800 object-cover"
             alt=""
           />

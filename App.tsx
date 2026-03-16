@@ -13,13 +13,16 @@ import { Onboarding } from './components/Onboarding';
 import { Login } from './components/Login';
 import { NotificationsView } from './components/NotificationsView';
 import { StoreView } from './components/StoreView';
+import { ScrollManager } from './components/ScrollManager';
 import { User, Post, Chat, Message, Notification, Comment, CalendarEvent } from './types';
 import { supabase } from './supabaseClient';
 import { Loader2, Clock, X } from 'lucide-react';
 import { SearchRoute } from './components/SearchRoute';
 import { PostDetailsModal } from './components/PostDetailsModal';
 import { PostDetailView } from './components/PostDetailView';
+import { RegistrationDetailsModal } from './components/RegistrationDetailsModal';
 import { Routes, Route, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { getSafeAvatar } from './utils/avatarUtils';
 
 type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar';
 type Theme = 'light' | 'dark';
@@ -53,6 +56,7 @@ const App: React.FC = () => {
   const [isLoadingMoreNews, setIsLoadingMoreNews] = useState(false);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [weeklyTrends, setWeeklyTrends] = useState<{ tag: string, count: number }[]>([]);
+  const [selectedRegistrationUserId, setSelectedRegistrationUserId] = useState<string | null>(null);
 
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const [followerUserIds, setFollowerUserIds] = useState<Set<string>>(new Set());
@@ -98,7 +102,8 @@ const App: React.FC = () => {
         email: data.email,
         position: data.position || 'Personal Público',
         department: data.department || 'Administración',
-        avatar: data.avatar || `/img/imagen-por-defecto.png`,
+        jobCategory: data.job_category,
+        avatar: getSafeAvatar(data.avatar),
         bio: data.bio || '',
         interests: data.interests || [],
         followers: data.followers_count || 0,
@@ -108,9 +113,15 @@ const App: React.FC = () => {
         joinedDate: data.created_at,
         novas: data.novas || 0,
         isAdmin: data.is_admin || false,
+        isOrganization: data.is_organization || false,
+        organizationName: data.name,
+        organizationObjective: data.bio || '',
+        roleDescription: data.role_description,
+        administrationType: data.administration_type,
         status: data.status,
         chatSettings: data.chat_settings,
-        notificationSettings: data.notification_settings
+        notificationSettings: data.notification_settings,
+        linkedOrganizationId: data.linked_organization_id || data.linkedOrganizationId || null
       });
     }
   }, []);
@@ -126,7 +137,8 @@ const App: React.FC = () => {
         email: u.email,
         position: u.position || 'Personal Público',
         department: u.department || 'Administración',
-        avatar: u.avatar || `/img/imagen-por-defecto.png`,
+        jobCategory: u.job_category,
+        avatar: getSafeAvatar(u.avatar),
         bio: u.bio || '',
         interests: u.interests || [],
         followers: u.followers_count || 0,
@@ -136,9 +148,15 @@ const App: React.FC = () => {
         joinedDate: u.created_at,
         novas: u.novas || 0,
         isAdmin: u.is_admin || false,
+        isOrganization: u.is_organization || false,
+        organizationName: u.name,
+        organizationObjective: u.bio || '',
+        roleDescription: u.role_description,
+        administrationType: u.administration_type,
         status: u.status,
         chatSettings: u.chat_settings,
-        notificationSettings: u.notification_settings
+        notificationSettings: u.notification_settings,
+        linkedOrganizationId: u.linked_organization_id || u.linkedOrganizationId || null
       })));
     }
   }, []);
@@ -224,7 +242,7 @@ const App: React.FC = () => {
                 name: joinedProfile?.name || localProfile?.name || 'Usuario',
                 lastName: joinedProfile?.last_name || localProfile?.lastName || '',
                 username: joinedProfile?.username || localProfile?.username || '',
-                avatar: joinedProfile?.avatar || localProfile?.avatar || `/img/imagen-por-defecto.png`,
+                avatar: getSafeAvatar(joinedProfile?.avatar || localProfile?.avatar),
                 position: joinedProfile?.position || localProfile?.position || '',
                 department: joinedProfile?.department || localProfile?.department || '',
                 chatSettings: joinedProfile?.chat_settings || localProfile?.chatSettings
@@ -311,9 +329,9 @@ const App: React.FC = () => {
       setNotifications(data.map((n: any) => ({
         id: n.id,
         type: n.type,
-        senderName: `${n.sender?.name} ${n.sender?.last_name || ''}`,
+        senderName: n.sender ? `${n.sender.name} ${n.sender.last_name || ''}` : '',
         senderId: n.sender_id,
-        senderAvatar: n.sender?.avatar || `/img/imagen-por-defecto.png`,
+        senderAvatar: getSafeAvatar(n.sender?.avatar),
         content: n.content,
         timestamp: n.created_at,
         isRead: n.is_read,
@@ -514,7 +532,7 @@ const App: React.FC = () => {
           authorId: r.author_id,
           authorName: `${r.author?.name} ${r.author?.last_name || ''}`,
           authorUsername: r.author?.username || r.author?.name?.toLowerCase().replace(/\s/g, ''),
-          authorAvatar: r.author?.avatar || `/img/imagen-por-defecto.png`,
+          authorAvatar: getSafeAvatar(r.author?.avatar),
           text: r.text,
           timestamp: r.created_at,
           replies: []
@@ -547,7 +565,7 @@ const App: React.FC = () => {
             authorId: c.author_id,
             authorName: `${c.author?.name} ${c.author?.last_name || ''}`,
             authorUsername: c.author?.username || c.author?.name?.toLowerCase().replace(/\s/g, ''),
-            authorAvatar: c.author?.avatar || `/img/imagen-por-defecto.png`,
+            authorAvatar: getSafeAvatar(c.author?.avatar),
             text: c.text,
             timestamp: c.created_at,
             replies: repliesMap.get(c.id) || []
@@ -577,7 +595,7 @@ const App: React.FC = () => {
         authorName: `${p.author?.name} ${p.author?.last_name || ''}`,
         authorUsername: p.author?.username || p.author?.name.toLowerCase().replace(/\s/g, ''),
         authorPosition: p.author?.position,
-        authorAvatar: p.author?.avatar || `/img/imagen-por-defecto.png`,
+        authorAvatar: getSafeAvatar(p.author?.avatar),
         title: p.titulo,
         content: p.content,
         imageUrl: p.image_url || [],
@@ -675,7 +693,7 @@ const App: React.FC = () => {
           authorName: `${data.author?.name} ${data.author?.last_name || ''}`,
           authorUsername: data.author?.username || data.author?.name.toLowerCase().replace(/\s/g, ''),
           authorPosition: data.author?.position,
-          authorAvatar: data.author?.avatar || `/img/imagen-por-defecto.png`,
+          authorAvatar: getSafeAvatar(data.author?.avatar),
           title: data.titulo,
           content: data.content,
           imageUrl: data.image_url || [],
@@ -851,7 +869,7 @@ const App: React.FC = () => {
 
   const handleSearchHashtag = (tag: string) => {
     setSearchQuery(tag);
-    navigate(`/search?q=${encodeURIComponent(tag)}`);
+    navigate(`/buscar?q=${encodeURIComponent(tag)}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -874,9 +892,10 @@ const App: React.FC = () => {
 
     if (!error) {
       await fetchFeed();
-      // If we are in the detail view for this post, go back to feed
-      if (location.pathname === `/post/${postId}`) {
-        navigate('/feed');
+      // If we are in the detail view for this post, go back to the correct section
+      const isPostDetail = location.pathname.startsWith('/inicio/') || location.pathname.startsWith('/noticias/');
+      if (isPostDetail && location.pathname.includes(postId)) {
+        navigate(post.type === 'news' ? '/noticias' : '/inicio');
       }
     } else {
       console.error('Error deleting post:', error.message);
@@ -984,36 +1003,94 @@ const App: React.FC = () => {
 
   const handleSearchSubmit = (query: string) => {
     setSearchQuery(query);
-    navigate(`/search?q=${encodeURIComponent(query)}`);
+    navigate(`/buscar?q=${encodeURIComponent(query)}`);
   };
 
   const handleStartChat = (targetUser: User) => {
     setActiveChatUserId(targetUser.id);
-    navigate(`/messages/${targetUser.username || targetUser.id}`);
+    navigate(`/mensajes/${targetUser.username || targetUser.id}`);
   };
 
   const handleUpdateUser = async (updatedUser: User) => {
-    const { error } = await supabase.from('profiles').update({
-      name: updatedUser.name,
-      last_name: updatedUser.lastName,
-      username: updatedUser.username,
-      email: updatedUser.email,
-      gender: updatedUser.gender,
-      birth_date: updatedUser.birthDate,
-      position: updatedUser.position,
-      department: updatedUser.department,
-      job_category: updatedUser.jobCategory,
-      administration_type: updatedUser.administrationType,
-      country: updatedUser.country,
-      region: updatedUser.region,
-      bio: updatedUser.bio,
-      interests: updatedUser.interests,
-      avatar: updatedUser.avatar,
-      chat_settings: updatedUser.chatSettings,
-      notification_settings: updatedUser.notificationSettings,
-      updated_at: new Date().toISOString()
-    }).eq('id', updatedUser.id);
-    if (!error) fetchUserProfile(updatedUser.id);
+    // Actualización optimista en memoria para que la imagen de perfil cambie al instante
+    setCurrentUserData(prev => {
+      if (!prev || prev.id !== updatedUser.id) return prev;
+      return { ...prev, ...updatedUser };
+    });
+
+    // Actualizar también la lista de usuarios en memoria
+    setUsers(prev =>
+      prev.map(u => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u))
+    );
+
+    // Actualizar avatar del participante en los chats existentes
+    setChats(prev =>
+      prev.map(chat =>
+        chat.participant.id === updatedUser.id
+          ? {
+              ...chat,
+              participant: {
+                ...chat.participant,
+                avatar: updatedUser.avatar,
+                name: updatedUser.name,
+                lastName: updatedUser.lastName,
+                username: updatedUser.username,
+              },
+            }
+          : chat
+      )
+    );
+
+    // Actualizar avatar del autor en los posts ya cargados
+    setPosts(prev =>
+      prev.map(p =>
+        p.authorId === updatedUser.id
+          ? {
+              ...p,
+              authorAvatar: updatedUser.avatar,
+              authorName: `${updatedUser.name} ${updatedUser.lastName || ''}`,
+              authorUsername:
+                updatedUser.username ||
+                updatedUser.name.toLowerCase().replace(/\s/g, ''),
+            }
+          : p
+      )
+    );
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        name: updatedUser.name,
+        last_name: updatedUser.lastName,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        gender: updatedUser.gender,
+        birth_date: updatedUser.birthDate || null,
+        position: updatedUser.position,
+        department: updatedUser.department,
+        job_category: updatedUser.jobCategory,
+        administration_type: updatedUser.administrationType,
+        country: updatedUser.country,
+        region: updatedUser.region,
+        bio: updatedUser.bio,
+        interests: updatedUser.interests,
+        avatar: updatedUser.avatar,
+        linked_organization_id: updatedUser.linkedOrganizationId ?? null,
+        // Mapping organizationName to 'name' and organizationObjective to 'bio'
+        // since organization_name and organization_objective columns don't exist
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', updatedUser.id);
+
+    if (error) {
+      console.error('Profile update error details:', JSON.stringify(error));
+      // En caso de error, recargar desde la BD para no dejar un estado inconsistente
+      await fetchUserProfile(updatedUser.id);
+      throw error;
+    }
+
+    // Refrescar desde la BD para asegurarnos de que todo queda sincronizado
+    await fetchUserProfile(updatedUser.id);
   };
 
   const [searchParams] = useSearchParams();
@@ -1021,7 +1098,7 @@ const App: React.FC = () => {
     const q = searchParams.get('q');
     if (q) {
       if (q !== searchQuery) setSearchQuery(q);
-    } else if (['/feed', '/news'].includes(location.pathname)) {
+    } else if (['/inicio', '/noticias'].includes(location.pathname)) {
       setSearchQuery('');
     }
   }, [location.pathname, searchParams]); // REMOVED searchQuery from dependencies to prevent clearing while typing
@@ -1047,6 +1124,8 @@ const App: React.FC = () => {
       } else {
         query = query.or('type.eq.registration_request,type.eq.reward_request,type.eq.reward_accepted,content.ilike.%solicitud%,content.ilike.%canje%');
       }
+    } else if (tab === 'rewards') {
+      query = query.or('type.eq.reward_request,type.eq.reward_accepted,content.ilike.%canje%');
     }
 
     const { error } = await query;
@@ -1123,6 +1202,10 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleViewRegistrationData = (userId: string) => {
+    setSelectedRegistrationUserId(userId);
+  };
+
   const handleNavigateToProfile = (userId: string) => {
     const targetUser = users.find(u => u.id === userId);
     const identifier = targetUser?.username || userId;
@@ -1130,7 +1213,12 @@ const App: React.FC = () => {
   };
 
   const handleNavigateToPost = (postId: string) => {
-    navigate(`/post/${postId}`);
+    const post = posts.find(p => p.id === postId);
+    if (post?.type === 'news') {
+      navigate(`/noticias/${postId}`);
+    } else {
+      navigate(`/inicio/${postId}`);
+    }
   };
 
   const PendingApprovalView = () => (
@@ -1185,13 +1273,14 @@ const App: React.FC = () => {
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
+      <ScrollManager />
       <Routes>
-        <Route path="/login" element={!session ? <Login onLogin={() => navigate('/feed')} onRegister={() => navigate('/register')} /> : <Navigate to="/feed" replace />} />
-        <Route path="/register" element={!session ? <Onboarding onComplete={() => navigate('/login')} onCancel={() => navigate('/login')} /> : <Navigate to="/feed" replace />} />
+        <Route path="/inicio-sesion" element={!session ? <Login onLogin={() => navigate('/inicio')} onRegister={() => navigate('/registro')} /> : <Navigate to="/inicio" replace />} />
+        <Route path="/registro" element={!session ? <Onboarding onComplete={() => navigate('/inicio-sesion')} onCancel={() => navigate('/inicio-sesion')} /> : <Navigate to="/inicio" replace />} />
 
         <Route path="*" element={
           !session ? (
-            <Navigate to="/login" replace />
+            <Navigate to="/inicio-sesion" replace />
           ) : (
             <Layout
               currentView={currentView}
@@ -1214,25 +1303,32 @@ const App: React.FC = () => {
               trendingTags={weeklyTrends}
             >
               <Routes>
-                <Route path="/" element={<Navigate to="/feed" replace />} />
-                <Route path="/feed" element={<SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} globalEvents={globalEvents} chats={chats} onShareViaChat={handleSendMessage} language="es" onLoadMore={handleLoadMorePosts} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} />} />
-                <Route path="/news" element={<NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} onLoadMore={handleLoadMoreNews} hasMore={hasMoreNews} isLoadingMore={isLoadingMoreNews} language="es" />} />
-                <Route path="/calendar" element={<CalendarView language={'es'} />} />
-                <Route path="/messages/:chatId" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
-                <Route path="/messages" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
-                <Route path="/notifications" element={<NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} onNotificationClick={handleNotificationClick} language={'es'} currentUser={currentUserData!} onApproveUser={handleApproveUser} onRejectUser={handleRejectUser} onApproveRedemption={handleApproveRedemption} onNavigateToProfile={handleNavigateToProfile} />} />
-                <Route path="/store" element={<StoreView user={currentUserData!} language={'es'} onRedeemReward={handleRedeemReward} storeRewards={storeRewards} userRedemptions={userRedemptions} />} />
-                <Route path="/search" element={<SearchRoute posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} chats={chats} onShareViaChat={handleSendMessage} language={'es'} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/calendar`, { state: { eventId: eid } })} />} />
-                <Route path="/post/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} users={users} language={'es'} />} />
-                <Route path="/settings" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} language={'es'} />} />
-                <Route path="/:identifier" element={<ProfileRoute users={users} currentUserData={currentUserData} posts={posts} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onUpdateUser={handleUpdateUser} onRepost={handleRepost} onToggleFollow={handleToggleFollow} onDeletePost={handleDeletePost} onNavigateToEvent={(uid, eid) => navigate(`/calendar`, { state: { eventId: eid } })} onStartChat={handleStartChat} onAddPost={handleAddPost} onPromoteEvent={undefined} onShareViaChat={handleSendMessage} focusedEventId={null} onClearFocusedEvent={() => { }} onSearchHashtag={handleSearchHashtag} onNavigateToPost={handleNavigateToPost} onNavigateToProfile={handleNavigateToProfile} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onAddReply={handleAddReply} onVoteComment={undefined} onPreviewImage={undefined} globalEvents={globalEvents} language="es" pinnedPosts={new Set(posts.filter(p => p.isPinned && p.authorId === session?.user?.id).map(p => p.id))} onTogglePin={handleTogglePin} onSupportEvent={undefined} targetEventId={null} onClearTargetEvent={() => { }} />} />
+                <Route path="/" element={<Navigate to="/inicio" replace />} />
+                <Route path="/inicio" element={<SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} globalEvents={globalEvents} chats={chats} onShareViaChat={handleSendMessage} language="es" onLoadMore={handleLoadMorePosts} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} />} />
+                <Route path="/noticias" element={<NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} onLoadMore={handleLoadMoreNews} hasMore={hasMoreNews} isLoadingMore={isLoadingMoreNews} language="es" />} />
+                <Route path="/calendario" element={<CalendarView language={'es'} />} />
+                <Route path="/mensajes/:chatId" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
+                <Route path="/mensajes" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
+                <Route path="/notificaciones" element={<NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} onNotificationClick={handleNotificationClick} language={'es'} currentUser={currentUserData!} onApproveUser={handleApproveUser} onRejectUser={handleRejectUser} onApproveRedemption={handleApproveRedemption} onNavigateToProfile={handleNavigateToProfile} onViewRegistrationData={handleViewRegistrationData} users={users} />} />
+                <Route path="/recompensas" element={<StoreView user={currentUserData!} language={'es'} onRedeemReward={handleRedeemReward} storeRewards={storeRewards} userRedemptions={userRedemptions} />} />
+                <Route path="/buscar" element={<SearchRoute posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} chats={chats} onShareViaChat={handleSendMessage} language={'es'} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} />} />
+                <Route path="/inicio/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} users={users} language={'es'} />} />
+                <Route path="/noticias/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} users={users} language={'es'} />} />
+                <Route path="/configuracion" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} language={'es'} />} />
+                <Route path="/:identifier" element={<ProfileRoute users={users} currentUserData={currentUserData} posts={posts} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onUpdateUser={handleUpdateUser} onRepost={handleRepost} onToggleFollow={handleToggleFollow} onDeletePost={handleDeletePost} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} onStartChat={handleStartChat} onAddPost={handleAddPost} onPromoteEvent={undefined} onShareViaChat={handleSendMessage} focusedEventId={location.state?.scrollToEventId || null} onClearFocusedEvent={() => { }} onSearchHashtag={handleSearchHashtag} onNavigateToPost={handleNavigateToPost} onNavigateToProfile={handleNavigateToProfile} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onAddReply={handleAddReply} onVoteComment={undefined} onPreviewImage={undefined} globalEvents={globalEvents} language="es" pinnedPosts={new Set(posts.filter(p => p.isPinned && p.authorId === session?.user?.id).map(p => p.id))} onTogglePin={handleTogglePin} onSupportEvent={undefined} targetEventId={null} onClearTargetEvent={() => { }} />} />
               </Routes>
             </Layout>
           )
         }
         />
       </Routes>
-      {selectedPostFromNotify && <PostDetailsModal post={selectedPostFromNotify} onClose={() => setSelectedPostFromNotify(null)} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} currentUser={currentUserData!} users={users} onShareViaChat={handleStartChat} />}
+      {selectedPostFromNotify && <PostDetailsModal post={selectedPostFromNotify} onClose={() => setSelectedPostFromNotify(null)} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} onSearchHashtag={handleSearchHashtag} users={users} language={'es'} />}
+      {selectedRegistrationUserId && (
+        <RegistrationDetailsModal
+          user={users.find(u => u.id === selectedRegistrationUserId)!}
+          onClose={() => setSelectedRegistrationUserId(null)}
+        />
+      )}
       {toast && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-all animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center transform transition-all animate-in zoom-in-95">

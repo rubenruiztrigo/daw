@@ -7,6 +7,7 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { Language, useTranslation } from '../utils/translations';
 import { LinkPreview } from './LinkPreview';
 import { RENDER_REGEX, getUserByMention } from '../utils/mentionUtils';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface PostCardProps {
   post: Post;
@@ -54,7 +55,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   const handleAvatarClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onPreviewImage) {
-      onPreviewImage(post.authorAvatar);
+      onPreviewImage(getSafeAvatar(post.authorAvatar));
     } else {
       onNavigateToProfile?.(post.authorId);
     }
@@ -104,10 +105,12 @@ export const PostCard: React.FC<PostCardProps> = ({
           hiddenOnce = true;
           return null;
         }
-        const profileEventMatch = part.match(/\/u\/([^/]+)\/e\/([^/?\s]+)/);
+        const profileEventMatch = part.match(/(?:\/u\/|\/@)([^\/]+)\/(?:e|evento)\/([^\/\?\s]+)/);
         if (profileEventMatch && onNavigateToEvent) {
-          const [, userId, eventId] = profileEventMatch;
-          const eventOwner = users.find(u => u.id === userId);
+          const [, identifier, eventId] = profileEventMatch;
+          // Clean the identifier (remove @ if present)
+          const cleanIdentifier = identifier.startsWith('@') ? identifier.slice(1) : identifier;
+          const eventOwner = users.find(u => u.username === cleanIdentifier || u.id === cleanIdentifier);
           const foundEvent = globalEvents?.find(ev => ev.id === eventId);
           const label = foundEvent ? foundEvent.title : (eventOwner ? t('view_event_of', { name: eventOwner.name }) : t('view_event'));
           return (
@@ -115,7 +118,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               key={i}
               onClick={(e) => {
                 e.stopPropagation();
-                onNavigateToEvent(userId, eventId);
+                onNavigateToEvent(cleanIdentifier, eventId);
               }}
               className="text-blue-600 dark:text-blue-400 hover:underline transition-all font-black inline-flex items-center space-x-1"
             >
@@ -129,7 +132,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             key={i}
             onClick={(e) => {
               e.stopPropagation();
-              if (part.includes('/event/')) {
+              if (part.includes('/event/') || part.includes('/calendario/') || part.includes('/evento/')) {
                 onViewCalendar?.();
               } else {
                 window.open(part, '_blank');
@@ -160,7 +163,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       >
         <div className="relative flex-shrink-0">
           <img
-            src={post.authorAvatar}
+            src={getSafeAvatar(post.authorAvatar)}
             className="w-8 h-8 md:w-10 md:h-10 rounded-full object-cover cursor-pointer"
             onClick={handleAvatarClick}
             alt=""
@@ -245,7 +248,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
           {post.linkedEvent && (
             <div
-              className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-zinc-900 overflow-hidden hover:border-slate-200 dark:hover:border-zinc-800 transition-all duration-200 cursor-pointer group/event"
+              className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-zinc-900 overflow-hidden hover:border-slate-200 dark:hover:border-zinc-800 transition-all duration-200 cursor-pointer group/event mb-3"
               onClick={(e) => {
                 e.stopPropagation();
                 if (onNavigateToEvent) {
@@ -284,37 +287,58 @@ export const PostCard: React.FC<PostCardProps> = ({
           )}
 
           {post.imageUrl && post.imageUrl.length > 0 && (
-            <div className={`mb-3 rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/30 ${post.imageUrl.length === 1 ? '' : 'grid gap-1'
-              } ${post.imageUrl.length === 2 ? 'grid-cols-2 h-[200px]' :
-                post.imageUrl.length === 3 ? 'grid-cols-2 grid-rows-2 h-[300px]' :
-                  post.imageUrl.length === 4 ? 'grid-cols-2 h-[300px]' : 'h-[300px]'
-              }`}>
-              {post.imageUrl.length === 1 ? (
-                <img
-                  src={post.imageUrl[0]}
-                  alt="Content"
-                  className="w-full h-[300px] object-cover transition-all hover:scale-[1.02] rounded-2xl"
-                />
-              ) : post.imageUrl.length === 2 ? (
-                post.imageUrl.map((url, i) => (
+            <div className="mb-3">
+              {post.imageUrl.length === 1 && (
+                <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
                   <img
-                    key={i}
-                    src={url}
-                    alt=""
-                    className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                    src={post.imageUrl[0]}
+                    alt="Content"
+                    className="w-full h-full object-cover transition-all hover:scale-[1.02]"
                   />
-                ))
-              ) : post.imageUrl.length === 3 ? (
-                <>
-                  <img src={post.imageUrl[0]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
-                  <img src={post.imageUrl[1]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
-                  <img src={post.imageUrl[2]} alt="" className="w-full h-full object-cover col-span-2 hover:opacity-90 transition-opacity" />
-                </>
-              ) : post.imageUrl.length === 4 ? (
-                post.imageUrl.map((url, i) => (
-                  <img key={i} src={url} alt="" className="w-full h-[150px] object-cover hover:opacity-90 transition-opacity" />
-                ))
-              ) : null}
+                </div>
+              )}
+
+              {post.imageUrl.length === 2 && (
+                <div className="grid grid-cols-2 gap-1 w-full aspect-[2/1] rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                  {post.imageUrl.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                    />
+                  ))}
+                </div>
+              )}
+
+              {post.imageUrl.length === 3 && (
+                <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full aspect-[2/1] rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                  <div className="relative row-span-2">
+                    <img src={post.imageUrl[0]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  </div>
+                  <div className="relative h-full">
+                    <img src={post.imageUrl[1]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  </div>
+                  <div className="relative h-full">
+                    <img src={post.imageUrl[2]} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  </div>
+                </div>
+              )}
+
+              {post.imageUrl.length >= 4 && (
+                <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full aspect-[2/1] rounded-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                  {post.imageUrl.slice(0, 4).map((url, i) => (
+                    <div key={i} className="relative h-full">
+                      <img src={url} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                      {i === 3 && post.imageUrl.length > 4 && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
+                          <span className="text-white font-black text-xl">+{post.imageUrl.length - 4}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

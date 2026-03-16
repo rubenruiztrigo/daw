@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
 import { Post, User, Chat } from '../types';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface ShareModalProps {
   post?: Post;
@@ -36,11 +37,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   useScrollLock();
 
+  const getPostBaseUrl = (postType?: string) => {
+    return postType === 'news' ? 'noticias' : 'inicio';
+  };
+
   const shareUrl = sharedUser
-    ? `https://red.novagob.org/${sharedUser.username || sharedUser.id}`
+    ? `https://red.novagob.org/@${sharedUser.username || sharedUser.id}`
     : event
-      ? `https://red.novagob.org/u/${event.creator_id}/e/${event.id}`
-      : `https://red.novagob.org/p/${post?.id}`;
+      ? `https://red.novagob.org/@${event.creator_username || event.creator_id}/evento/${event.id}`
+      : `https://red.novagob.org/${getPostBaseUrl(post?.type)}/${post?.id}`;
 
   const handleCopy = async () => {
     try {
@@ -144,7 +149,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           {/* Visual Preview */}
           {sharedUser && (
             <div className="flex items-center space-x-4 p-4 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-50 dark:border-indigo-900/20 rounded-2xl">
-              <img src={sharedUser.avatar} className="w-12 h-12 rounded-xl object-cover border-2 border-white dark:border-zinc-800" alt="" />
+              <img src={getSafeAvatar(sharedUser.avatar)} className="w-12 h-12 rounded-xl object-cover border-2 border-white dark:border-zinc-800" alt="" />
               <div>
                 <p className="text-sm font-bold text-slate-900 dark:text-white">{sharedUser.name} {sharedUser.lastName}</p>
                 <p className="text-[10px] text-slate-500 font-bold uppercase">{sharedUser.position}</p>
@@ -199,7 +204,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               {filteredContacts.length > 0 ? filteredContacts.map(contact => (
                 <div key={contact.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900 transition-all group">
                   <div className="flex items-center space-x-3">
-                    <img src={contact.avatar} className="w-9 h-9 rounded-lg object-cover" alt="" />
+                    <img src={getSafeAvatar(contact.avatar)} className="w-9 h-9 rounded-lg object-cover" alt="" />
                     <div>
                       <p className="text-xs font-bold text-slate-900 dark:text-white">{contact.name} {contact.lastName}</p>
                       <p className="text-[9px] text-slate-400 font-bold uppercase">{contact.isFriend ? 'Amigo' : 'Te sigue'}</p>

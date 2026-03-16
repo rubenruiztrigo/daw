@@ -15,9 +15,11 @@ interface NotificationsViewProps {
   onApproveRedemption?: (userId: string, rewardId: string, notificationId: string) => void;
   currentUser?: User;
   onNavigateToProfile?: (userId: string) => void;
+  onViewRegistrationData?: (userId: string) => void;
+  users?: User[];
 }
 
-type Tab = 'all' | 'mentions' | 'followers' | 'admin';
+type Tab = 'all' | 'mentions' | 'followers' | 'rewards' | 'admin';
 
 export const NotificationsView: React.FC<NotificationsViewProps> = ({
   notifications,
@@ -30,7 +32,9 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   onRejectUser,
   onApproveRedemption,
   currentUser,
-  onNavigateToProfile
+  onNavigateToProfile,
+  onViewRegistrationData,
+  users = []
 }) => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
   const t = useTranslation(language);
@@ -43,6 +47,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       all: 0,
       mentions: 0,
       followers: 0,
+      rewards: 0,
       admin: 0,
       solicitudes: 0,
       recompensas: 0
@@ -73,6 +78,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           counts.mentions++;
         } else if (n.type === 'follow') {
           counts.followers++;
+        } else if (n.type === 'reward_request' || n.type === 'reward_accepted' || content.includes('Canje de')) {
+          counts.rewards++;
         } else {
           counts.all++;
         }
@@ -157,15 +164,25 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
   const filteredNotifications = notifications.filter(n => {
     if (activeTab === 'all') {
-      // Exclude admin-only tasks from "All" (Todo)
-      if (n.type === 'registration_request' || n.type === 'reward_request') return false;
+      // Exclude admin-only tasks and reward notifications from "All"
+      if (n.type === 'registration_request' || n.type === 'reward_request' || n.type === 'reward_accepted' || (n.content || '').includes('Canje de')) return false;
 
-      // Included: likes, votes, comments, reposts, system messages, reward_accepted
+      // Included: likes, votes, comments, reposts, system messages (except registration/reward)
       return true;
     } else if (activeTab === 'mentions') {
       return n.type === 'mention';
     } else if (activeTab === 'followers') {
       return n.type === 'follow';
+    } else if (activeTab === 'rewards') {
+      const c = (n.content || '').toLowerCase();
+      const type = n.type;
+      return type === 'reward_request' || 
+             type === 'reward_accepted' || 
+             c.includes('canje') || 
+             c.includes('novas') || 
+             c.includes('insignia') || 
+             c.includes('enhorabuena') || 
+             c.includes('has ganado');
     } else if (activeTab === 'admin') {
       if (adminTab === 'solicitudes') {
         const c = (n.content || '').toLowerCase();
@@ -184,10 +201,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('notifications')}</h2>
       </div>
 
-      <div className="w-full max-w-full flex space-x-2 overflow-x-auto pt-2 pb-2 scrollbar-hide px-1">
+      <div className="w-full max-w-full flex space-x-1.5 pt-2 pb-2 px-1">
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'all' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`flex-1 px-2 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center space-x-2 relative ${activeTab === 'all' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <Bell size={16} className={activeTab === 'all' ? 'fill-current' : ''} />
           <span>{t('notif_tab_all')}</span>
@@ -199,7 +216,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('mentions')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'mentions' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`flex-1 px-2 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center space-x-2 relative ${activeTab === 'mentions' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <MessageSquare size={16} />
           <span>{t('notif_tab_mentions')}</span>
@@ -211,7 +228,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('followers')}
-          className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'followers' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+          className={`flex-1 px-2 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center space-x-2 relative ${activeTab === 'followers' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
         >
           <UserPlus size={16} />
           <span>{t('notif_tab_followers')}</span>
@@ -221,10 +238,22 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('rewards')}
+          className={`flex-1 px-2 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center space-x-2 relative ${activeTab === 'rewards' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+        >
+          <Award size={16} />
+          <span>{t('notif_tab_rewards')}</span>
+          {unreadCounts.rewards > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111]">
+              {unreadCounts.rewards}
+            </span>
+          )}
+        </button>
         {currentUser?.isAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap flex items-center space-x-2 flex-shrink-0 relative ${activeTab === 'admin' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+            className={`flex-1 px-2 py-2.5 rounded-full text-sm font-bold transition-all flex items-center justify-center space-x-2 relative ${activeTab === 'admin' ? 'bg-purple-600 text-white' : 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
           >
             <ShieldCheck size={16} />
             <span>{t('notif_tab_admin')}</span>
@@ -281,14 +310,18 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                   className={`px-3 md:px-8 py-5 flex space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-all cursor-pointer relative overflow-hidden ${!n.isRead ? 'bg-red-50/20 dark:bg-red-900/10' : ''}`}
                 >
                   {!n.isRead && (
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse"></div>
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-red-600 rounded-full"></div>
                   )}
                   <div
                     className="relative flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={(e) => {
                       if (n.senderId) {
                         e.stopPropagation();
-                        onNavigateToProfile?.(n.senderId);
+                        if (n.type === 'registration_request' && onViewRegistrationData) {
+                          onViewRegistrationData(n.senderId);
+                        } else {
+                          onNavigateToProfile?.(n.senderId);
+                        }
                       }
                     }}
                   >
@@ -333,11 +366,29 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                           </button>
                         )}
                       </div>
+                    ) : (n.type === 'system' && ((n.content || '').toLowerCase().includes('bienvenido') || (n.content || '').toLowerCase().includes('rechazada') || (n.content || '').toLowerCase().includes('tu solicitud de registro ha sido') || (n.content || '').toLowerCase().includes('formas parte de la red social'))) ? (
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                        {content.replace(/¡Bienvenido\/a!\s*/gi, '').split(/(Red Social)/gi).map((part, i) => part.toLowerCase() === 'red social' ? <span key={i} className="font-bold">{part}</span> : part)}
+                      </p>
                     ) : n.type === 'registration_request' || (n.type === 'system' && (n.content || '').toLowerCase().includes('solicitud')) ? (
                       <div className="flex items-start justify-between gap-4">
-                        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                          Solicitud de <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span>
-                        </p>
+                        <div className="flex flex-col space-y-1">
+                          <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words flex items-center gap-2">
+                            <span>Solicitud de</span>
+                            <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span>
+                          </p>
+                          {(() => {
+                            const senderDetails = users.find(u => u.id === n.senderId);
+                            const isOrg = senderDetails?.isOrganization;
+                            return (
+                              <div className="flex items-center gap-1.5 pt-0.5">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${isOrg ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                  {isOrg ? 'Organización' : 'Personal'}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </div>
                         {(() => {
                           const c = (n.content || '').toLowerCase();
                           const isAceptada = c.includes('aceptad') || c.includes('aprobad') || c.includes('bienvenido');
@@ -361,7 +412,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                       </div>
                     ) : (
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                        <span className="font-black text-gray-900 dark:text-white">{n.senderName}</span> {content}
+                        {n.senderName && <span className="font-black text-gray-900 dark:text-white mr-1">{n.senderName}</span>}
+                        {content.split(/(\*\*.*?\*\*)/).map((part, i) =>
+                          part.startsWith('**') && part.endsWith('**')
+                            ? <span key={i} className="font-black text-gray-900 dark:text-white">{part.slice(2, -2)}</span>
+                            : part
+                        )}
                       </p>
                     )}
 
@@ -399,16 +455,18 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         )}
       </div>
 
-      {hasMore && (
-        <div className="flex justify-center pb-8">
-          <div className="flex items-center space-x-2 text-slate-400 font-bold animate-pulse">
-            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></span>
-            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+      {
+        hasMore && (
+          <div className="flex justify-center pb-8">
+            <div className="flex items-center space-x-2 text-slate-400 font-bold animate-pulse">
+              <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+              <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+    </div >
   );
 };

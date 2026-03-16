@@ -5,6 +5,7 @@ import { useScrollLock } from '../hooks/useScrollLock';
 import { X, Users, ArrowRight, Loader2, UserPlus, UserMinus, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { User } from '../types';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface UsersListModalProps {
   type: 'followers' | 'following' | 'event-supporters';
@@ -63,7 +64,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
           lastName: profile.last_name,
           position: profile.position || 'Personal Público',
           department: profile.department || 'Administración',
-          avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+          avatar: getSafeAvatar(profile.avatar),
           bio: profile.bio || '',
           interests: profile.interests || [],
           followers: profile.followers_count || 0,
@@ -148,7 +149,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
                   }}
                 >
                   <div className="flex items-center space-x-3">
-                    <img src={person.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                    <img src={getSafeAvatar(person.avatar)} className="w-12 h-12 rounded-xl object-cover" alt="" />
                     <div>
                       <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
                       <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase truncate max-w-[180px]">{person.position}</p>

@@ -7,6 +7,7 @@ import { PostCard } from './PostCard';
 import { ShareModal } from './ShareModal';
 import { CreatePostModal } from './CreatePostModal';
 import { Language, useTranslation } from '../utils/translations';
+import { getSafeAvatar } from '../utils/avatarUtils';
 
 type FeedTab = 'for-you' | 'following';
 
@@ -33,7 +34,7 @@ interface SocialFeedProps {
   prefilledEvent?: CalendarEvent;
   onClearInitialContent?: () => void;
   onViewCalendar: () => void;
-  onNavigateToEvent: (eventId: string) => void;
+  onNavigateToEvent: (userId: string, eventId: string) => void;
   onShareViaChat: (postId: string, chatRoomId: string) => void;
   globalEvents: CalendarEvent[];
   onLoadMore?: () => void;
@@ -86,6 +87,9 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const eventButtonRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
+
 
   useEffect(() => {
     const fetchUserEvents = async () => {
@@ -135,6 +139,16 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
 
   useEffect(() => {
     if (initialContent) setContent(initialContent);
+  }, [initialContent]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [content]);
+
+  useEffect(() => {
     if (prefilledEvent) setLinkedEvent(prefilledEvent);
     if (initialContent || prefilledEvent) {
       if (onClearInitialContent) onClearInitialContent();
@@ -215,6 +229,7 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
       await onAddPost(content, 'post', tags, selectedImages, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id);
       setMentionQuery(null);
       setContent(''); setSelectedImages([]); setSelectedDoc(null); setLinkedEvent(null);
+      if (textareaRef.current) textareaRef.current.style.height = '';
     } finally {
       setIsSubmitting(false);
     }
@@ -248,6 +263,32 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
 
   const removeImage = (index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const maxImages = 4;
+    let currentImageCount = selectedImages.length;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        if (currentImageCount >= maxImages) break;
+
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSelectedImages(prev => {
+              if (prev.length >= maxImages) return prev;
+              return [...prev, reader.result as string];
+            });
+          };
+          reader.readAsDataURL(file);
+          currentImageCount++;
+        }
+      }
+    }
   };
 
   return (
@@ -281,9 +322,9 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
               </button>
             </div>
           )}
-          <div className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800 relative">
+          <div ref={formRef} className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800 relative">
             <div className="flex space-x-4 p-3 md:p-5">
-              <img src={user.avatar} className="w-10 h-10 rounded-full object-cover" alt="" />
+              <img src={getSafeAvatar(user.avatar)} className="w-10 h-10 rounded-full object-cover" alt="" />
               <form onSubmit={handleSubmit} className="flex-1">
                 <div className="relative">
                   <textarea
@@ -291,31 +332,17 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
                     value={content}
                     onChange={handleTextChange}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                     placeholder={`${t('post_placeholder')}`}
-                    className={`w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[80px] p-0 transition-all duration-200 ${selectedImages.length > 0 ? 'pr-24 pb-4' : 'pr-4'}`}
+                    maxLength={1000}
+                    className={`w-full bg-transparent border-none text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[40px] max-h-[600px] p-0 transition-all duration-200 pr-4 overflow-hidden`}
                   />
 
-                  {/* Image Preview - Small & Floating */}
-                  {selectedImages.length > 0 && (
-                    <div className="absolute top-4 right-4 z-20 flex flex-wrap gap-1 max-w-[120px] justify-end">
-                      {selectedImages.map((img, idx) => (
-                        <div key={idx} className="relative group/img">
-                          <img src={img} alt="Preview" className="w-12 h-12 rounded-lg object-cover ring-2 ring-white dark:ring-zinc-800 shadow-lg" />
-                          <button
-                            onClick={() => removeImage(idx)}
-                            className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity"
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                   {mentionQuery !== null && (
                     <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
                       {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
                         <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
-                          <img src={u.avatar} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                          <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
                           <div className="min-w-0">
                             <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
                             <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
@@ -377,33 +404,86 @@ export const SocialFeedV2: React.FC<SocialFeedProps> = ({
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-zinc-800">
-                  <div className="flex items-center space-x-1">
-                    <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={handleImageUpload} />
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors" disabled={selectedImages.length >= 4}><ImageIcon size={20} /></button>
+                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                  {/* Image Grid Preview */}
+                  {selectedImages.length > 0 && (
+                    <div className="grid grid-cols-1 pr-3 md:pr-5 gap-2 mb-3 animate-in fade-in zoom-in-95 duration-200">
+                      {selectedImages.length === 1 && (
+                        <div className="relative group/img w-full aspect-[2/1]">
+                          <img src={selectedImages[0]} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                          <button type="button" onClick={() => removeImage(0)} className="absolute top-3 right-3 p-2 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={18} /></button>
+                        </div>
+                      )}
+
+                      {selectedImages.length === 2 && (
+                        <div className="grid grid-cols-2 gap-2 w-full aspect-[2/1]">
+                          {selectedImages.map((img, idx) => (
+                            <div key={idx} className="relative group/img h-full">
+                              <img src={img} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                              <button type="button" onClick={() => removeImage(idx)} className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {selectedImages.length === 3 && (
+                        <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1]">
+                          <div className="relative group/img row-span-2">
+                            <img src={selectedImages[0]} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                            <button type="button" onClick={() => removeImage(0)} className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={14} /></button>
+                          </div>
+                          <div className="relative group/img h-full">
+                            <img src={selectedImages[1]} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                            <button type="button" onClick={() => removeImage(1)} className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={14} /></button>
+                          </div>
+                          <div className="relative group/img h-full">
+                            <img src={selectedImages[2]} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                            <button type="button" onClick={() => removeImage(2)} className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={14} /></button>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedImages.length === 4 && (
+                        <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1]">
+                          {selectedImages.map((img, idx) => (
+                            <div key={idx} className="relative group/img h-full">
+                              <img src={img} alt="Preview" className="w-full h-full rounded-2xl object-cover border border-gray-100 dark:border-zinc-800 shadow-sm" />
+                              <button type="button" onClick={() => removeImage(idx)} className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-lg transition-all opacity-0 group-hover/img:opacity-100"><X size={14} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={handleImageUpload} />
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors" disabled={selectedImages.length >= 4}><ImageIcon size={20} /></button>
+                      <button
+                        ref={eventButtonRef}
+                        type="button"
+                        onClick={() => setShowEventDropdown(!showEventDropdown)}
+                        className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
+                      >
+                        <Calendar size={20} />
+                      </button>
+                    </div>
                     <button
-                      ref={eventButtonRef}
-                      type="button"
-                      onClick={() => setShowEventDropdown(!showEventDropdown)}
-                      className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
+                      type="submit"
+                      disabled={isSubmitting || (!content.trim() && selectedImages.length === 0 && !selectedDoc && !linkedEvent)}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 transition-all hover:bg-blue-700 flex items-center space-x-2"
                     >
-                      <Calendar size={20} />
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>{t('publishing')}...</span>
+                        </>
+                      ) : (
+                        <span>{t('post_button')}</span>
+                      )}
                     </button>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || (!content.trim() && selectedImages.length === 0 && !selectedDoc && !linkedEvent)}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 transition-all hover:bg-blue-700 flex items-center space-x-2"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        <span>{t('publishing')}...</span>
-                      </>
-                    ) : (
-                      <span>{t('post_button')}</span>
-                    )}
-                  </button>
                 </div>
               </form>
             </div>
