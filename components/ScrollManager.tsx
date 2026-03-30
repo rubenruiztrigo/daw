@@ -10,6 +10,7 @@ import { useLocation, useNavigationType } from 'react-router-dom';
 export const ScrollManager = () => {
     const { pathname } = useLocation();
     const navigationType = useNavigationType();
+    const prevPathRef = useRef(pathname);
     const scrollPositions = useRef<Record<string, number>>({});
 
     useEffect(() => {
@@ -23,6 +24,17 @@ export const ScrollManager = () => {
     }, [pathname]);
 
     useEffect(() => {
+        // If we are already in messages and just switching chats, skip global scroll
+        const wasInMessages = prevPathRef.current.startsWith('/mensajes');
+        const isInMessages = pathname.startsWith('/mensajes');
+        
+        if (wasInMessages && isInMessages) {
+            prevPathRef.current = pathname;
+            return;
+        }
+
+        prevPathRef.current = pathname;
+
         // Determine scroll behavior based on navigation type
         if (navigationType === 'POP') {
             // Back/Forward: Restore saved position

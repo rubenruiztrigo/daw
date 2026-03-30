@@ -67,9 +67,9 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ url, language = 'es' }
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center space-x-3 p-4 bg-gray-50/50 dark:bg-zinc-900/50 rounded-2xl border-[0.5px] border-gray-100 dark:border-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-all group"
+                className="flex items-center space-x-3 p-4 bg-gray-50/50 dark:bg-zinc-900/50 rounded-2xl border-[0.5px] border-gray-100 dark:border-zinc-800 transition-all group"
             >
-                <div className="p-2 bg-white dark:bg-zinc-800 rounded-lg text-slate-400 group-hover:text-blue-500 transition-colors shadow-sm">
+                <div className="p-2 bg-white dark:bg-zinc-800 rounded-lg text-slate-400 transition-colors shadow-sm">
                     <ExternalLink size={16} />
                 </div>
                 <div className="flex-1 min-w-0">

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { encryptMessage, decryptMessage } from '../utils/encryption';
 
 interface LoginProps {
 }
@@ -66,7 +67,7 @@ export const Login: React.FC<LoginProps> = () => {
         .from('profiles')
         .select('name')
         .eq(isEmail ? 'email' : 'username', isEmail ? id.toLowerCase() : id)
-        .single();
+        .maybeSingle();
 
       if (!profileError && data?.name) {
         setDisplayName(data.name);
@@ -191,7 +192,7 @@ export const Login: React.FC<LoginProps> = () => {
                       type="email"
                       value={recoveryEmail}
                       onChange={(e) => setRecoveryEmail(e.target.value)}
-                      placeholder="nombre@gob.es"
+                      placeholder="novo@novagob.org"
                       required
                       className="w-full pl-12 pr-5 py-4 bg-gray-50 dark:bg-zinc-900 border border-transparent rounded-[1.5rem] text-gray-900 dark:text-white font-bold placeholder-gray-400 focus:ring-4 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
                     />
@@ -267,7 +268,6 @@ export const Login: React.FC<LoginProps> = () => {
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white leading-tight">
             {getWelcomeMessage()}
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">Acceso para personal de la administración pública.</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
@@ -292,7 +292,7 @@ export const Login: React.FC<LoginProps> = () => {
                       setDisplayName(null);
                     }
                   }}
-                  placeholder="Ej. anagarcia o ana@gob.es"
+                  placeholder="Ej. novo o novo@novagob.org"
                   required
                   className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />

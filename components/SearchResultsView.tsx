@@ -1,14 +1,15 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Post, User } from '../types';
 import { sortUsersByRelevance } from '../utils/mentionUtils';
 import { supabase } from '../supabaseClient';
-import { Search, ArrowLeft, Users, Zap, Clock, Filter, Check, X, Loader2, UserPlus, UserMinus, ChevronDown } from 'lucide-react';
+import { Search, ArrowLeft, Users, Zap, Clock, Filter, Check, X, Loader2, UserPlus, UserMinus, ChevronDown, Sparkles } from 'lucide-react';
 import { PostCard } from './PostCard';
 import { NewsCard } from './NewsCard';
 import { normalizeString } from '../utils/stringUtils';
 import { Language, useTranslation } from '../utils/translations';
 import { getSafeAvatar } from '../utils/avatarUtils';
+import { ShareModal } from './ShareModal';
 
 interface SearchResultsViewProps {
   query: string;
@@ -18,10 +19,12 @@ interface SearchResultsViewProps {
   onVote: (id: string, dir: 'up' | 'down') => void;
   onRepost: (id: string) => void;
   onAddComment: (postId: string, text: string) => void;
+  onLikeComment?: (commentId: string) => void;
+  onLikeReply?: (replyId: string) => void;
   onDeletePost?: (id: string) => void;
   onViewChange: (view: any) => void;
   onSearchHashtag?: (tag: string) => void;
-  onShareViaChat?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void;
+  onShareViaChat?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
   onNavigateToProfile?: (userId: string) => void;
   onNavigateToPost?: (postId: string) => void;
   onPreviewImage?: (url: string) => void;
@@ -32,13 +35,17 @@ interface SearchResultsViewProps {
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   globalEvents?: any[];
   language: Language;
+  chats?: any[];
 }
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
-  query, posts, users, onLike, onVote, onRepost, onAddComment, onDeletePost, onViewChange, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent, globalEvents = [], language
+  query, posts, users, onLike, onVote, onRepost, onAddComment, onLikeComment, onLikeReply, onDeletePost, onViewChange, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent, globalEvents = [], language, chats = []
 }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'featured' | 'latest' | 'people'>('featured');
+  const [activeTab, setActiveTab] = useState<'featured' | 'latest' | 'people'>(() => {
+    const cached = sessionStorage.getItem('last_search_tab');
+    return (cached === 'featured' || cached === 'latest' || cached === 'people') ? cached : 'featured';
+  });
   const [localQuery, setLocalQuery] = useState(query);
   const [filterType, setFilterType] = useState<'all' | 'post' | 'news'>(() => {
     if (typeof window !== 'undefined') {
@@ -51,13 +58,39 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const t = useTranslation(language);
 
-  // Search State
-  const [searchResults, setSearchResults] = useState<Post[]>([]);
-  const [searchOffset, setSearchOffset] = useState(0);
+  // Search State with Cache Support
+  const [searchResults, setSearchResults] = useState<Post[]>(() => {
+    const cached = sessionStorage.getItem('last_search_results');
+    const cachedQuery = sessionStorage.getItem('last_search_query');
+    const cachedFilter = sessionStorage.getItem('last_search_filter');
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type') || 'all';
+    
+    if (cached && cachedQuery === query && cachedFilter === type) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [searchOffset, setSearchOffset] = useState(() => {
+    const cachedQuery = sessionStorage.getItem('last_search_query');
+    if (cachedQuery === query) {
+      return Number(sessionStorage.getItem('last_search_offset')) || 0;
+    }
+    return 0;
+  });
+
   const [hasMoreResults, setHasMoreResults] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [visiblePeopleLimit, setVisiblePeopleLimit] = useState(10);
+  const [sharingPost, setSharingPost] = useState<Post | null>(null);
+  const [sharingEvent, setSharingEvent] = useState<any | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const normalizedQuery = useMemo(() => normalizeString(query), [query]);
 
@@ -78,7 +111,18 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     setLocalQuery(query);
   }, [query]);
 
-  // Sync filterType to URL
+  // Safety blur on mount for mobile to ensure keyboard is closed
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setTimeout(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }, 150);
+    }
+  }, []);
+
+  // Sync filterType and Tab to URL and Cache
   useEffect(() => {
     const url = new URL(window.location.href);
     if (filterType !== 'all') {
@@ -87,11 +131,17 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       url.searchParams.delete('type');
     }
     window.history.replaceState({}, '', url.toString());
-  }, [filterType]);
+    sessionStorage.setItem('last_search_filter', filterType);
+    sessionStorage.setItem('last_search_tab', activeTab);
+  }, [filterType, activeTab]);
 
   // Fetch Logic
   const fetchSearchResults = useCallback(async (offset: number, limit: number, isLoadMore: boolean) => {
-    if (isLoadMore) {
+    // If we have cached results for this query/offset and it's not a load more, 
+    // we already rendered them from state initializer. We still search to refresh.
+    if (!isLoadMore && searchResults.length > 0) {
+      // Don't set isSearching(true) to avoid clearing UI
+    } else if (isLoadMore) {
       setIsLoadingMore(true);
     } else {
       setIsSearching(true);
@@ -100,6 +150,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     try {
       const isHashtagSearch = query.trim().startsWith('#');
       const searchTerm = normalizedQuery.trim();
+
+      if (!searchTerm && !isHashtagSearch) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
 
       let postsQuery = supabase.from('posts').select('*');
       let newsQuery = supabase.from('news').select('*');
@@ -149,10 +205,13 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         return {
           ...item,
           ...enrichedAuthor,
+          title: item.title || item.titulo,
+          imageUrl: item.imageUrl || item.image_url || [],
           likes: item.likes_count || 0,
           comments: item.comments_count || 0,
           reposts: item.reposts_count || 0,
           userLiked: false,
+          userDownvoted: false,
           userReposted: false,
           commentsList: [],
           tags: item.tags || [],
@@ -170,11 +229,17 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
       if (offset === 0) {
         setSearchResults(combined);
+        sessionStorage.setItem('last_search_results', JSON.stringify(combined));
+        sessionStorage.setItem('last_search_query', query);
+        sessionStorage.setItem('last_search_offset', '0');
       } else {
         setSearchResults(prev => {
           const existingIds = new Set(prev.map(p => p.id));
           const filtered = combined.filter(p => !existingIds.has(p.id));
-          return [...prev, ...filtered];
+          const updated = [...prev, ...filtered];
+          sessionStorage.setItem('last_search_results', JSON.stringify(updated));
+          sessionStorage.setItem('last_search_offset', offset.toString());
+          return updated;
         });
       }
 
@@ -192,20 +257,93 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     }
   }, [normalizedQuery, filterType, activeTab, users]);
 
+  const isInitialMount = useRef(true);
+  const lastSearchKey = useRef("");
+
   useEffect(() => {
     const trimmedQuery = normalizedQuery.trim();
     if (trimmedQuery.length < 3) {
       setSearchResults([]);
       setHasMoreResults(false);
+      lastSearchKey.current = "";
       return;
     }
 
+    const currentSearchKey = `${normalizedQuery}-${filterType}-${activeTab}`;
+
+    // Si acabamos de montar y ya tenemos resultados restaurados de cache,
+    // o si el "key" de la búsqueda no ha cambiado realmente (evitar re-fetch por actualización de 'users'),
+    // no limpiamos ni volvemos a buscar.
+    if (searchResults.length > 0 && (isInitialMount.current || currentSearchKey === lastSearchKey.current)) {
+      isInitialMount.current = false;
+      lastSearchKey.current = currentSearchKey;
+      return;
+    }
+
+    lastSearchKey.current = currentSearchKey;
     setSearchOffset(0);
     setHasMoreResults(true);
     setSearchResults([]);
     setVisiblePeopleLimit(10);
     fetchSearchResults(0, 10, false);
-  }, [normalizedQuery, filterType, activeTab, fetchSearchResults]);
+    isInitialMount.current = false;
+  }, [normalizedQuery, filterType, activeTab, fetchSearchResults, searchResults.length]);
+
+  const handleLocalVote = useCallback((id: string, dir: 'up' | 'down') => {
+    setSearchResults(prev => prev.map(p => {
+      if (p.id === id) {
+        const currentVote = p.userLiked ? 'up' : (p.userDownvoted ? 'down' : null);
+        let newLikes = p.likes || 0;
+        let newUpvotes = p.upvotes !== undefined ? p.upvotes : p.likes;
+
+        if (currentVote === dir) {
+          // Remover voto actual
+          if (dir === 'up') {
+            newLikes -= 1;
+            newUpvotes -= 1;
+          }
+          return { ...p, likes: newLikes, upvotes: newUpvotes, userLiked: false, userDownvoted: false };
+        } else {
+          // Cambiar o añadir voto
+          // Si estamos quitando un UP, restamos
+          if (currentVote === 'up') { newLikes -= 1; newUpvotes -= 1; }
+          
+          // Si estamos poniendo un UP, sumamos
+          if (dir === 'up') {
+            newLikes += 1;
+            newUpvotes += 1;
+          }
+          // El DOWN no suma ni resta al contador público
+
+          return { ...p, likes: newLikes, upvotes: newUpvotes, userLiked: dir === 'up', userDownvoted: dir === 'down' };
+        }
+      }
+      return p;
+    }));
+    onVote(id, dir);
+  }, [onVote]);
+
+  const handleLocalLike = useCallback((id: string) => {
+    setSearchResults(prev => prev.map(p => {
+      if (p.id === id) {
+        const isLiked = !p.userLiked;
+        return { ...p, likes: p.likes + (isLiked ? 1 : -1), userLiked: isLiked };
+      }
+      return p;
+    }));
+    onLike(id);
+  }, [onLike]);
+
+  const handleLocalRepost = useCallback((id: string) => {
+    setSearchResults(prev => prev.map(p => {
+      if (p.id === id) {
+        const isReposted = !p.userReposted;
+        return { ...p, reposts: p.reposts + (isReposted ? 1 : -1), userReposted: isReposted };
+      }
+      return p;
+    }));
+    onRepost(id);
+  }, [onRepost]);
 
   const loadMoreResults = useCallback(() => {
     if (activeTab === 'people') {
@@ -234,15 +372,16 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   const handleLocalSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (localQuery.trim().length < 3) return;
+    if (!localQuery.trim()) return;
 
     const url = new URL(window.location.href);
     url.searchParams.set('q', localQuery);
+    searchInputRef.current?.blur();
     navigate(`/buscar${url.search}`);
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-20 px-4 md:px-0">
+    <div className="max-w-4xl mx-auto space-y-6 pt-6 md:pt-8 pb-20 px-4 md:px-0">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
         <div className="flex items-center space-x-4">
           <button onClick={() => onViewChange('feed')} className="p-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-slate-400 hover:text-blue-600 transition-all"><ArrowLeft size={20} /></button>
@@ -250,15 +389,20 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
             <h2 className="text-2xl font-black text-gray-900 dark:text-white">{t('search')}</h2>
           </div>
         </div>
-        <form onSubmit={handleLocalSearch} className="relative flex-1 max-w-md z-50">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+        <form onSubmit={handleLocalSearch} className="relative w-full md:max-w-md z-50">
           <input
+            ref={searchInputRef}
             type="text"
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
             placeholder={t('new_search')}
-            className="w-full pl-12 pr-12 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-all dark:text-white"
+            inputMode="search"
+            enterKeyHint="search"
+            className="w-full pl-6 pr-20 py-3 bg-white dark:bg-[#111] border border-gray-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-inset focus:ring-blue-500 outline-none transition-all dark:text-white"
           />
+          <button type="submit" className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors">
+            <Search size={18} />
+          </button>
           {localQuery && (
             <button
               type="button"
@@ -266,7 +410,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                 setLocalQuery('');
                 setFilterType('all');
               }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 z-50"
+              className="absolute right-12 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 z-50"
             >
               <X size={16} />
             </button>
@@ -315,11 +459,11 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {(activeTab === 'featured' || activeTab === 'latest') && (
           <>
             {searchResults.length === 0 && !isSearching ? (
-              <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800">
+              <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800 w-full">
                 <Zap className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} />
                 <p className="text-gray-400 dark:text-zinc-600 font-bold italic">{t('no_posts_found')}</p>
               </div>
@@ -330,8 +474,8 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                     <NewsCard
                       key={post.id}
                       post={post}
-                      onVote={onVote}
-                      onRepost={onRepost}
+                      onVote={handleLocalVote}
+                      onRepost={handleLocalRepost}
                       onAddComment={onAddComment}
                       currentUser={currentUser}
                       followedUserIds={followedUserIds}
@@ -340,6 +484,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                       onNavigateToPost={onNavigateToPost}
                       onSearchHashtag={onSearchHashtag}
                       onPreviewImage={onPreviewImage}
+                      onOpenShare={(p) => setSharingPost(p)}
                       language={language}
                     />
                   );
@@ -348,16 +493,21 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                   <PostCard
                     key={post.id}
                     post={post}
-                    onLike={onLike}
-                    onVote={onVote}
-                    onRepost={onRepost}
+                    onLike={handleLocalLike}
+                    onLikeComment={onLikeComment}
+                    onLikeReply={onLikeReply}
+                    onVote={handleLocalVote}
+                    onRepost={handleLocalRepost}
                     onAddComment={onAddComment}
                     onDeletePost={onDeletePost}
                     onSearchHashtag={onSearchHashtag}
-                    onSharePost={(pid) => onShareViaChat?.('', '', pid)}
+                    onSharePost={(pid) => {
+                      const p = searchResults.find(post => post.id === pid);
+                      if (p) setSharingPost(p);
+                    }}
                     onNavigateToProfile={onNavigateToProfile}
                     onNavigateToPost={onNavigateToPost}
-                    onOpenShare={(p) => onShareViaChat?.('', '', p.id)}
+                    onOpenShare={(p) => setSharingPost(p)}
                     currentUser={currentUser}
                     followedUserIds={followedUserIds}
                     followerUserIds={followerUserIds}
@@ -377,16 +527,20 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
               </div>
             )}
 
-            {!hasMoreResults && searchResults.length > 0 && (
-              <div className="py-8 text-center text-gray-400 text-xs font-semibold uppercase tracking-widest opacity-50">
-                {t('end_of_results')}
+            {!hasMoreResults && searchResults.length > 0 && !isLoadingMore && (
+              <div className="py-6 flex flex-col items-center justify-center space-y-3">
+                <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
+                <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
+                  {t('end_of_results')}
+                </p>
+                <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
               </div>
             )}
           </>
         )}
 
         {activeTab === 'people' && (peopleResults.length === 0 ? (
-          <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800">
+          <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800 w-full">
             <Users className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} />
             <p className="text-gray-400 dark:text-zinc-600 font-bold italic">{t('no_colleagues_found')}</p>
           </div>
@@ -438,6 +592,36 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           </div>
         )}
       </div>
+
+      {sharingPost && (
+        <ShareModal 
+          isOpen={sharingPost !== null} 
+          onClose={() => setSharingPost(null)} 
+          onShare={onShareViaChat} 
+          post={sharingPost} 
+          chats={chats}
+          language={language}
+          currentUser={currentUser}
+          users={users}
+          followedUserIds={followedUserIds}
+          followerUserIds={followerUserIds}
+        />
+      )}
+
+      {sharingEvent && (
+        <ShareModal 
+          isOpen={sharingEvent !== null} 
+          onClose={() => setSharingEvent(null)} 
+          onShare={onShareViaChat} 
+          event={sharingEvent} 
+          chats={chats}
+          language={language}
+          currentUser={currentUser}
+          users={users}
+          followedUserIds={followedUserIds}
+          followerUserIds={followerUserIds}
+        />
+      )}
     </div>
   );
 };

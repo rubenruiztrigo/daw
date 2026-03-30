@@ -22,7 +22,7 @@ interface ProfileRouteProps {
     onStartChat: (user: User) => void;
     onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void;
     onPromoteEvent: (ev: CalendarEvent) => void;
-    onShareViaChat: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
+    onShareViaChat: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, scheduledAt?: Date) => Promise<void>;
     focusedEventId: string | null;
     onClearFocusedEvent: () => void;
     onSearchHashtag: (tag: string) => void;
@@ -32,6 +32,8 @@ interface ProfileRouteProps {
     onVote: (id: string, dir: 'up' | 'down') => void;
     onAddComment: (postId: string, text: string) => void;
     onAddReply: (commentId: string, text: string, parentReplyId?: string) => void;
+    onLikeComment?: (commentId: string) => void;
+    onLikeReply?: (replyId: string) => void;
     onVoteComment: (commentId: string) => void;
     onPreviewImage?: (url: string) => void;
     globalEvents?: any[];
@@ -68,6 +70,8 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     onVote,
     onAddComment,
     onAddReply,
+    onLikeComment,
+    onLikeReply,
     onVoteComment,
     onPreviewImage,
     globalEvents = [],
@@ -78,7 +82,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     targetEventId,
     onClearTargetEvent
 }) => {
-    const { identifier } = useParams<{ identifier: string }>();
+    const { identifier, eventId } = useParams<{ identifier: string; eventId?: string }>();
     const navigate = useNavigate();
     const [fetchedUser, setFetchedUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(false);
@@ -108,7 +112,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                 } else {
                     query = query.ilike('username', cleanIdentifier);
                 }
-                const { data, error } = await query.single();
+                const { data, error } = await query.maybeSingle();
 
                 if (data && !error) {
                     const formattedUser: User = {
@@ -150,6 +154,14 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
 
         fetchUser();
     }, [cleanIdentifier, localUser]);
+
+    // Redirection to username-based URL if common identifier is ID
+    useEffect(() => {
+        const user = localUser || fetchedUser;
+        if (user && user.username && cleanIdentifier === user.id) {
+            navigate(`/${user.username}${eventId ? `/${eventId}` : ''}`, { replace: true });
+        }
+    }, [localUser, fetchedUser, cleanIdentifier, navigate, eventId]);
 
     if (loading) {
         return (
@@ -206,7 +218,7 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onSearchHashtag={onSearchHashtag}
             onDeletePost={onDeletePost}
             onNavigateToEvent={onNavigateToEvent}
-            focusedEventId={focusedEventId || targetEventId}
+            focusedEventId={focusedEventId || targetEventId || eventId}
             onClearFocusedEvent={() => {
                 if (onClearFocusedEvent) onClearFocusedEvent();
                 if (onClearTargetEvent) onClearTargetEvent();
@@ -222,6 +234,8 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onVote={onVote}
             onAddComment={onAddComment}
             onAddReply={onAddReply}
+            onLikeComment={onLikeComment}
+            onLikeReply={onLikeReply}
             onVoteComment={onVoteComment}
             onPreviewImage={onPreviewImage}
             globalEvents={globalEvents}

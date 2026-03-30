@@ -7,7 +7,6 @@ import { Shield, Bell, Eye, LogOut, ChevronRight, ChevronDown, Wand2, Megaphone,
 import { User, BADGE_CATALOG, Badge } from '../types';
 import { COUNTRIES, COUNTRIES_DATA } from '../constants';
 import { supabase } from '../supabaseClient';
-import { HelpChatBot } from './HelpChatBot';
 import { PreferencesModal } from './PreferencesModal';
 import { Language, useTranslation } from '../utils/translations';
 
@@ -177,7 +176,7 @@ const AboutContent = ({ t }: { t: any }) => (
 
     <div className="pt-6 border-t border-slate-100 dark:border-zinc-800 text-center">
       <p className="text-xs text-slate-400">© {new Date().getFullYear()} Red Social NovaGob</p>
-      <p className="text-[10px] text-slate-300 mt-1">Refactor resolve_registration_request to handle ambiguous column reference</p>
+      <p className="text-[10px] text-slate-300 mt-1">v.1.0</p>
     </div>
   </div>
 );
@@ -347,10 +346,7 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
           <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-amber-600">
             <CustomBadgeIcon size={24} />
           </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('badges_title')}</h3>
-            <p className="text-xs text-slate-500 font-medium">{t('badges_desc')}</p>
-          </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('badges_title')}</h3>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
       </div>
@@ -394,7 +390,7 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
               <div className="flex items-center space-x-3 text-slate-400 dark:text-zinc-500 uppercase tracking-[0.2em] text-[11px] font-black pl-1">
                 <span>{cat.label}</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
                 {catBadges.map(b => {
                   const label = (b.label || '').toLowerCase();
                   const id = (b.id || '').toLowerCase();
@@ -460,12 +456,12 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
                   const frameGradient = isUnlocked ? 'from-purple-500 via-indigo-500 to-purple-600' : gradient;
 
                   return (
-                    <div key={badge.id} className={`group p-6 rounded-[2.5rem] border transition-all relative flex flex-col items-center text-center h-full ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent grayscale opacity-60'}`}>
+                    <div key={badge.id} className={`group p-4 md:p-6 rounded-3xl md:rounded-[2.5rem] border transition-all relative flex flex-col items-center text-center h-full ${isUnlocked ? 'bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2' : 'bg-slate-100/50 dark:bg-zinc-900/50 border-transparent grayscale opacity-60'}`}>
                       {/* Header area - High impact */}
-                      <div className={`w-full h-32 mb-6 rounded-[2rem] bg-gradient-to-br ${frameGradient} p-0.5 relative overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-700 perspective-1000`}>
-                        <div className="w-full h-full relative preserve-3d hover:rotate-y-180 transition-transform duration-700 cursor-pointer">
+                      <div className={`w-full aspect-square mb-4 md:mb-6 rounded-2xl md:rounded-[2rem] bg-gradient-to-br ${frameGradient} p-0.5 relative overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-700 perspective-1000 group/badge-container`}>
+                        <div className="w-full h-full relative preserve-3d group-hover/badge-container:rotate-y-180 transition-transform duration-700 cursor-pointer will-change-transform transform-gpu">
                           {/* Front Side */}
-                          <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.9rem] flex items-center justify-center overflow-hidden backface-hidden border-2 border-purple-500/20 dark:border-purple-400/20">
+                          <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-2xl md:rounded-[1.9rem] flex items-center justify-center overflow-hidden backface-hidden border-2 border-purple-500/20 dark:border-purple-400/20">
                             <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-10`}></div>
                             {(() => {
                               const badgeImg = getBadgeImage(badge);
@@ -486,13 +482,20 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
                           </div>
 
                           {/* Back Side - Using branding isotipo */}
-                          <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.9rem] flex items-center justify-center overflow-hidden backface-hidden rotate-y-180 border-2 border-purple-500/20 dark:border-purple-400/20">
+                          <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-2xl md:rounded-[1.9rem] flex flex-col items-center justify-center overflow-hidden backface-hidden rotate-y-180 border-2 border-purple-500/20 dark:border-purple-400/20">
                             <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-20`}></div>
-                            <img 
-                              src="/img/novagob.brand_isotipo_black.svg" 
-                              className="w-1/2 h-1/2 object-contain opacity-40 dark:invert" 
-                              alt="NovaGob"
-                            />
+                            <div className="relative z-10 flex flex-col items-center justify-center h-full w-full">
+                              <img 
+                                src="/img/novagob.brand_isotipo_black.svg" 
+                                className="w-1/3 h-1/3 object-contain opacity-20 dark:invert mb-2" 
+                                alt="NovaGob"
+                              />
+                              {badge.nova_reward !== undefined && badge.nova_reward !== null && badge.nova_reward > 0 && (
+                                <div className="flex items-center animate-in zoom-in-50 duration-500 delay-300 mt-2">
+                                  <span className="text-[9px] group-hover/badge-container:text-[11px] font-black text-blue-600 dark:text-blue-400 leading-none transition-all duration-300">{badge.nova_reward} Novas</span>
+                                </div>
+                              )}
+                            </div>
                             {/* Shine effect back */}
                             <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent translate-x-full group-hover:-translate-x-full transition-transform duration-1000 z-20 pointer-events-none delay-300"></div>
                           </div>
@@ -502,17 +505,7 @@ const BadgesList: React.FC<{ user: User, t: any, onClose: () => void }> = ({ use
                       </div>
 
                       <div className="space-y-2">
-                        <h4 className="text-base font-black text-slate-900 dark:text-white leading-tight break-words">{badge.label}</h4>
-                      </div>
-
-                      <div className="mt-auto w-full pt-6">
-                        <div className="pt-4 border-t border-slate-50 dark:border-zinc-900 w-full flex justify-center h-10 items-center">
-                          {badge.nova_reward !== undefined && badge.nova_reward !== null && badge.nova_reward > 0 && (
-                            <div className="bg-slate-50 dark:bg-zinc-900/50 px-3 py-1 rounded-full border border-slate-100 dark:border-zinc-800 flex items-center space-x-2">
-                              <span className="text-[10px] font-black text-blue-600 leading-none">{badge.nova_reward} Novas</span>
-                            </div>
-                          )}
-                        </div>
+                        <h4 className="text-xs md:text-base font-black text-slate-900 dark:text-white leading-tight break-words">{badge.label}</h4>
                       </div>
                     </div>
                   );
@@ -621,22 +614,20 @@ const ChatSettingsForm: React.FC<{
             <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600">
               <MessageCircle size={24} />
             </div>
-            <div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('chats')}</h3>
-              <div className="flex items-center space-x-2 h-4">
-                {saveStatus === 'saving' && (
-                  <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
-                    <Loader2 size={10} className="animate-spin" />
-                    <span>Guardando...</span>
-                  </span>
-                )}
-                {saveStatus === 'saved' && (
-                  <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
-                    <Check size={10} />
-                    <span>Cambios guardados</span>
-                  </span>
-                )}
-              </div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('chats')}</h3>
+            <div className="flex items-center space-x-2 h-4">
+              {saveStatus === 'saving' && (
+                <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
+                  <Loader2 size={10} className="animate-spin" />
+                  <span>Guardando...</span>
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
+                  <Check size={10} />
+                  <span>Cambios guardados</span>
+                </span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
@@ -785,22 +776,20 @@ const NotificationSettingsForm: React.FC<{ user: User, t: any, onSave: (updatedU
           <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600">
             <Bell size={24} />
           </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('notification_settings')}</h3>
-            <div className="flex items-center space-x-2 h-4">
-              {saveStatus === 'saving' && (
-                <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
-                  <Loader2 size={10} className="animate-spin" />
-                  <span>Guardando...</span>
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
-                  <Check size={10} />
-                  <span>Cambios guardados</span>
-                </span>
-              )}
-            </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('notifications')}</h3>
+          <div className="flex items-center space-x-2 h-4">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
+                <Loader2 size={10} className="animate-spin" />
+                <span>Guardando...</span>
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
+                <Check size={10} />
+                <span>Cambios guardados</span>
+              </span>
+            )}
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
@@ -839,17 +828,17 @@ const NotificationSettingsForm: React.FC<{ user: User, t: any, onSave: (updatedU
         </div>
       </div>
 
-      <div className="p-8 bg-slate-50 dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 flex space-x-3">
+      <div className="p-6 bg-slate-50 dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 flex space-x-3">
         <button
           onClick={onClose}
-          className="flex-1 py-4 bg-white dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm border border-slate-100 dark:border-zinc-700 hover:bg-slate-50 transition-all"
+          className="flex-1 py-3 bg-white dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm border border-slate-100 dark:border-zinc-700 hover:bg-slate-50 transition-all"
         >
           {t('cancel')}
         </button>
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
+          className="flex-[2] py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
         >
           {isSaving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>{t('save_changes')}</span></>}
         </button>
@@ -964,6 +953,33 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
 
     setIsUpdating(true);
     setError(null);
+    
+    // Validation
+    const errors: string[] = [];
+    if (!formData.username || formData.username.length < 3) errors.push("Nombre de usuario (min 3 carac.)");
+    if (!formData.email?.trim() || !formData.email.includes('@')) errors.push("Email válido");
+    if (!formData.country) errors.push("País");
+    if (!formData.region) errors.push("Región");
+
+    if (!user.isOrganization) {
+      if (!formData.name?.trim()) errors.push("Nombre");
+      if (!formData.lastName?.trim()) errors.push("Apellidos");
+      if (!formData.birthDate) errors.push("Fecha de nacimiento");
+      if (!formData.jobCategory) errors.push("Categoría profesional");
+      if (!formData.administrationType) errors.push("Tipo de administración");
+      if (!formData.position?.trim()) errors.push("Especialización / Puesto");
+      if (!formData.department?.trim()) errors.push("Nombre de la organización");
+    } else {
+      if (!formData.name?.trim()) errors.push("Nombre de la organización");
+      if (!formData.bio?.trim()) errors.push("Biografía profesional");
+    }
+
+    if (errors.length > 0) {
+      setError(`Campos obligatorios: ${errors.join(', ')}`);
+      setIsUpdating(false);
+      return;
+    }
+
     try {
       await performSave(formData);
       onClose();
@@ -981,29 +997,27 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
           <div className="p-2 bg-blue-50 dark:bg-zinc-900 rounded-xl text-blue-600">
             <UserCircle size={24} />
           </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('personal_data')}</h3>
-            <div className="flex items-center space-x-2 h-4">
-              {saveStatus === 'saving' && (
-                <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
-                  <Loader2 size={10} className="animate-spin" />
-                  <span>Guardando...</span>
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
-                  <Check size={10} />
-                  <span>Cambios guardados</span>
-                </span>
-              )}
-            </div>
+          <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('personal_data')}</h3>
+          <div className="flex items-center space-x-2 h-4">
+            {saveStatus === 'saving' && (
+              <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
+                <Loader2 size={10} className="animate-spin" />
+                <span>Guardando...</span>
+              </span>
+            )}
+            {saveStatus === 'saved' && (
+              <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
+                <Check size={10} />
+                <span>Cambios guardados</span>
+              </span>
+            )}
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-8 pb-32 space-y-8 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-8 pb-12 space-y-8 scrollbar-hide">
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-2xl border border-red-100 dark:border-red-900/30 flex items-center space-x-3 animate-in slide-in-from-top-2">
               <AlertCircle size={18} />
@@ -1124,7 +1138,7 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                     label="País"
                     value={formData.country}
                     options={COUNTRIES}
-                    onChange={(val) => setFormData({ ...formData, country: val, region: '' })}
+                    onChange={(val) => setFormData({ ...formData, country: val, region: val === 'Otro' ? 'Otra' : '' })}
                     placeholder="Selecciona..."
                   />
                   {/* 6. Región */}
@@ -1196,7 +1210,7 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                     label="País"
                     value={formData.country}
                     options={COUNTRIES}
-                    onChange={(val) => setFormData({ ...formData, country: val, region: '' })}
+                    onChange={(val) => setFormData({ ...formData, country: val, region: val === 'Otro' ? 'Otra' : '' })}
                     placeholder="Selecciona..."
                   />
                   <SelectDrop
@@ -1265,8 +1279,8 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Especialización / Puesto</label>
+                  <div className="space-y-1 relative">
+                    <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1 flex items-center h-[14px]">Especialización / Puesto</label>
                     <div className="relative">
                       <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
@@ -1279,7 +1293,10 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                     </div>
                   </div>
                   <div className="space-y-1 relative">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1">Nombre de la organización</label>
+                    <label className="text-[10px] font-black text-slate-500 dark:text-gray-400 uppercase ml-1 flex items-center gap-1.5 h-[14px]">
+                      <span>Nombre de la organización</span>
+                      {formData.linkedOrganizationId && <CheckCircle2 size={12} className="text-blue-500" />}
+                    </label>
                     <div className="relative">
                       <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                       <input
@@ -1294,7 +1311,7 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                           }));
                           searchOrganizations(newValue);
                         }}
-                        className="w-full pl-12 pr-10 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
+                        className="w-full pl-12 pr-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white transition-all"
                         placeholder="Ej. Ayuntamiento de Madrid"
                       />
                       {isSearchingOrgs && (
@@ -1304,11 +1321,7 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                       )}
                     </div>
 
-                    {formData.linkedOrganizationId && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500" title="Cuenta oficial vinculada">
-                        <CheckCircle2 size={18} />
-                      </div>
-                    )}
+                    {/* Redundant icon removed from here as per user request to move it to the label */}
 
                     {orgResults.length > 0 && (
                       <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
@@ -1330,30 +1343,30 @@ const PersonalDataForm: React.FC<{ user: User, t: any, onSave: (updatedUser: Use
                             <span>{org.name}</span>
                           </button>
                         ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {formData.linkedOrganizationId && (
-                    <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl animate-in fade-in slide-in-from-top-2">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle2 size={16} className="text-blue-500" />
-                        <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Cuenta oficial vinculada: {formData.department}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, linkedOrganizationId: null }))}
-                        className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full text-blue-500 transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
                     </div>
                   )}
                 </div>
               </div>
-            )}
-          </div>
+
+              {formData.linkedOrganizationId && (
+                <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 size={16} className="text-blue-500" />
+                    <span className="text-sm font-bold text-blue-700 dark:text-blue-300">Organización vinculada: {formData.department}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, linkedOrganizationId: null }))}
+                    className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full text-blue-500 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      </div>
         <div className="p-8 bg-white dark:bg-[#0a0a0a] border-t border-slate-50 dark:border-zinc-900 flex space-x-3 shrink-0">
           <button
             type="button"
@@ -1886,6 +1899,119 @@ const PrivacySecurityModal: React.FC<{
 };
 
 
+const PersonalAreaModal: React.FC<{
+  t: any,
+  user: User,
+  onClose: () => void
+}> = ({ t, user, onClose }) => {
+  useScrollLock();
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  useEffect(() => {
+    const fetchNote = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('personal_notes')
+          .select('content')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (data) {
+          setContent(data.content || '');
+        }
+      } catch (err) {
+        // Not found, will just be empty
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchNote();
+  }, [user.id]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveStatus('saving');
+    try {
+      const { error } = await supabase
+        .from('personal_notes')
+        .upsert({ user_id: user.id, content, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      if (error) throw error;
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      console.error(err);
+      setSaveStatus('error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
+      <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-2xl rounded-[2.5rem] overflow-hidden animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-8 py-6 border-b border-gray-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-blue-50 dark:bg-zinc-800 rounded-xl text-blue-600">
+              <FileText size={20} />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('personal_area') || 'Área Personal'}</h3>
+            <div className="flex items-center space-x-2">
+              {saveStatus === 'saving' && (
+                <span className="flex items-center space-x-1 text-[10px] font-bold text-blue-500 animate-pulse">
+                  <Loader2 size={10} className="animate-spin" />
+                  <span>Guardando...</span>
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center space-x-1 text-[10px] font-bold text-green-500 animate-in fade-in slide-in-from-bottom-1">
+                  <Check size={10} />
+                  <span>Cambios guardados</span>
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors"><X size={20} /></button>
+        </div>
+
+        <div className="flex-1 p-8 bg-slate-50 dark:bg-zinc-900/50 flex flex-col min-h-0 overflow-y-auto w-full">
+          {loading ? (
+             <div className="flex-1 flex items-center justify-center min-h-[50vh]">
+               <Loader2 className="animate-spin text-blue-600" size={32} />
+             </div>
+          ) : (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="flex-1 w-full min-h-[50vh] bg-transparent border-none outline-none resize-none text-slate-700 dark:text-gray-200 text-sm leading-relaxed p-0 placeholder:text-slate-400 dark:placeholder:text-zinc-600"
+              placeholder={t('personal_area_placeholder') || "Escribe aquí tus notas personales, tareas pendientes, ideas..."}
+              autoFocus
+            />
+          )}
+        </div>
+
+        <div className="p-6 bg-white dark:bg-[#0a0a0a] border-t border-slate-50 dark:border-zinc-900 flex justify-end space-x-3 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-gray-400 rounded-2xl font-black text-sm hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
+          >
+            {t('cancel')}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || loading}
+            className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95 disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <><Save size={18} /><span>{t('save')}</span></>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, onLogout, onViewChange, theme, onThemeChange, language, onLanguageChange }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showAccessibility, setShowAccessibility] = useState(false);
@@ -1895,9 +2021,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
   const [showBadges, setShowBadges] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
-  const [showHelpChat, setShowHelpChat] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showInterests, setShowInterests] = useState(false);
+  const [showPersonalArea, setShowPersonalArea] = useState(false);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'info' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
   const t = useTranslation(language);
 
   useScrollLock(
@@ -1908,7 +2040,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
     showNotifications ||
     showChatSettings ||
     showLogoutConfirm ||
-    showInterests
+    showInterests ||
+    showPersonalArea
   );
   const location = useLocation();
 
@@ -1934,7 +2067,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
   );
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pt-20 md:pt-0">
       <div className="flex items-center space-x-4 mb-4">
         {/* Back button removed as requested */}
         <div>
@@ -1944,6 +2077,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
         <SettingItem icon={UserCircle} label={t('personal_data')} onClick={() => setShowPersonalData(true)} />
+
         <SettingItem icon={CustomBadgeIcon} label={t('badges')} onClick={() => setShowBadges(true)} />
         <SettingItem icon={Heart} label={t('interests')} onClick={() => setShowInterests(true)} />
         <SettingItem icon={Wand2} label={t('accessibility')} onClick={() => setShowAccessibility(true)} />
@@ -1953,7 +2087,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
         <SettingItem
           icon={Megaphone}
           label={t('news_updates')}
-          onClick={() => { /* Proximamente: Novedades */ }}
+          onClick={() => showToast('¡Próximamente disponible!\nEstamos trabajando en esta función.', 'info')}
         />
       </div>
 
@@ -1994,7 +2128,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       )}
 
       <div className="border border-slate-100 dark:border-zinc-800 rounded-[2rem] overflow-hidden">
-        <SettingItem icon={Shield} label={t('help_center')} onClick={() => setShowHelpChat(true)} />
         <SettingItem icon={Eye} label={t('privacy_policy')} onClick={() => setShowPrivacyPolicy(true)} />
         <SettingItem icon={Info} label={t('about_us')} onClick={() => setShowAbout(true)} />
         <SettingItem
@@ -2006,7 +2139,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
       </div>
 
       <div className="text-center pt-8">
-        <p className="text-[10px] text-slate-300 dark:text-zinc-700 font-black uppercase tracking-[0.3em]">v2.5.0 build-2024</p>
+        <p className="text-[10px] text-slate-300 dark:text-zinc-700 font-black uppercase tracking-[0.3em]">v1.0</p>
       </div>
 
       {showPersonalData && createPortal(
@@ -2015,6 +2148,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
             <PersonalDataForm user={user} t={t} onSave={onUpdateUser} onClose={() => setShowPersonalData(false)} />
           </div>
         </div>,
+        document.body
+      )}
+
+      {showPersonalArea && createPortal(
+        <PersonalAreaModal t={t} user={user} onClose={() => setShowPersonalArea(false)} />,
         document.body
       )}
 
@@ -2127,14 +2265,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
         document.body
       )}
 
-      {showHelpChat && createPortal(
-        <HelpChatBot
-          userName={user.name}
-          onClose={() => setShowHelpChat(false)}
-        />,
-        document.body
-      )}
-
       {showInterests && createPortal(
         <PreferencesModal
           user={user}
@@ -2145,6 +2275,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdateUser, 
           }}
         />,
         document.body
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[300] w-auto max-w-[calc(100%-4rem)] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className={`px-8 py-3.5 rounded-full shadow-2xl border flex flex-col items-center text-center backdrop-blur-md ${toast.type === 'success' ? 'bg-green-500/95 border-green-400 text-white' :
+              toast.type === 'error' ? 'bg-red-500/95 border-red-400 text-white' :
+                'bg-slate-900/95 border-slate-700 text-white'
+            }`}>
+            <div className="flex flex-col space-y-0.5 min-w-max">
+              {toast.message.split('\n').map((line, i) => (
+                <span key={i} className={`font-bold ${i === 0 ? 'text-[13px]' : 'text-[10px] opacity-80'} leading-tight whitespace-nowrap`}>
+                  {line}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -9,6 +9,7 @@ export interface CalendarEvent {
   location: string;
   description: string;
   attendees?: number;
+  image_url?: string;
 }
 
 export interface ProjectDraft {
@@ -147,6 +148,7 @@ export interface User {
   following: number;
   badges?: Badge[];
   joinedDate?: string;
+  updatedAt?: string;
   notificationSettings?: {
     likes_post: boolean;
     likes_news: boolean;
@@ -169,6 +171,7 @@ export interface User {
   level_name?: string;
   novas?: number;
   linkedOrganizationId?: string;
+  firstTime?: boolean;
 }
 
 export interface CommentReply {
@@ -182,6 +185,7 @@ export interface CommentReply {
   text: string;
   timestamp: string;
   likes?: number;
+  userLiked?: boolean;
   replies?: CommentReply[];
 }
 
@@ -238,6 +242,7 @@ export interface Message {
   timestamp: Date;
   isPostShare?: boolean;
   postId?: string;
+  newsId?: string;
   isRead?: boolean;
   sharedProfile?: Partial<User>;
   sharedProfileId?: string;
@@ -245,6 +250,7 @@ export interface Message {
   sharedEvent?: CalendarEvent;
   updated_at?: string;
   is_deleted?: boolean;
+  imageUrl?: string[];
 }
 
 export interface Chat {
@@ -257,7 +263,7 @@ export interface Chat {
 
 export interface Notification {
   id: string;
-  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system' | 'reward_request' | 'reward_accepted';
+  type: 'follow' | 'like' | 'comment' | 'mention' | 'repost' | 'registration_request' | 'system' | 'reward_request' | 'reward_accepted' | 'event_support';
   senderName: string;
   senderId?: string;
   senderAvatar: string;
@@ -265,20 +271,18 @@ export interface Notification {
   timestamp: string;
   isRead: boolean;
   postId?: string;
+  newsId?: string;
+  updatedAt?: string;
 }
 
-// Fix: Added missing Tender interface used by tenderService.ts, TendersView.tsx and TenderCard.tsx
-export interface Tender {
+
+export interface Reward {
   id: string;
-  title: string;
-  organism: string;
-  status: 'published' | 'evaluation' | 'awarded' | 'closed';
-  budget: number;
-  type: 'service' | 'supply' | 'works';
-  deadline: string;
-  description: string;
-  link: string;
-  region: string;
+  name: string;
+  cost_novas: number;
+  description?: string;
+  image_url?: string;
+  is_available?: boolean;
 }
 
 export type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar' | 'post-detail' | 'store';

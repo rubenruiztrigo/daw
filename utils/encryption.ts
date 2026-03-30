@@ -1,8 +1,11 @@
 import CryptoJS from 'crypto-js';
 
-// WARNING: In a production environment, this key should be an environment variable
-// and never committed to version control.
-const SECRET_KEY = 'nova-gob-secret-chat-key-2026';
+// 2026 STANDARD: Secrets must be in environment variables.
+const SECRET_KEY = import.meta.env.VITE_ENCRYPTION_SECRET || 'fallback-dev-key-not-for-production';
+
+if (!import.meta.env.VITE_ENCRYPTION_SECRET && import.meta.env.MODE === 'production') {
+    console.error("FATAL: VITE_ENCRYPTION_SECRET is missing in production!");
+}
 
 export const encryptMessage = (text: string): string => {
     if (!text) return text;
@@ -19,11 +22,9 @@ export const decryptMessage = (cipherText: string): string => {
     try {
         const bytes = CryptoJS.AES.decrypt(cipherText, SECRET_KEY);
         const originalText = bytes.toString(CryptoJS.enc.Utf8);
-        // If decryption fails (e.g. empty string result for invalid key/text), return original 
-        // to handle legacy/plain text messages gracefully during migration.
         return originalText || cipherText;
     } catch (e) {
-        console.warn("Decryption failed (likely legacy plain text):", cipherText);
+        console.warn("Decryption failed:", cipherText);
         return cipherText;
     }
 };

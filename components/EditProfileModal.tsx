@@ -138,12 +138,19 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
     if (!formData.username || formData.username.length < 3) newErrors.username = "Mínimo 3 caracteres";
 
     if (!user.isOrganization) {
+      if (!formData.name?.trim()) newErrors.name = "El nombre es obligatorio";
+      if (!formData.lastName?.trim()) newErrors.lastName = "Los apellidos son obligatorios";
       if (!finalJobCategory) newErrors.jobCategory = "El cargo es obligatorio";
       if (!finalAdminType) newErrors.administrationType = "El tipo de administración es obligatorio";
       if (!formData.position?.trim()) newErrors.position = "La especialización es obligatoria";
       if (!formData.department?.trim()) newErrors.department = "La organización es obligatoria";
+      if (!formData.birthDate) newErrors.birthDate = "La fecha de nacimiento es obligatoria";
+    } else {
+      if (!formData.name?.trim()) newErrors.name = "El nombre de la organización es obligatorio";
+      if (!formData.bio?.trim()) newErrors.bio = "La biografía de la organización es obligatoria";
     }
 
+    if (!formData.email?.trim() || !formData.email.includes('@')) newErrors.email = "Email no válido";
     if (!formData.country) newErrors.country = "El país es obligatorio";
     if (!formData.region) newErrors.region = "La región es obligatoria";
 
@@ -185,7 +192,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
           <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-400 transition-all"><X size={24} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 pb-32 space-y-8 scrollbar-hide bg-slate-50/30 dark:bg-black/20">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 pb-12 space-y-8 scrollbar-hide bg-slate-50/30 dark:bg-black/20">
 
           <div className="space-y-4">
             {!user.isOrganization && (
@@ -195,7 +202,33 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">{user.isOrganization ? "Nombre de la organización" : "Nombre"}</label>
+                <input
+                  type="text"
+                  value={formData.name || ''}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  placeholder={user.isOrganization ? "Nombre de la entidad..." : "Tu nombre..."}
+                  className={`w-full px-5 py-3 bg-white dark:bg-zinc-900 border ${errors.name ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
+                />
+                {errors.name && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.name}</p>}
+              </div>
+
+              {!user.isOrganization && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Apellidos</label>
+                  <input
+                    type="text"
+                    value={formData.lastName || ''}
+                    onChange={(e) => handleChange('lastName', e.target.value)}
+                    placeholder="Tus apellidos..."
+                    className={`w-full px-5 py-3 bg-white dark:bg-zinc-900 border ${errors.lastName ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
+                  />
+                  {errors.lastName && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.lastName}</p>}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Nombre de usuario</label>
                 <div className="relative">
@@ -204,12 +237,25 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
                     type="text"
                     value={formData.username || ''}
                     onChange={(e) => handleUsernameChange(e.target.value)}
-                    placeholder="anagarcia"
+                    placeholder="novo"
                     className={`w-full pl-12 pr-5 py-3 bg-white dark:bg-zinc-900 border ${errors.username ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
                   />
                 </div>
                 {errors.username && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.username}</p>}
               </div>
+
+              {!user.isOrganization && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    value={formData.birthDate || ''}
+                    onChange={(e) => handleChange('birthDate', e.target.value)}
+                    className={`w-full px-5 py-3 bg-white dark:bg-zinc-900 border ${errors.birthDate ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
+                  />
+                  {errors.birthDate && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.birthDate}</p>}
+                </div>
+              )}
             </div>
 
           </div>
@@ -271,13 +317,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
                 <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Cargo Actual</h4>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Especialización</label>
+                <div className="space-y-1 relative">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 flex items-center h-[14px]">Especialización</label>
                   <input type="text" value={formData.position} onChange={(e) => handleChange('position', e.target.value)} placeholder="Ej. Responsable de Innovación" className={`w-full px-5 py-3 bg-white dark:bg-zinc-900 border ${errors.position ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white`} />
                   {errors.position && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.position}</p>}
                 </div>
                 <div className="space-y-1 relative">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Organización / Departamento</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 flex items-center gap-1.5 h-[14px]">
+                    <span>Nombre de la organización</span>
+                    {selectedOrgId && <CheckCircle2 size={12} className="text-blue-500" />}
+                  </label>
                   <div className="relative">
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
@@ -289,7 +338,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
                         setSelectedOrgId(null); // Clear link if manually editing
                       }}
                       placeholder="Ej. Ayuntamiento de Barcelona"
-                      className={`w-full pl-12 pr-10 py-3 bg-white dark:bg-zinc-900 border ${errors.department ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
+                      className={`w-full pl-12 pr-5 py-3 bg-white dark:bg-zinc-900 border ${errors.department ? 'border-red-500' : 'border-slate-100 dark:border-zinc-800'} rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-50 dark:text-white transition-all`}
                     />
                     {isSearchingOrgs && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -317,25 +366,24 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
                       ))}
                     </div>
                   )}
-
-                  {selectedOrgId && (
-                    <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-2xl animate-in zoom-in-95">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle2 size={16} className="text-blue-600" />
-                        <span className="text-[10px] md:text-sm font-bold text-blue-700 dark:text-blue-400 truncate max-w-[200px] md:max-w-none">Cuenta oficial vinculada: {formData.department}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedOrgId(null)}
-                        className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full text-blue-500 transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )}
-                  {errors.department && <p className="text-red-500 text-[10px] font-bold ml-1">{errors.department}</p>}
                 </div>
               </div>
+
+              {selectedOrgId && (
+                <div className="mt-2 flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-2xl animate-in zoom-in-95">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 size={16} className="text-blue-600" />
+                    <span className="text-[10px] md:text-sm font-bold text-blue-700 dark:text-blue-400 truncate max-w-none">Organización vinculada: {formData.department}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrgId(null)}
+                    className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-full text-blue-500 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -350,7 +398,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, onClos
                   label="País"
                   value={formData.country || ''}
                   options={COUNTRIES}
-                  onChange={(val) => handleChange('country', val)}
+                  onChange={(val) => {
+                    handleChange('country', val);
+                    if (val === 'Otro') {
+                      handleChange('region', 'Otra');
+                    } else if (formData.country !== val) {
+                      handleChange('region', '');
+                    }
+                  }}
                   placeholder="Seleccionar..."
                 />
                 <SelectDrop

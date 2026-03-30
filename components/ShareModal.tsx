@@ -1,17 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar } from 'lucide-react';
+import { X, Copy, Check, Send, Search, MessageSquare, Users, Link as LinkIcon, User as UserIcon, Calendar, Newspaper, Clock } from 'lucide-react';
 import { Post, User, Chat } from '../types';
 import { getSafeAvatar } from '../utils/avatarUtils';
 
 interface ShareModalProps {
+  isOpen: boolean;
   post?: Post;
   event?: any; // Start with any to avoid import loop if types not ready, or use CalendarEvent
   user?: User; // The user profile being shared (if applicable)
   onClose: () => void;
-  onShare?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string) => void;
+  onShare?: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
   currentUser?: User; // Add currentUser to identify "me"
   users?: User[]; // All users to search/filter from
   followedUserIds?: Set<string>;
@@ -19,7 +20,50 @@ interface ShareModalProps {
   chats?: Chat[];
 }
 
+const ContactItem: React.FC<{ contact: any, onSend: (u: User) => void, isSent: boolean }> = ({ contact, onSend, isSent }) => (
+  <div className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900/50 transition-all group border border-transparent hover:border-slate-200/50 dark:hover:border-zinc-800 shadow-sm hover:shadow-md bg-white dark:bg-[#151515]/30">
+    <div className="flex items-center space-x-3">
+      <div className="relative">
+        <img src={getSafeAvatar(contact.avatar)} className="w-10 h-10 rounded-xl object-cover border-2 border-white dark:border-zinc-800 shadow-sm group-hover:scale-105 transition-transform" alt="" />
+      </div>
+      <div>
+        <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{contact.name} {contact.lastName}</p>
+      </div>
+    </div>
+    <button
+      onClick={() => onSend(contact)}
+      disabled={isSent}
+      className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all transform active:scale-95 shadow-sm ${isSent
+        ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 cursor-not-allowed opacity-60'
+        : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-blue-600/30'
+        }`}
+    >
+      {isSent ? (
+        <div className="flex items-center space-x-1.5 px-1">
+          <Check size={12} strokeWidth={3} />
+          <span>Enviado</span>
+        </div>
+      ) : 'Enviar'}
+    </button>
+  </div>
+);
+
+const EmptySearch: React.FC<{ term: string }> = ({ term }) => (
+  <div className="text-center py-10 bg-slate-50/50 dark:bg-zinc-900/30 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-300">
+    <div className="mx-auto w-12 h-12 bg-white dark:bg-zinc-800 rounded-2xl flex items-center justify-center mb-3 shadow-md border border-slate-100 dark:border-zinc-700">
+      <Search className="text-slate-300" size={24} />
+    </div>
+    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-4">
+      Sin resultados
+    </h4>
+    <p className="text-[10px] text-slate-400 mt-1 px-8 opacity-70">
+      No encontramos a "{term}" en la red.
+    </p>
+  </div>
+);
+
 export const ShareModal: React.FC<ShareModalProps> = ({
+  isOpen,
   post,
   event,
   user: sharedUser,
@@ -31,6 +75,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   followerUserIds = new Set(),
   chats = []
 }) => {
+  if (!isOpen) return null;
+
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sentTo, setSentTo] = useState<string[]>([]);
@@ -78,161 +124,163 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const handleSend = (contact: User) => {
     if (onShare) {
       const message = ""; // Send empty text so only the card is shown
-      onShare(contact.id, message, post?.id, sharedUser?.id, event?.id);
+      const isNews = post?.type === 'news';
+      onShare(
+        contact.id, 
+        message, 
+        isNews ? undefined : post?.id, 
+        sharedUser?.id, 
+        event?.id, 
+        undefined, // imageUrls
+        isNews ? post?.id : undefined, // newsId
+        undefined // scheduledAt
+      );
     }
     setSentTo([...sentTo, contact.id]);
   };
 
-  // Logic to filter and sort contacts
-  const chatUserIds = new Set(chats.map(c => c.participant.id));
+  // Unified logic for contacts: 5 Recent Chats + Friends -> Max 20 total
+  const { orderedContacts, searchResults } = useMemo(() => {
+    if (searchTerm.trim()) {
+      // Global search across all users when searching
+      const filtered = users
+        .filter(u => u.id !== currentUser?.id)
+        .filter(u =>
+          u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          u.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          u.username?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .slice(0, 20);
+      
+      return { orderedContacts: [], searchResults: filtered };
+    }
 
-  const contacts = users
-    .filter(u => u.id !== currentUser?.id) // Exclude self
-    .map(u => {
-      const isFollowing = followedUserIds.has(u.id);
-      const isFollower = followerUserIds.has(u.id);
-      const isFriend = isFollowing && isFollower; // Mutual follow = Friend
-      const hasChat = chatUserIds.has(u.id);
+    // 1. Get top 5 unique recent chats
+    const seenRecent = new Set<string>();
+    const recents: User[] = [];
+    for (const chat of chats) {
+      if (recents.length >= 5) break;
+      const pid = chat.participant.id;
+      if (pid && !seenRecent.has(pid) && pid !== currentUser?.id) {
+        seenRecent.add(pid);
+        const u = users.find(user => user.id === pid);
+        if (u) {
+          recents.push(u);
+        }
+      }
+    }
 
-      return {
-        ...u,
-        isFriend,
-        isFollowing,
-        hasChat
-      };
-    })
-    .filter(u => u.isFollowing || u.hasChat) // Show people I follow OR have a chat with
-    .sort((a, b) => {
-      // Prioritize Chats -> Then Friends (Mutual) -> Then just Following
-      if (a.hasChat && !b.hasChat) return -1;
-      if (!a.hasChat && b.hasChat) return 1;
-      if (a.isFriend && !b.isFriend) return -1;
-      if (!a.isFriend && b.isFriend) return 1;
-      return 0;
-    });
+    // 2. Fill the rest (up to 20 total) with friends (mutuals) that aren't already in recents
+    const remainingSlots = 20 - recents.length;
+    const friendIds = Array.from(followedUserIds as Set<string>).filter(id => (followerUserIds as Set<string>).has(id));
+    const friends: User[] = [];
+    for (const id of friendIds) {
+      if (friends.length >= remainingSlots) break;
+      if (id === currentUser?.id || seenRecent.has(id)) continue;
+      const u = users.find(user => user.id === id);
+      if (u) {
+        friends.push(u);
+      }
+    }
 
-  const filteredContacts = contacts.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.username?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    return { orderedContacts: [...recents, ...friends], searchResults: [] };
+  }, [searchTerm, users, chats, followedUserIds, followerUserIds, currentUser?.id]);
 
   return ReactDOM.createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-6 md:p-16 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2.5rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800"
+        className="bg-white dark:bg-[#111] w-full max-w-md max-h-[90vh] rounded-[3rem] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white dark:border-zinc-800 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-8 py-6 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#111]">
-          <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-xl ${sharedUser ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
-              {sharedUser ? <UserIcon size={20} /> : event ? <Calendar size={20} /> : <Send size={20} />}
+        <div className="px-8 py-5 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a]">
+          <div className="flex items-center space-x-4">
+            <div className={`p-2 rounded-2xl ${sharedUser ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'}`}>
+              {sharedUser ? <UserIcon size={18} /> : event ? <Calendar size={18} /> : <Send size={18} />}
             </div>
-            <h3 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white whitespace-nowrap">
-              {sharedUser ? 'Compartir Perfil' : event ? 'Compartir Evento' : 'Compartir Publicación'}
+            <h3 className="text-lg font-black text-slate-900 dark:text-white leading-tight">
+              {sharedUser ? 'Compartir Perfil' : event ? 'Compartir Evento' : post?.type === 'news' ? 'Compartir Noticia' : 'Compartir Post'}
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-full text-slate-400 transition-all"
+            className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-full text-slate-400 transition-all border border-transparent hover:border-slate-100 dark:hover:border-zinc-700"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Visual Preview */}
-          {sharedUser && (
-            <div className="flex items-center space-x-4 p-4 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-50 dark:border-indigo-900/20 rounded-2xl">
-              <img src={getSafeAvatar(sharedUser.avatar)} className="w-12 h-12 rounded-xl object-cover border-2 border-white dark:border-zinc-800" alt="" />
-              <div>
-                <p className="text-sm font-bold text-slate-900 dark:text-white">{sharedUser.name} {sharedUser.lastName}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase">{sharedUser.position}</p>
-              </div>
-            </div>
-          )}
-          {event && (
-            <div className="flex items-center space-x-4 p-4 bg-blue-50/30 dark:bg-blue-900/10 border border-blue-50 dark:border-blue-900/20 rounded-2xl">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl text-blue-600 dark:text-blue-400"><Calendar size={20} /></div>
-              <div>
-                <p className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{event.title}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase">{event.location}</p>
-              </div>
-            </div>
-          )}
+        <div className="p-5 space-y-5 flex flex-col min-h-0">
 
           {/* Copy Link Section */}
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Enlace directo</label>
-            <div className="flex items-center space-x-2 bg-slate-50 dark:bg-zinc-900 p-2 rounded-2xl border border-slate-100 dark:border-zinc-800">
-              <div className="flex-1 px-3 py-2 text-sm text-slate-500 font-medium truncate">
+          <div className="space-y-2">
+            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Enlace directo</label>
+            <div className="flex items-center space-x-2 bg-slate-50 dark:bg-zinc-900/50 p-2 rounded-2xl border border-slate-100 dark:border-zinc-800 group focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
+              <div className="flex-1 px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold truncate">
                 {shareUrl}
               </div>
               <button
                 onClick={handleCopy}
-                className={`p-3 rounded-xl transition-all flex items-center space-x-2 ${copied ? 'bg-green-500 text-white' : 'bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 shadow-sm ${copied ? 'bg-green-600 text-white scale-95' : 'bg-white dark:bg-zinc-800 text-blue-600 dark:text-blue-400 hover:bg-white dark:hover:bg-zinc-700 hover:shadow-md'
                   }`}
               >
-                {copied ? <Check size={18} /> : <Copy size={18} />}
-                <span className="text-xs font-black">{copied ? 'Copiado' : 'Copiar'}</span>
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span className="text-[10px] font-black">{copied ? 'Copiado' : 'Copiar'}</span>
               </button>
             </div>
           </div>
 
           {/* Contacts Section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Enviar por Chat</label>
-              <div className="relative w-1/2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+          <div className="space-y-4 flex flex-col min-h-0">
+            <div className="flex items-center justify-between px-1 gap-4">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Enviar por Chat</label>
+              <div className="relative flex-1 max-w-[180px] group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
                 <input
                   type="text"
                   placeholder="Buscar..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-zinc-900 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 dark:text-white"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-[10px] font-bold outline-none focus:ring-4 focus:ring-blue-500/10 dark:text-white transition-all placeholder:text-slate-400"
                 />
               </div>
             </div>
 
-            <div className="space-y-1 max-h-48 overflow-y-auto pr-1 scrollbar-hide">
-              {filteredContacts.length > 0 ? filteredContacts.map(contact => (
-                <div key={contact.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-zinc-900 transition-all group">
-                  <div className="flex items-center space-x-3">
-                    <img src={getSafeAvatar(contact.avatar)} className="w-9 h-9 rounded-lg object-cover" alt="" />
-                    <div>
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{contact.name} {contact.lastName}</p>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">{contact.isFriend ? 'Amigo' : 'Te sigue'}</p>
+            <div className="space-y-6 overflow-y-auto scrollbar-hide py-1 pr-1 max-h-[320px]">
+              {searchTerm.trim() ? (
+                // Search Results
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] mb-3 ml-1">Resultados de búsqueda</p>
+                  {searchResults.length > 0 ? searchResults.map(contact => (
+                    <ContactItem key={contact.id} contact={contact} onSend={handleSend} isSent={sentTo.includes(contact.id)} />
+                  )) : (
+                    <EmptySearch term={searchTerm} />
+                  )}
+                </div>
+              ) : (
+                <>
+                  {orderedContacts.length > 0 ? (
+                    orderedContacts.map(contact => (
+                      <ContactItem key={contact.id} contact={contact} onSend={handleSend} isSent={sentTo.includes(contact.id)} />
+                    ))
+                  ) : (
+                    <div className="text-center py-8 bg-slate-50/50 dark:bg-zinc-900/30 rounded-[1.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
+                      <div className="mx-auto w-10 h-10 bg-white dark:bg-zinc-800 rounded-xl flex items-center justify-center mb-2 shadow-sm">
+                        <Users className="text-slate-200" size={20} />
+                      </div>
+                      <p className="text-slate-400 font-bold italic text-[11px] px-8">
+                        No hay contactos frecuentes disponibles. Usa el buscador para encontrar a alguien.
+                      </p>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => handleSend(contact)}
-                    disabled={sentTo.includes(contact.id)}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${sentTo.includes(contact.id)
-                      ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400'
-                      : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'
-                      }`}
-                  >
-                    {sentTo.includes(contact.id) ? 'Enviado' : 'Enviar'}
-                  </button>
-                </div>
-              )) : (
-                <div className="text-center py-8 text-slate-400 text-xs italic">
-                  {searchTerm
-                    ? "No se encontraron usuarios que coincidan con la búsqueda."
-                    : "No se encontraron usuarios a los que sigas o con los que hayas chateado."}
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
-
-
       </div>
     </div>,
     document.body

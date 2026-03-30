@@ -1,8 +1,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Post, User } from '../types';
-import { Newspaper, TrendingUp, History, Filter, ChevronRight, MessageSquare, ThumbsUp, MapPin, Calendar, Clock, Trophy, ImageIcon, ChevronUp, Sparkles, Loader2, RefreshCw, Plus, X } from 'lucide-react';
+import { Newspaper, TrendingUp, History, Filter, ChevronRight, MessageSquare, ThumbsUp, MapPin, Calendar, Clock, Trophy, ImageIcon, ChevronUp, Sparkles, Loader2, RefreshCw, Plus, X, Maximize2 } from 'lucide-react';
 import { NewsCard } from './NewsCard';
+import { ShareModal } from './ShareModal';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { CreatePostModal } from './CreatePostModal';
 import { Language, useTranslation } from '../utils/translations';
@@ -18,6 +19,8 @@ interface NewsHubViewProps {
   onRepost: (id: string) => void;
   onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
   onAddComment: (postId: string, text: string) => void;
+  onLikeComment?: (commentId: string) => void;
+  onLikeReply?: (replyId: string) => void;
   onDeletePost?: (postId: string) => void;
   onNavigateToProfile?: (userId: string) => void;
   onNavigateToPost?: (postId: string) => void;
@@ -29,7 +32,7 @@ interface NewsHubViewProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   chats?: any[];
-  onShareViaChat?: (recipientId: string, text: string, postId?: string, profileId?: string) => void;
+  onShareViaChat?: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
   followerUserIds?: Set<string>;
   language: Language;
   hasNewContent?: boolean;
@@ -39,8 +42,8 @@ interface NewsHubViewProps {
 type NewsTab = 'latest' | 'popular' | 'ranking';
 
 export const NewsHubView: React.FC<NewsHubViewProps> = ({
-  posts, user, onVote, onRepost, onAddPost, onAddComment, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = [],
-  onLoadMore, hasMore = false, isLoadingMore = false, chats, onShareViaChat, followerUserIds, language, hasNewContent = false, onRefresh
+  posts, user, onVote, onRepost, onAddPost, onAddComment, onLikeComment, onLikeReply, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = [],
+  onLoadMore, hasMore = false, isLoadingMore = false, chats, onShareViaChat, followerUserIds = new Set(), language, hasNewContent = false, onRefresh
 }) => {
   // ... inside component ...
   const navigate = useNavigate();
@@ -48,11 +51,13 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     const saved = sessionStorage.getItem('news_hub_tab') as NewsTab;
     return saved || 'latest';
   });
+  const [sharingPost, setSharingPost] = useState<Post | null>(null);
   const t = useTranslation(language);
   const scrollDirection = useScrollDirection();
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+  const [userEvents, setUserEvents] = useState<any[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -60,7 +65,9 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (formRef.current && !formRef.current.contains(event.target as Node)) {
         if (textareaRef.current) {
-          textareaRef.current.style.height = '';
+          textareaRef.current.style.height = 'auto';
+          const newHeight = Math.max(40, Math.min(400, textareaRef.current.scrollHeight));
+          textareaRef.current.style.height = `${newHeight}px`;
         }
       }
     };
@@ -96,6 +103,32 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     }
   };
 
+  useEffect(() => {
+    const fetchUserEvents = async () => {
+      const { data } = await supabase
+        .from('user_events')
+        .select('*')
+        .eq('creator_id', user.id)
+        .gte('event_date', new Date().toISOString().split('T')[0])
+        .order('event_date', { ascending: true });
+
+      if (data) {
+        setUserEvents(data.map(ev => ({
+          id: ev.id,
+          creator_id: ev.creator_id,
+          title: ev.title,
+          type: ev.type as any,
+          event_date: ev.event_date,
+          event_time: ev.event_time,
+          location: ev.location,
+          description: ev.description,
+          attendees: ev.attendees_count
+        })));
+      }
+    };
+    fetchUserEvents();
+  }, [user.id]);
+
   const selectMention = (selectedUser: User) => {
     if (mentionStartIndex === -1) return;
     const before = newsContent.slice(0, mentionStartIndex);
@@ -105,20 +138,6 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     setMentionQuery(null);
     textareaRef.current?.focus();
   };
-
-  useEffect(() => {
-    if (!onLoadMore) return;
-    const handleScroll = () => {
-      // Save scroll position for the current tab
-      sessionStorage.setItem(`news_hub_scroll_${activeTab}`, window.scrollY.toString());
-
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400 && !isLoadingMore && hasMore) {
-        onLoadMore();
-      }
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [onLoadMore, isLoadingMore, hasMore, activeTab]);
 
   useEffect(() => {
     const savedScroll = sessionStorage.getItem(`news_hub_scroll_${activeTab}`);
@@ -135,8 +154,50 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     }
   }, [activeTab]);
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (textareaRef.current) {
+        const rect = textareaRef.current.getBoundingClientRect();
+        const newHeight = Math.max(40, Math.min(400, e.clientY - rect.top));
+        textareaRef.current.style.height = `${newHeight}px`;
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const [displayLimit, setDisplayLimit] = useState(10);
+
   const [newsTitle, setNewsTitle] = useState('');
   const [newsContent, setNewsContent] = useState('');
+  const prevContentLength = useRef(0);
+
+  useEffect(() => {
+    if (textareaRef.current && !isDragging) {
+      const isMaximized = textareaRef.current.style.height === '400px';
+      const isDeletion = newsContent.length < prevContentLength.current;
+      
+      if (!isMaximized || isDeletion) {
+        textareaRef.current.style.height = 'auto';
+        const newHeight = Math.max(40, Math.min(400, textareaRef.current.scrollHeight));
+        textareaRef.current.style.height = `${newHeight}px`;
+      }
+    }
+    prevContentLength.current = newsContent.length;
+  }, [newsContent]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +223,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   const [rankingHistory, setRankingHistory] = useState<{ badge_id: string, created_at: string }[]>([]);
 
   useEffect(() => {
+    setDisplayLimit(10);
     sessionStorage.setItem('news_hub_tab', activeTab);
   }, [activeTab]);
 
@@ -233,10 +295,49 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [posts, activeTab]);
 
+  useEffect(() => {
+    if (!onLoadMore) return;
+    const handleScroll = () => {
+      // Save scroll position for the current tab
+      sessionStorage.setItem(`news_hub_scroll_${activeTab}`, window.scrollY.toString());
+
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 800) {
+        if (displayLimit < sortedNews.length) {
+          setDisplayLimit(prev => prev + 10);
+        } else if (!isLoadingMore && hasMore) {
+          onLoadMore();
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [onLoadMore, isLoadingMore, hasMore, activeTab, displayLimit, sortedNews.length]);
+
+  const displayedNews = activeTab === 'ranking' ? sortedNews : sortedNews.slice(0, displayLimit);
+
   return (
-    <div className="pb-20 pt-0">
-      <div className={`sticky top-0 md:sticky md:top-0 z-50 bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b px-4 h-14 transition-transform duration-300 md:-mx-8 -mx-4 ${scrollDirection === 'down' ? '-translate-y-full md:translate-y-0' : 'translate-y-0'}`}>
-        <div className="max-w-2xl mx-auto flex items-center justify-between h-full">
+    <div className="pb-24">
+      {sharingPost && (
+        <ShareModal 
+          isOpen={sharingPost !== null} 
+          onClose={() => setSharingPost(null)} 
+          onShare={onShareViaChat} 
+          post={sharingPost} 
+          chats={chats}
+          language={language}
+          currentUser={currentUser}
+          users={users}
+          followedUserIds={followedUserIds}
+          followerUserIds={followerUserIds}
+        />
+      )}
+      <div className={`
+        fixed top-16 left-0 right-0 z-50 md:sticky md:top-0 md:left-auto md:right-auto md:z-50 
+        bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-900 border-b h-14 
+        transition-transform duration-300 md:translate-y-0
+        ${scrollDirection === 'down' ? '-translate-y-[calc(100%+64px)] md:translate-y-0' : 'translate-y-0'}
+      `}>
+        <div className="w-full h-full max-w-4xl mx-auto flex items-center justify-between px-2 md:px-0">
           <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
             {activeTab === 'latest' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
@@ -251,9 +352,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('top_ranking')}</span>
             {activeTab === 'ranking' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
           </button>
-
           <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-
           <div className="px-2 flex items-center justify-center">
             <button
               onClick={() => setShowHistory(true)}
@@ -283,7 +382,9 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         />
       )}
 
-      <div className="max-w-2xl xl:max-w-3xl mx-auto pt-3 md:pt-6 space-y-3 md:space-y-4">
+      <div className={`max-w-4xl mx-auto px-2 pb-4 md:px-6 md:pb-6 flex flex-col gap-3 pt-[136px] md:pt-6 transition-all duration-300 ${
+        scrollDirection === 'down' ? '-translate-y-[120px]' : 'translate-y-0'
+      }`}>
         {hasNewContent && onRefresh && (
           <div className="flex justify-center my-4">
             <button
@@ -297,9 +398,9 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         )}
         {activeTab !== 'ranking' ? (
           <>
-            <div ref={formRef} className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800">
-              <div className="flex space-x-4 p-3 md:p-5">
-                <img src={getSafeAvatar(user.avatar)} className="w-10 h-10 rounded-full object-cover" alt="" />
+            <div ref={formRef} className="hidden md:block bg-white dark:bg-[#111] rounded-[2rem] border border-slate-300 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300">
+              <div className="flex space-x-3 p-4 md:p-5">
+                <img src={getSafeAvatar(user.avatar)} className="w-10 h-10 md:w-11 md:h-11 rounded-full object-cover shrink-0" alt="" />
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newsTitle.trim() || !newsContent.trim() || isSubmitting) return;
@@ -310,83 +411,108 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                     setNewsTitle('');
                     setNewsContent('');
                     setSelectedImage(null);
-                    if (textareaRef.current) textareaRef.current.style.height = '';
                   } finally {
                     setIsSubmitting(false);
                   }
-                }} className="flex-1">
-                  <div className="flex space-x-4">
-                    <div className="flex-1 min-w-0 relative">
+                }} className="flex-1 min-w-0">
+                  <div className="flex flex-col">
+                    <div className="min-w-0 relative">
                       <input
                         type="text"
                         value={newsTitle}
                         onChange={(e) => setNewsTitle(e.target.value)}
                         maxLength={100}
                         placeholder="Título de la noticia"
-                        className="w-full bg-transparent border-none text-lg font-bold dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none p-2 mb-1"
+                        className="w-full bg-transparent border-none text-lg font-bold dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none p-0 mb-0.5"
                       />
-                      <textarea
-                        ref={textareaRef}
-                        value={newsContent}
-                        onChange={handleTextChange}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') {
-                            setMentionQuery(null);
-                          }
-                          if (e.key === 'Enter' && !e.shiftKey) {
+                    </div>
+                    
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 min-w-0 relative group/textarea">
+                        <textarea
+                          ref={textareaRef}
+                          value={newsContent}
+                          onChange={handleTextChange}
+                          onPaste={handlePaste}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              setMentionQuery(null);
+                            }
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (!newsTitle.trim() || !newsContent.trim()) return;
+                              onAddPost(newsContent, 'news', [], selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle);
+                              setMentionQuery(null);
+                              setNewsTitle('');
+                              setNewsContent('');
+                              setSelectedImage(null);
+                            }
+                          }}
+                          placeholder={`${t('share_your_news')}`}
+                          className={`w-full bg-transparent border-none text-base dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none resize-none min-h-[44px] max-h-[400px] p-0 transition-all duration-300 pr-4 mt-1`}
+                          maxLength={2500}
+                        />
+                        <div 
+                          className="absolute bottom-1 right-1 w-6 h-6 flex items-center justify-center cursor-nwse-resize z-10 text-gray-400 group-hover/textarea:text-orange-500 transition-colors"
+                          onMouseDown={(e) => {
                             e.preventDefault();
-                            if (!newsTitle.trim() || !newsContent.trim()) return;
-                            onAddPost(newsContent, 'news', [], selectedImage || undefined, undefined, undefined, undefined, newsTitle);
-                            setMentionQuery(null);
-                            setNewsTitle('');
-                            setNewsContent('');
-                            setSelectedImage(null);
-                            if (textareaRef.current) textareaRef.current.style.height = '';
-                          }
-                        }}
-                        placeholder={`${t('share_your_news')}`}
-                        className={`w-full bg-transparent border-none text-base dark:text-white placeholder-gray-400 focus:ring-0 focus:outline-none resize-y min-h-[40px] max-h-[400px] p-2 transition-all duration-200 pr-4`}
-                      />
+                            setIsDragging(true);
+                          }}
+                          onDoubleClick={() => {
+                            if (textareaRef.current) {
+                              if (textareaRef.current.style.height === '400px') {
+                                textareaRef.current.style.height = 'auto';
+                                const newHeight = Math.max(40, Math.min(400, textareaRef.current.scrollHeight));
+                                textareaRef.current.style.height = `${newHeight}px`;
+                              } else {
+                                textareaRef.current.style.height = '400px';
+                              }
+                            }
+                          }}
+                          title="Arrastra para redimensionar o doble clic para alternar máximo"
+                        >
+                          <Maximize2 size={12} className="opacity-50" />
+                        </div>
 
+                        {mentionQuery !== null && (
+                          <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
+                            {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
+                              <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
+                                <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                                <div className="min-w-0">
+                                  <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
+                                  <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
+                                </div>
+                              </button>
+                            )) : (
+                              <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
-                      {mentionQuery !== null && (
-                        <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[110] overflow-hidden shadow-2xl animate-in slide-in-from-top-2 duration-100">
-                          {mentionSuggestions.length > 0 ? mentionSuggestions.map(u => (
-                            <button key={u.id} type="button" onClick={() => selectMention(u)} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors text-left border-b border-gray-50 dark:border-zinc-800 last:border-0 font-bold">
-                              <img src={getSafeAvatar(u.avatar)} className="w-8 h-8 rounded-lg object-cover" alt="" />
-                              <div className="min-w-0">
-                                <p className="text-sm text-gray-900 dark:text-white truncate">{u.name} {u.lastName}</p>
-                                <p className="text-[10px] text-purple-600 dark:text-purple-400">@{u.username}</p>
-                              </div>
-                            </button>
-                          )) : (
-                            <div className="px-4 py-3 text-xs text-gray-400 italic">{t('no_users_found')}</div>
-                          )}
+                      {selectedImage && (
+                        <div className="w-24 md:w-32 shrink-0 relative group/img aspect-[4/3] self-start mt-2 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm animate-in fade-in zoom-in-95">
+                          <img src={selectedImage} alt="Preview" className="w-full h-full object-cover bg-white dark:bg-zinc-900" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedImage(null);
+                              if (fileInputRef.current) fileInputRef.current.value = '';
+                            }}
+                            className="absolute top-1.5 right-1.5 p-1 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/img:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
                         </div>
                       )}
                     </div>
-                    {selectedImage && (
-                      <div className="w-24 md:w-32 shrink-0 relative group/img aspect-[4/3] self-start mt-2 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm animate-in fade-in zoom-in-95">
-                        <img src={selectedImage} alt="Preview" className="w-full h-full object-cover bg-white dark:bg-zinc-900" />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedImage(null);
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                          className="absolute top-1.5 right-1.5 p-1 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/img:opacity-100"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    )}
                   </div>
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-orange-500 hover:bg-orange-50 rounded-full transition-colors"><ImageIcon size={20} /></button>
+                  <div className="flex items-center justify-between mt-3">
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-full transition-colors"><ImageIcon size={18} /></button>
                     </div>
-
+ 
                     <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
@@ -395,10 +521,10 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                         reader.readAsDataURL(file);
                       }
                     }} />
-                    <button type="submit" disabled={isSubmitting || !newsTitle.trim() || !newsContent.trim()} className="bg-orange-600 text-white px-6 py-2 rounded-full font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                    <button type="submit" disabled={isSubmitting || !newsTitle.trim() || !newsContent.trim()} className="bg-orange-600 text-white px-4 py-1.5 rounded-full font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
                       {isSubmitting ? (
                         <>
-                          <Loader2 size={16} className="animate-spin" />
+                          <Loader2 size={14} className="animate-spin" />
                           <span>{t('publishing')}...</span>
                         </>
                       ) : (
@@ -410,8 +536,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               </div>
             </div>
             <div className="space-y-3 md:space-y-4">
-              {sortedNews.length > 0 ? (
-                sortedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} language={language} />)
+              {displayedNews.length > 0 ? (
+                displayedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} onOpenShare={setSharingPost} language={language} />)
               ) : (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
                   <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
@@ -443,9 +569,31 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </div>
               )}
 
-              {!hasMore && sortedNews.length > 0 && (
-                <div className="py-8 text-center text-gray-400 text-xs font-semibold uppercase tracking-widest opacity-50">
-                  {language === 'es' ? 'Has llegado al final' : "You've reached the end"}
+              {(!hasMore && displayLimit >= sortedNews.length) && displayedNews.length > 0 && !isLoadingMore && (
+                <div className="py-6 flex flex-col items-center justify-center space-y-3">
+                  <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
+                  <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
+                    {t('end_of_results')}
+                  </p>
+                  <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
+                </div>
+              )}
+
+              {(hasMore || displayLimit < sortedNews.length) && !isLoadingMore && (
+                <div className="py-8 flex justify-center">
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      if (displayLimit < sortedNews.length) {
+                        setDisplayLimit(p => p + 10); 
+                      } else {
+                        onLoadMore?.(); 
+                      }
+                    }}
+                    className="px-8 py-3 bg-orange-50 dark:bg-orange-900/20 text-orange-500 dark:text-orange-400 rounded-2xl font-black text-sm hover:bg-orange-100 transition-all active:scale-95 shadow-sm border border-orange-100 dark:border-orange-900/30"
+                  >
+                    Cargar más noticias
+                  </button>
                 </div>
               )}
             </div>
@@ -456,8 +604,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
               <Trophy className="text-orange-500" size={24} />
               <h3 className="text-xl font-black text-gray-900 dark:text-white">{t('top_ranking')}</h3>
             </div>
-            {sortedNews.length > 0 ? (
-              sortedNews.map((post, index) => (
+            {displayedNews.length > 0 ? (
+              displayedNews.map((post, index) => (
                 <div key={post.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-50 dark:border-zinc-900 flex items-center transition-all group cursor-pointer" onClick={() => onNavigateToPost?.(post.id)}>
                   <div className="w-16 flex-shrink-0"><span className="text-5xl font-black text-blue-600 dark:text-blue-500 italic">{index + 1}</span></div>
                   <div className="flex-1 flex items-center space-x-4 min-w-0"><img src={getSafeAvatar(post.authorAvatar)} className="w-12 h-12 rounded-xl object-cover" alt="" /><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">{post.authorName}</span><h4 className="text-gray-900 dark:text-white font-bold leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{post.title || post.content}</h4></div></div>
@@ -485,19 +633,22 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
       {!showHistory && (
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="md:hidden fixed bottom-24 right-4 p-4 bg-orange-600 text-white rounded-full shadow-lg hover:bg-orange-700 transition-all z-40"
+          className={`md:hidden fixed right-6 w-14 h-14 bg-orange-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-orange-700 transition-all active:scale-95 z-[999] ${scrollDirection === 'down' ? 'bottom-8' : 'bottom-24'}`}
         >
-          <Plus size={24} />
+          <Plus size={28} />
         </button>
       )}
 
       <CreatePostModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onPost={(content, type, tags, imageUrls) => onAddPost(content, type, tags, imageUrls)}
+        onPost={(content, type, tags, imageUrls, docUrl, docName, eventId, title) => 
+          onAddPost(content, type, tags, imageUrls, docUrl, docName, eventId, title)
+        }
         user={user}
         type="news"
         language={language}
+        userEvents={userEvents}
         users={users}
       />
     </div >

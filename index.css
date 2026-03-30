@@ -5,8 +5,9 @@
 html, body {
   margin: 0;
   padding: 0;
-  height: 100%;
   min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 @layer utilities {
@@ -21,5 +22,24 @@ html, body {
   }
   .rotate-y-180 {
     transform: rotateY(180deg);
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .animate-shimmer-bar {
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+  }
+}
+
+/* Prevent auto-zoom on mobile inputs */
+@media screen and (max-width: 768px) {
+  input, 
+  select, 
+  textarea {
+    font-size: 16px !important;
   }
 }

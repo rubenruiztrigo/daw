@@ -8,17 +8,22 @@ import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/
 import { ImageLightbox } from './ImageLightbox';
 import { useTranslation } from '../utils/translations';
 import { Language } from '../utils/translations';
+import { EventPreview } from './EventPreview';
 import { getSafeAvatar } from '../utils/avatarUtils';
+import { Link } from 'react-router-dom';
+import { sortComments } from '../utils/sortUtils';
 
 interface PostDetailsModalProps {
   post: Post;
   onClose: () => void;
   onAddComment: (postId: string, text: string) => void;
   onAddReply: (commentId: string, text: string, parentReplyId?: string) => void;
-  onLike?: (id: string) => void;
-  onVote?: (id: string, dir: 'up' | 'down') => void;
+  onLike: (id: string) => void;
+  onVote: (id: string, dir: 'up' | 'down') => void;
+  onRepost: (id: string) => void;
   onSearchHashtag?: (tag: string) => void;
-  onLikeComment?: (postId: string, commentId: string) => void;
+  onLikeComment?: (commentId: string) => void;
+  onLikeReply?: (replyId: string) => void;
   onNavigateToProfile?: (id: string) => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   users?: User[];
@@ -26,7 +31,7 @@ interface PostDetailsModalProps {
 }
 
 export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
-  post, onClose, onAddComment, onAddReply, onLike, onVote, onSearchHashtag, onNavigateToProfile, onNavigateToEvent, users = [], language = 'es'
+  post, onClose, onAddComment, onAddReply, onLike, onLikeComment, onLikeReply, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onNavigateToEvent, users = [], language = 'es'
 }) => {
   useScrollLock();
 
@@ -184,7 +189,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
     const maxDepth = 2; // Slightly lower depth for modal
     return (
       <div className={`mt-3 space-y-3 ${depth > 0 ? 'ml-6 border-l border-slate-100 dark:border-zinc-800 pl-4' : ''}`}>
-        {replies.map(reply => (
+        {sortComments(replies).map(reply => (
           <div key={reply.id} className="animate-in fade-in slide-in-from-left-1 duration-300">
             <div className="flex space-x-3 group/reply">
               <img
@@ -203,22 +208,32 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                   </span>
                   <span className="text-[8px] text-slate-400 font-bold">{timeAgo(reply.timestamp, language as 'es' | 'en')}</span>
                 </div>
-                <div className="text-[12px] text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900/50 p-3 rounded-xl rounded-tl-none border border-slate-50 dark:border-zinc-800">
+                <div className="text-[12px] text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900 p-3 rounded-xl rounded-tl-none border border-slate-50 dark:border-zinc-800">
                   {renderContentWithHashtags(reply.text)}
                 </div>
-                {depth < maxDepth && (
+                <div className="flex items-center space-x-4 mt-1 px-1">
+                  {depth < maxDepth && (
+                    <button
+                      onClick={() => {
+                        setReplyingTo(commentId);
+                        setReplyingToParentReplyId(reply.id);
+                        setReplyText(`@${reply.authorUsername || 'usuario'} `);
+                        setTimeout(() => replyInputRef.current?.focus(), 100);
+                      }}
+                      className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1"
+                    >
+                      <Reply size={10} /><span>Responder</span>
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => {
-                      setReplyingTo(commentId);
-                      setReplyingToParentReplyId(reply.id);
-                      setReplyText(`@${reply.authorUsername || 'usuario'} `);
-                      setTimeout(() => replyInputRef.current?.focus(), 100);
-                    }}
-                    className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1 mt-1 px-1"
+                    onClick={() => onLikeReply?.(reply.id)}
+                    className={`text-[9px] font-black uppercase flex items-center space-x-1 transition-colors ${reply.userLiked ? 'text-red-500' : 'text-slate-400'}`}
                   >
-                    <Reply size={10} /><span>Responder</span>
+                    <Heart size={10} fill={reply.userLiked ? "currentColor" : "none"} />
+                    <span>{reply.likes || 0}</span>
                   </button>
-                )}
+                </div>
 
                 {replyingTo === commentId && replyingToParentReplyId === reply.id && (
                   <div className="relative mt-2">
@@ -334,7 +349,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   return createPortal(
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
       <div className="bg-white dark:bg-[#0a0a0a] w-full max-w-3xl rounded-[2.5rem] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-white dark:border-zinc-800" onClick={(e) => e.stopPropagation()}>
-        <div className="px-8 py-4 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
+        <div className="px-4 md:px-8 py-4 border-b border-slate-50 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-[#0a0a0a] sticky top-0 z-10">
           <div className="flex items-center space-x-3">
             <div className="text-slate-400 group-hover:text-blue-500 transition-colors"><MessageCircle size={20} /></div>
             <div><h3 className="text-lg font-bold text-slate-900 dark:text-white">Detalle</h3></div>
@@ -343,7 +358,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-hide">
-          <div className="p-8 pb-4">
+          <div className="p-4 md:p-8 pb-2 md:pb-4">
             <div className="flex items-center space-x-4 mb-6">
               <img src={getSafeAvatar(post.authorAvatar)} className="w-14 h-14 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => { onNavigateToProfile?.(post.authorId); onClose(); }} />
               <div className="flex-1 min-w-0 flex items-start justify-between">
@@ -374,41 +389,11 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             </div>
 
             {post.linkedEvent && (
-              <div
-                className="bg-white dark:bg-[#0a0a0a] rounded-2xl border border-slate-100 dark:border-zinc-900 overflow-hidden hover:border-slate-200 dark:hover:border-zinc-800 transition-all duration-200 cursor-pointer group/event mb-6"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onNavigateToEvent) {
-                    onNavigateToEvent(post.authorId, post.linkedEvent!.id);
-                  }
-                }}
-              >
-                <div className="p-3">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-shrink-0 p-2 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-xl">
-                      <Calendar size={20} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start mb-1">
-                        <h4 className="font-black text-slate-900 dark:text-white text-sm truncate pr-2 group-hover/event:text-blue-600 transition-colors">{post.linkedEvent.title}</h4>
-                        <div className="bg-slate-50 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-700 flex-shrink-0">
-                          <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">{post.linkedEvent.event_time.substring(0, 5)}h</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">
-                        <span className="flex items-center">
-                          <Clock size={12} className="mr-1 text-slate-300" />
-                          {new Date(post.linkedEvent.event_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'short' })}
-                        </span>
-                        <span className="flex items-center truncate">
-                          <MapPin size={12} className="mr-1 text-slate-300" />
-                          {post.linkedEvent.location}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <EventPreview
+                event={post.linkedEvent}
+                language={language as Language}
+                onNavigateToEvent={onNavigateToEvent}
+              />
             )}
 
             {post.type !== 'news' && renderImages()}
@@ -431,10 +416,10 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
             </div>
           </div>
 
-          <div className="px-8 py-6 my-4 mx-8 rounded-3xl bg-slate-50 dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800">
-            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 pb-6 border-b border-slate-200 dark:border-zinc-800 px-1">Comentarios ({post.commentsList.length})</h5>
+          <div className="px-4 md:px-8 pb-4 md:pb-6">
+            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 pb-6 border-b border-slate-100 dark:border-zinc-800 px-1">Comentarios ({post.commentsList.length})</h5>
             <div className="space-y-6 max-h-[550px] overflow-y-auto pr-2">
-              {post.commentsList.slice(0, visibleCommentsCount).map((comment) => (
+              {sortComments(post.commentsList).slice(0, visibleCommentsCount).map((comment) => (
                 <div key={comment.id} className="animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex space-x-4">
                     <img src={getSafeAvatar(comment.authorAvatar)} className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500" alt="" onClick={() => { if (comment.authorId) { onNavigateToProfile?.(comment.authorId); onClose(); } }} />
@@ -450,12 +435,20 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                         </div>
                         <span className="text-[10px] text-slate-400 font-bold">{timeAgo(comment.timestamp, language as 'es' | 'en')}</span>
                       </div>
-                      <div className="text-sm text-slate-600 dark:text-gray-400 font-medium bg-white dark:bg-[#0a0a0a] p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-zinc-800 mb-2">
+                      <div className="text-sm text-slate-600 dark:text-gray-400 font-medium bg-slate-50 dark:bg-zinc-900 p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-zinc-800 mb-2">
                         {renderContentWithHashtags(comment.text)}
                       </div>
                       <div className="flex items-center space-x-6">
                         <button onClick={() => { setReplyingTo(comment.id); setReplyingToParentReplyId(undefined); setReplyText(`@${comment.authorUsername || 'usuario'} `); setTimeout(() => replyInputRef.current?.focus(), 100); }} className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1">
                           <Reply size={12} /><span>Responder</span>
+                        </button>
+
+                        <button
+                          onClick={() => onLikeComment?.(comment.id)}
+                          className={`text-[10px] font-black uppercase flex items-center space-x-1 transition-colors ${comment.userLiked ? 'text-red-500' : 'text-slate-400'}`}
+                        >
+                          <Heart size={12} fill={comment.userLiked ? "currentColor" : "none"} />
+                          <span>{comment.likes || 0}</span>
                         </button>
 
                         {comment.replies && comment.replies.length > 0 && (

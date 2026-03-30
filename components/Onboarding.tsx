@@ -663,7 +663,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
                       onBlur={() => { if (formData.username) checkAvailability(); }}
                       className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
-                      placeholder="anagarcia"
+                      placeholder="novo"
                     />
                   </div>
                   {usernameError && (
@@ -695,7 +695,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     onChange={e => updateField('email', e.target.value)}
                     onBlur={() => { if (formData.email) checkAvailability(); }}
                     className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
-                    placeholder="nombre@gob.es"
+                    placeholder="novo@novagob.org"
                   />
                 </div>
                 {emailError && (
@@ -896,7 +896,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-xl flex items-center justify-between animate-in zoom-in-95">
                       <div className="flex items-center space-x-2">
                         <CheckCircle2 size={16} className="text-blue-600" />
-                        <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Cuenta oficial vinculada: {selectedOrg.name}</span>
+                        <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Cuenta vinculada: {selectedOrg.name}</span>
                       </div>
                       <button
                         type="button"
@@ -924,7 +924,14 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   label="País"
                   value={formData.country || ''}
                   options={COUNTRIES}
-                  onChange={val => { updateField('country', val); updateField('region', ''); }}
+                  onChange={val => {
+                    updateField('country', val);
+                    if (val === 'Otro') {
+                      updateField('region', 'Otra');
+                    } else {
+                      updateField('region', '');
+                    }
+                  }}
                   placeholder="Selecciona un país..."
                 />
                 <SelectDrop
@@ -1044,7 +1051,14 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     label="País"
                     value={formData.country || ''}
                     options={COUNTRIES}
-                    onChange={val => { updateField('country', val); updateField('region', ''); }}
+                    onChange={val => {
+                      updateField('country', val);
+                      if (val === 'Otro') {
+                        updateField('region', 'Otra');
+                      } else {
+                        updateField('region', '');
+                      }
+                    }}
                     placeholder="Selecciona..."
                     icon={<Globe size={16} />}
                   />

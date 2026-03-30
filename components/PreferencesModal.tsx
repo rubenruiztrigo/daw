@@ -46,7 +46,6 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900">Intereses</h3>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Personaliza tu feed y conexiones</p>
             </div>
           </div>
           <button
@@ -59,25 +58,23 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
 
 
         <div className="flex-1 overflow-y-auto p-8 pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {PUBLIC_INTERESTS.map(interest => {
               const isSelected = selectedInterests.includes(interest);
               return (
                 <button
                   key={interest}
                   onClick={() => toggleInterest(interest)}
-                  className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all group ${isSelected
-                    ? 'bg-blue-600 border-blue-600 text-white'
+                  className={`flex items-center justify-center p-3 sm:p-4 rounded-2xl border-2 transition-all group text-center ${isSelected
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
                     : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'
                     }`}
                 >
-                  <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-700'}`}>
+                  <span className={`text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-slate-700'}`}>
                     {interest}
                   </span>
-                  {isSelected ? (
-                    <Check size={18} className="text-white" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-slate-100 group-hover:border-blue-200" />
+                  {isSelected && (
+                    <Check size={14} className="text-white shrink-0 ml-1.5" />
                   )}
                 </button>
               );
@@ -85,18 +82,18 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
           </div>
         </div>
 
-        <div className="p-8 border-t border-slate-50 flex space-x-3 bg-white">
+        <div className="p-5 md:p-6 border-t border-slate-50 flex space-x-3 bg-white">
           <button
             onClick={onClose}
-            className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
+            className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
+            className="flex-[2] py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all flex items-center justify-center space-x-2 transform active:scale-95"
           >
-            <Save size={18} />
+            <Check size={18} />
             <span>Guardar Preferencias</span>
           </button>
         </div>

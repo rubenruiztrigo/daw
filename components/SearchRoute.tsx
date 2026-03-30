@@ -11,6 +11,8 @@ interface SearchRouteProps {
     onVote: (id: string, dir: 'up' | 'down') => void;
     onRepost: (id: string) => void;
     onAddComment: (postId: string, text: string) => void;
+    onLikeComment?: (commentId: string) => void;
+    onLikeReply?: (replyId: string) => void;
     onDeletePost: (id: string) => void;
     onViewChange: (view: any) => void;
     onToggleFollow: (userId: string) => void;
@@ -22,7 +24,7 @@ interface SearchRouteProps {
     followedUserIds: Set<string>;
     followerUserIds: Set<string>;
     chats: Chat[];
-    onShareViaChat: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string) => void;
+    onShareViaChat: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string, scheduledAt?: Date) => Promise<void>;
     language: Language;
 }
 
@@ -33,6 +35,8 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
     onVote,
     onRepost,
     onAddComment,
+    onLikeComment,
+    onLikeReply,
     onDeletePost,
     onViewChange,
     onToggleFollow,
@@ -61,6 +65,8 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onVote={onVote}
             onRepost={onRepost}
             onAddComment={onAddComment}
+            onLikeComment={onLikeComment}
+            onLikeReply={onLikeReply}
             onDeletePost={onDeletePost}
             onViewChange={(view) => {
                 if (view === 'feed') navigate('/inicio');
@@ -76,6 +82,7 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             onNavigateToEvent={onNavigateToEvent}
             language={language}
             onShareViaChat={onShareViaChat}
+            chats={chats}
         />
     );
 };

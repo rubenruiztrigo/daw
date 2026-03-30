@@ -44,39 +44,38 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                 <div className="overflow-y-auto p-6 space-y-8 flex-1">
                     {/* Progress Section */}
                     <div className="rounded-3xl p-6 border dark:border-zinc-800" style={{ backgroundColor: `${currentStatus.currentLevelInfo.bannerColor}15`, borderColor: `${currentStatus.currentLevelInfo.bannerColor}40` }}>
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h2 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>
+                        <div className="flex justify-between items-center mb-6 px-1">
+                            <div className="min-w-0">
+                                <h2 className="text-base md:text-lg font-black text-slate-900 dark:text-white" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>
                                     {currentStatus.rank}
                                 </h2>
                             </div>
-                            <div className="text-right">
-                                <span className="text-3xl font-black" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>{currentNovas}</span>
-                                <span className="text-xs font-bold uppercase ml-1 block opacity-80" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>Novas Totales</span>
+                            <div className="shrink-0 flex items-center gap-1.5">
+                                <span className="text-base md:text-lg font-black" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>{currentNovas}</span>
+                                <span className="text-[9px] font-bold uppercase opacity-80 mt-0.5" style={{ color: currentStatus.currentLevelInfo.bannerColor }}>Novas</span>
                             </div>
                         </div>
 
                         <div className="space-y-2">
                             <div className="h-4 w-full bg-white/50 dark:bg-black/20 rounded-full overflow-hidden p-1 backdrop-blur-sm">
                                 <div
-                                    className="h-full rounded-full transition-all duration-1000 ease-out"
+                                    className="h-full rounded-full transition-all duration-1000 ease-out animate-shimmer-bar"
                                     style={{
-                                        width: `${progress}%`,
+                                        width: `${Math.max(2, progress)}%`,
                                         backgroundColor: currentStatus.currentLevelInfo.bannerColor,
-                                        boxShadow: `0 0 10px ${currentStatus.currentLevelInfo.bannerColor}80`
+                                        backgroundImage: 'linear-gradient(110deg, transparent 40%, rgba(255,255,255,0.5) 50%, transparent 60%)',
+                                        boxShadow: `0 0 20px ${currentStatus.currentLevelInfo.bannerColor}90`
                                     }}
                                 />
                             </div>
-                            <div className="flex justify-between text-[10px] font-black tracking-widest text-slate-400 mt-1">
+                            <div className="flex justify-between items-center text-[8px] md:text-[9px] font-black tracking-widest text-slate-400 mt-4 opacity-80 gap-4 px-1 pb-1">
                                 {nextThreshold ? (
-                                    <span className="uppercase">{t('novas_remaining', { count: nextThreshold - currentNovas })}</span>
+                                    <>
+                                        <span className="uppercase whitespace-nowrap">Faltan {nextThreshold - currentNovas} novas</span>
+                                        <span className="uppercase text-right whitespace-nowrap">{currentStatus.nextLevelInfo?.name}</span>
+                                    </>
                                 ) : (
-                                    <span className="uppercase">{t('level_rank')}</span>
-                                )}
-                                {nextThreshold ? (
-                                    <span><span className="uppercase">{t('next')}:</span> {currentStatus.nextLevelInfo?.name}</span>
-                                ) : (
-                                    <span className="uppercase">{t('max_level')}</span>
+                                    <span className="uppercase text-center w-full">{t('max_level')}</span>
                                 )}
                             </div>
                         </div>
@@ -159,15 +158,13 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                             onClose();
                             navigate('/recompensas');
                         }}
-                        className="w-full py-4 text-white rounded-2xl font-black text-lg transition-all flex items-center justify-center space-x-2 active:scale-[0.98] hover:opacity-90 shadow-lg"
+                        className="w-full py-4 text-white rounded-2xl font-black text-lg transition-all flex items-center justify-center active:scale-[0.98] hover:opacity-90 shadow-lg"
                         style={{
                             backgroundColor: '#9C5DFF',
                             boxShadow: `0 4px 14px 0 rgba(156, 93, 255, 0.4)`
                         }}
                     >
-                        <Gift size={24} />
                         <span>Ver Recompensas Disponibles</span>
-                        <ChevronRight size={20} className="opacity-70" />
                     </button>
                 </div>
             </div>

@@ -75,6 +75,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
       if (e.ctrlKey && (e.key === '=' || e.key === '-' || e.key === '0' || e.key === '+')) {
         e.preventDefault();
       }
+      if (e.key === 'Escape') {
+        setIsSelectorOpen(false);
+        setShowInfoTooltip(false);
+      }
     };
 
     window.addEventListener('wheel', handleWheel, { passive: false });
@@ -90,7 +94,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
     setLoading(true);
     const { data, error } = await supabase
       .from('user_events')
-      .select('*')
+      .select('*, profiles:creator_id(username)')
       .gte('attendees_count', 50)
       .order('event_date', { ascending: true });
 
@@ -105,7 +109,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
         location: ev.location,
         description: ev.description,
         attendees: ev.attendees_count,
-        time: ev.event_time.substring(0, 5)
+        time: ev.event_time.substring(0, 5),
+        username: ev.profiles?.username || ev.creator_id
       }));
       setEvents(mapped);
     }
@@ -175,7 +180,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
   return (
     <div
-      className="w-full max-w-[1200px] mx-auto min-h-0 lg:min-h-[75vh] flex flex-col lg:flex-row gap-2 lg:gap-8 pb-1 lg:pb-8 animate-in fade-in duration-500 relative touch-none select-none"
+      className="w-full max-w-[1400px] mx-auto px-3 lg:px-8 min-h-0 lg:min-h-[75vh] flex flex-col lg:flex-row gap-2 lg:gap-8 pb-1 lg:pb-8 animate-in fade-in duration-500 relative touch-none select-none"
       onClick={() => {
         setIsSelectorOpen(false);
         setShowInfoTooltip(false);
@@ -183,13 +188,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
       style={{ touchAction: 'none' }}
     >
       {/* Mobile Title */}
-      <div className="md:hidden pt-4 pb-0 px-2 leading-none">
+      <div className="md:hidden pt-[88px] pb-2 px-2 leading-none">
         <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
           {t('nav_calendar') || 'Calendario'}
         </h1>
       </div>
 
-      <div className="flex-1 bg-white dark:bg-[#111] p-3 md:p-5 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative overflow-hidden flex flex-col">
+      <div className="flex-1 bg-white dark:bg-[#111] px-2 py-3 md:p-5 rounded-[2.5rem] border border-gray-100 dark:border-zinc-900 relative md:overflow-hidden overflow-visible flex flex-col">
         <div className="flex items-center justify-between mb-2 md:mb-4">
           <div className="relative ml-8">
             <button
@@ -206,12 +211,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
             {isSelectorOpen && (
               <div
-                className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-[#0a0a0a] rounded-[2rem] border border-gray-100 dark:border-zinc-800 z-50 p-6 animate-in zoom-in-95 duration-200 shadow-2xl"
+                className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-[#0a0a0a] rounded-[2rem] border border-gray-100 dark:border-zinc-800 z-50 p-4 md:p-6 animate-in zoom-in-95 duration-200 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="space-y-6">
+                <div className="space-y-4 md:space-y-6">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t('select_month')}</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-3 block">{t('select_month')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {MONTHS.map((m, idx) => (
                         <button
@@ -225,7 +230,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t('select_year')}</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-3 block">{t('select_year')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {YEARS.map((y) => (
                         <button
@@ -242,7 +247,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               </div>
             )}
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 mr-2 lg:mr-0">
             <div className="relative group">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowInfoTooltip(!showInfoTooltip); }}
@@ -353,15 +358,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                 <div className="mb-1">
                   <button
                     onClick={() => {
-                      const identifier = event.creator_id; // ProfileRoute handles ID or username
-                      // We can try to find the username if available in users list passed as props
-                      // But ProfileRoute is robust enough to handle the ID
-                      navigate(`/${identifier}`, {
-                        state: {
-                          tab: 'events',
-                          scrollToEventId: event.id
-                        }
-                      });
+                      const identifier = event.username || event.creator_id;
+                      navigate(`/${identifier}/${event.id}`);
                     }}
                     className="w-full py-3.5 bg-gray-50 dark:bg-zinc-900 text-slate-900 dark:text-white rounded-xl text-xs font-black hover:bg-purple-600 hover:text-white transition-all shadow-sm hover:shadow-purple-500/20"
                   >

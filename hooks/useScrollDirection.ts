@@ -20,8 +20,9 @@ export const useScrollDirection = () => {
             // Only update if difference is significant enough to avoid jitter
             // But update lastScrollY on change to keep the "anchor" moving
             const diff = Math.abs(scrollY - lastScrollY);
+            const threshold = 2;
 
-            if (diff > 10) {
+            if (diff > threshold) {
                 setScrollDirection(direction);
                 lastScrollY = scrollY > 0 ? scrollY : 0;
             }

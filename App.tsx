@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Layout } from './components/Layout';
-import { SocialFeedV2 as SocialFeed } from './components/SocialFeed';
+import { SocialFeed } from './components/SocialFeed';
 import { ProfileView } from './components/ProfileView';
 import { ProfileRoute } from './components/ProfileRoute';
 import { MessagesView } from './components/MessagesView';
@@ -21,8 +21,10 @@ import { SearchRoute } from './components/SearchRoute';
 import { PostDetailsModal } from './components/PostDetailsModal';
 import { PostDetailView } from './components/PostDetailView';
 import { RegistrationDetailsModal } from './components/RegistrationDetailsModal';
+import { TutorialModal } from './components/TutorialModal';
 import { Routes, Route, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { getSafeAvatar } from './utils/avatarUtils';
+import { getMentionedUsernames } from './utils/mentionUtils';
 
 type AppView = 'feed' | 'profile' | 'messages' | 'news' | 'search' | 'settings' | 'notifications' | 'calendar';
 type Theme = 'light' | 'dark';
@@ -32,6 +34,7 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const [session, setSession] = useState<any>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [hasCheckedProfile, setHasCheckedProfile] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>('feed');
   const [currentUserData, setCurrentUserData] = useState<User | null>(null);
@@ -48,8 +51,6 @@ const App: React.FC = () => {
   const [storeRewards, setStoreRewards] = useState<any[]>([]);
   const [userRedemptions, setUserRedemptions] = useState<any[]>([]);
   const [isVoting, setIsVoting] = useState(false);
-  const [postsLimit, setPostsLimit] = useState(10);
-  const [newsLimit, setNewsLimit] = useState(10);
   const [hasMorePosts, setHasMorePosts] = useState(true);
   const [hasMoreNews, setHasMoreNews] = useState(true);
   const [isLoadingMorePosts, setIsLoadingMorePosts] = useState(false);
@@ -57,9 +58,56 @@ const App: React.FC = () => {
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [weeklyTrends, setWeeklyTrends] = useState<{ tag: string, count: number }[]>([]);
   const [selectedRegistrationUserId, setSelectedRegistrationUserId] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [hasTriggeredTutorial, setHasTriggeredTutorial] = useState(false);
+  const [activeTourStepId, setActiveTourStepId] = useState<string | null>(null);
 
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
   const [followerUserIds, setFollowerUserIds] = useState<Set<string>>(new Set());
+
+  // Combined notifications including virtual ones for pending users (admin only)
+  const allNotifications = useMemo(() => {
+    if (!session?.user || !currentUserData?.isAdmin) return notifications;
+
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const relevantUsers = users.filter(u => {
+      if (u.status === 'pending') return true;
+      if (u.updatedAt && new Date(u.updatedAt) > twentyFourHoursAgo) {
+        return u.status === 'active' || u.status === 'rejected';
+      }
+      return false;
+    });
+
+    const registrationNotifyUserIds = new Set(
+      notifications
+        .filter(n => n.type === 'registration_request')
+        .map(n => n.senderId)
+    );
+
+    const virtualNotifications: Notification[] = relevantUsers
+      .filter(u => !registrationNotifyUserIds.has(u.id))
+      .map(u => {
+        let content = 'Solicitud de registro';
+        if (u.status === 'active') content += ' (aceptado)';
+        else if (u.status === 'rejected') content += ' (rechazado)';
+
+        return {
+          id: `virtual-${u.id}`,
+          type: 'registration_request',
+          senderId: u.id,
+          senderName: `${u.name} ${u.lastName || ''}`,
+          senderAvatar: u.avatar || '',
+          content: content,
+          timestamp: u.updatedAt || u.joinedDate || now.toISOString(),
+          updatedAt: u.updatedAt || u.joinedDate || now.toISOString(),
+          isRead: u.status !== 'pending'
+        };
+      });
+
+    return [...notifications, ...virtualNotifications];
+  }, [notifications, users, currentUserData?.isAdmin, session?.user?.id]);
 
   const [toast, setToast] = useState<{ message: string, type: 'error' | 'success' | 'info' } | null>(null);
 
@@ -92,7 +140,7 @@ const App: React.FC = () => {
 
 
   const fetchUserProfile = useCallback(async (uid: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).single();
+    const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
     if (data) {
       setCurrentUserData({
         id: data.id,
@@ -100,6 +148,7 @@ const App: React.FC = () => {
         lastName: data.last_name,
         username: data.username,
         email: data.email,
+        birthDate: data.birth_date,
         position: data.position || 'Personal Público',
         department: data.department || 'Administración',
         jobCategory: data.job_category,
@@ -110,7 +159,9 @@ const App: React.FC = () => {
         following: data.following_count || 0,
         country: data.country,
         region: data.region,
-        joinedDate: data.created_at,
+        joinedDate: data.joined_date || data.created_at,
+        updatedAt: data.updated_at || data.created_at,
+        firstTime: data.first_time,
         novas: data.novas || 0,
         isAdmin: data.is_admin || false,
         isOrganization: data.is_organization || false,
@@ -124,7 +175,45 @@ const App: React.FC = () => {
         linkedOrganizationId: data.linked_organization_id || data.linkedOrganizationId || null
       });
     }
+    setHasCheckedProfile(true);
   }, []);
+
+  const processMentions = useCallback(async (text: string, postId: string | null, newsId: string | null, type: 'post' | 'noticia' | 'comentario') => {
+    if (!session?.user) return;
+    const usernames = getMentionedUsernames(text);
+    if (usernames.length === 0) return;
+
+    const { data: mentionedUsers } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('username', usernames);
+
+    if (mentionedUsers) {
+      for (const u of mentionedUsers) {
+        if (u.id !== session.user.id) {
+          let content = '';
+          if (type === 'comentario') {
+            content = 'te ha mencionado en un comentario';
+          } else if (type === 'post') {
+            content = 'te ha mencionado en un post';
+          } else if (type === 'noticia') {
+            content = 'te ha mencionado en una noticia';
+          } else {
+            content = `te ha mencionado en un ${type}`;
+          }
+
+          await supabase.from('notifications').insert({
+            user_id: u.id,
+            sender_id: session.user.id,
+            type: 'mention',
+            content,
+            post_id: postId || null,
+            news_id: newsId || null,
+          });
+        }
+      }
+    }
+  }, [session?.user?.id]);
 
   const fetchUsers = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('*');
@@ -135,6 +224,7 @@ const App: React.FC = () => {
         lastName: u.last_name,
         username: u.username,
         email: u.email,
+        birthDate: u.birth_date,
         position: u.position || 'Personal Público',
         department: u.department || 'Administración',
         jobCategory: u.job_category,
@@ -145,7 +235,9 @@ const App: React.FC = () => {
         following: u.following_count || 0,
         country: u.country,
         region: u.region,
-        joinedDate: u.created_at,
+        joinedDate: u.joined_date || u.created_at,
+        updatedAt: u.updated_at || u.created_at,
+        firstTime: u.first_time,
         novas: u.novas || 0,
         isAdmin: u.is_admin || false,
         isOrganization: u.is_organization || false,
@@ -233,15 +325,22 @@ const App: React.FC = () => {
 
           // Fallback: Si no viene en el join, buscar en nuestra lista local de usuarios
           const localProfile = users.find(u => u.id === otherId);
+          
+          const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+          const username = joinedProfile?.username || localProfile?.username;
+          const name = joinedProfile?.name || localProfile?.name || 'Usuario';
+          const lastName = joinedProfile?.last_name || localProfile?.lastName || '';
+          const rawName = `${name} ${lastName}`.trim();
+          const safeUsername = (username && !isUUID(username)) ? username : (isUUID(rawName) ? '' : (rawName.toLowerCase().replace(/\s/g, '') || ''));
 
           if (!chatGroups.has(otherId)) {
             chatGroups.set(otherId, {
               id: otherId,
               participant: {
                 id: otherId,
-                name: joinedProfile?.name || localProfile?.name || 'Usuario',
-                lastName: joinedProfile?.last_name || localProfile?.lastName || '',
-                username: joinedProfile?.username || localProfile?.username || '',
+                name: name,
+                lastName: lastName,
+                username: safeUsername,
                 avatar: getSafeAvatar(joinedProfile?.avatar || localProfile?.avatar),
                 position: joinedProfile?.position || localProfile?.position || '',
                 department: joinedProfile?.department || localProfile?.department || '',
@@ -264,11 +363,13 @@ const App: React.FC = () => {
             timestamp: msgDate,
             isRead: m.is_read,
             postId: m.post_id,
-            isPostShare: !!m.post_id,
+            newsId: m.news_id,
+            isPostShare: !!m.post_id || !!m.news_id,
             sharedProfile: m.shared_profile,
             sharedProfileId: m.shared_profile_id,
             sharedEventId: m.shared_event_id,
             sharedEvent: m.shared_event,
+            imageUrl: m.image_url,
             updated_at: m.updated_at,
             is_deleted: m.is_deleted
           };
@@ -289,12 +390,12 @@ const App: React.FC = () => {
 
           if (m.is_deleted) {
             summary = isSender ? `Eliminaste este mensaje` : `Este mensaje ha sido eliminado`;
-          } else if (isProbablyData) summary = `📁 Adjunto`;
-          else if (m.post_id) summary = `📝 Post compartido`;
-          else if (m.shared_profile_id || m.shared_profile) summary = `👤 Perfil compartido`;
-          else if (m.shared_event_id || m.shared_event) summary = `📅 Evento compartido`;
+          } else if (isProbablyData) summary = `Adjunto`;
+          else if (m.post_id || m.news_id) summary = `Post compartido`;
+          else if (m.shared_profile_id || m.shared_profile) summary = `Perfil compartido`;
+          else if (m.shared_event_id || m.shared_event) summary = `Evento compartido`;
           else if (isImage) summary = `Imagen`;
-          else if (trimmedText.startsWith('http')) summary = `🔗 Enlace`;
+          else if (trimmedText.startsWith('http')) summary = `Enlace`;
           else summary = trimmedText;
 
           chat.lastMessage = summary;
@@ -326,17 +427,47 @@ const App: React.FC = () => {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setNotifications(data.map((n: any) => ({
-        id: n.id,
-        type: n.type,
-        senderName: n.sender ? `${n.sender.name} ${n.sender.last_name || ''}` : '',
-        senderId: n.sender_id,
-        senderAvatar: getSafeAvatar(n.sender?.avatar),
-        content: n.content,
-        timestamp: n.created_at,
-        isRead: n.is_read,
-        postId: n.post_id
-      })));
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      // Auto-delete resolved solicitud notifications older than 24h
+      const toDelete = data.filter((n: any) => {
+        if (n.type !== 'registration_request') return false;
+        const content = (n.content || '').toLowerCase();
+        const isResolved = content.includes('(aceptado)') || content.includes('(rechazado)') ||
+          content.includes('bienvenido') || content.includes('aprobad') || content.includes('rechazad');
+        if (!isResolved) return false;
+        const resolveTime = new Date(n.updated_at || n.created_at);
+        return resolveTime < cutoff;
+      });
+
+      if (toDelete.length > 0) {
+        const idsToDelete = toDelete.map((n: any) => n.id);
+        await supabase.from('notifications').delete().in('id', idsToDelete);
+      }
+
+      const validData = data.filter((n: any) => !toDelete.some((d: any) => d.id === n.id));
+
+      setNotifications(validData.map((n: any) => {
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+        const name = n.sender?.name || 'Usuario';
+        const lastName = n.sender?.last_name || '';
+        const rawName = `${name} ${lastName}`.trim();
+
+        return {
+          id: n.id,
+          type: n.type,
+          senderName: rawName,
+          senderId: n.sender_id,
+          senderAvatar: getSafeAvatar(n.sender?.avatar),
+          content: n.content,
+          timestamp: n.created_at,
+          isRead: n.is_read,
+          postId: n.content?.toLowerCase().includes('noticia') ? undefined : n.post_id,
+          newsId: n.content?.toLowerCase().includes('noticia') ? n.post_id : n.news_id,
+          updatedAt: n.updated_at || n.created_at
+        };
+      }));
     }
   }, [session?.user?.id]);
 
@@ -383,32 +514,123 @@ const App: React.FC = () => {
 
   const handleApproveUser = async (userId: string, notificationId: string) => {
     if (!session?.user || !currentUserData?.isAdmin) return;
+    
+    // Optimistic update
+    const resolvedLabel = ' (aceptado)';
+    const now = new Date().toISOString();
+
+    setNotifications(prev => {
+      // Check if we already have a real notification for this request
+      const hasReal = prev.some(n => n.senderId === userId && n.type === 'registration_request');
+      
+      if (hasReal) {
+        return prev.map(n => {
+          if (n.senderId === userId && (n.type === 'registration_request' || (n.type === 'system' && n.content.includes('Solicitud')))) {
+            return { ...n, content: n.content.includes('(') ? n.content : n.content + resolvedLabel, isRead: true, updatedAt: now };
+          }
+          return n;
+        });
+      } else {
+        // It was a virtual one, inject a real one optimistically
+        const targetUser = users.find(u => u.id === userId);
+        const virtualAsReal: Notification = {
+          id: `opt-${userId}`, // temporary id
+          type: 'registration_request',
+          senderId: userId,
+          senderName: targetUser ? `${targetUser.name} ${targetUser.lastName || ''}` : 'Usuario',
+          senderAvatar: targetUser?.avatar || '',
+          content: `Solicitud de registro${resolvedLabel}`,
+          timestamp: now,
+          updatedAt: now,
+          isRead: true
+        };
+        return [virtualAsReal, ...prev];
+      }
+    });
+
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active', updatedAt: now } : u));
+
     const { error } = await supabase.rpc('fn_resolve_registration', {
       p_user_id: userId,
-      p_notification_id: notificationId,
+      p_notification_id: notificationId.startsWith('virtual-') ? null : notificationId,
       p_approve: true
     });
     if (error) {
       console.error("Error approving user:", error);
       alert("Error al aprobar usuario: " + error.message);
-    } else {
-      fetchFeed(); // Refresh to see active user
+      // Rollback
       fetchNotifications();
+      fetchUsers();
+    } else {
+      // Send welcome notification
+      await supabase.from('notifications').insert({
+        user_id: userId,
+        sender_id: session.user.id,
+        type: 'system',
+        content: '¡Te damos la bienvenida! Tu cuenta ha sido aprobada y ya perteneces a Red Social',
+        is_read: false
+      });
+
+      // Small delay to ensure DB loop completes and triggers finish
+      setTimeout(async () => {
+        await fetchFeed();
+        await fetchNotifications();
+        await fetchUsers();
+      }, 500);
     }
   };
 
   const handleRejectUser = async (userId: string, notificationId: string) => {
     if (!session?.user || !currentUserData?.isAdmin) return;
+
+    // Optimistic update
+    const resolvedLabel = ' (rechazado)';
+    const now = new Date().toISOString();
+
+    setNotifications(prev => {
+      const hasReal = prev.some(n => n.senderId === userId && n.type === 'registration_request');
+      if (hasReal) {
+        return prev.map(n => {
+          if (n.senderId === userId && (n.type === 'registration_request' || (n.type === 'system' && n.content.includes('Solicitud')))) {
+            return { ...n, content: n.content.includes('(') ? n.content : n.content + resolvedLabel, isRead: true, updatedAt: now };
+          }
+          return n;
+        });
+      } else {
+        const targetUser = users.find(u => u.id === userId);
+        const virtualAsReal: Notification = {
+          id: `opt-${userId}`,
+          type: 'registration_request',
+          senderId: userId,
+          senderName: targetUser ? `${targetUser.name} ${targetUser.lastName || ''}` : 'Usuario',
+          senderAvatar: targetUser?.avatar || '',
+          content: `Solicitud de registro${resolvedLabel}`,
+          timestamp: now,
+          updatedAt: now,
+          isRead: true
+        };
+        return [virtualAsReal, ...prev];
+      }
+    });
+
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected', updatedAt: now } : u));
+
     const { error } = await supabase.rpc('fn_resolve_registration', {
       p_user_id: userId,
-      p_notification_id: notificationId,
+      p_notification_id: notificationId.startsWith('virtual-') ? null : notificationId,
       p_approve: false
     });
     if (error) {
       console.error("Error rejecting user:", error);
       alert("Error al rechazar usuario: " + error.message);
-    } else {
+      // Rollback
       fetchNotifications();
+      fetchUsers();
+    } else {
+      setTimeout(async () => {
+        await fetchNotifications();
+        await fetchUsers();
+      }, 500);
     }
   };
 
@@ -469,9 +691,10 @@ const App: React.FC = () => {
       const counts: Record<string, number> = {};
       const processTags = (data: { tags: string[] | null }[] | null) => {
         data?.forEach(item => {
-          item.tags?.forEach(tag => {
-            const cleanTag = tag.trim();
-            if (cleanTag) counts[cleanTag] = (counts[cleanTag] || 0) + 1;
+          // Deduplicate tags within the same post so each post counts only once per hashtag
+          const uniqueTags = new Set((item.tags || []).map(t => t.trim()).filter(Boolean));
+          uniqueTags.forEach(tag => {
+            counts[tag] = (counts[tag] || 0) + 1;
           });
         });
       };
@@ -489,111 +712,25 @@ const App: React.FC = () => {
       console.error("Error fetching weekly trends:", err);
     }
   }, [session]);
-  const fetchFeed = useCallback(async () => {
-    if (!session?.user) return;
-    try {
-      const [
-        { data: postsData },
-        { data: newsData },
-        { data: postComments },
-        { data: newsComments },
-        { data: commentReplies },
-        { data: myPostLikes },
-        { data: myNewsVotes },
-        { data: myReposts }
-      ] = await Promise.all([
-        supabase.from('posts').select('*, is_pinned, pinned_at, author:profiles!author_id(*)').order('created_at', { ascending: false }).range(0, postsLimit - 1),
-        supabase.from('news').select('*, is_pinned, pinned_at, author:profiles!author_id(*)').order('created_at', { ascending: false }).range(0, newsLimit - 1),
-        supabase.from('post_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
-        supabase.from('news_comments').select('*, author:profiles!author_id(*)').order('created_at', { ascending: false }),
-        supabase.from('comment_replies').select('*, author:profiles!author_id(*)').order('created_at', { ascending: true }),
-        supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id),
-        supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id),
-        supabase.from('reposts').select('post_id, news_id').eq('user_id', session.user.id)
-      ]);
 
-      setHasMorePosts(postsData && postsData.length === postsLimit ? true : false);
-      setHasMoreNews(newsData && newsData.length === newsLimit ? true : false);
+  const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+  const getSafeNames = (u: any) => {
+    const name = u?.name || 'Usuario';
+    const lastName = u?.last_name || '';
+    const rawName = `${name} ${lastName}`.trim();
+    const username = u?.username;
+    const safeUsername = (username && !isUUID(username)) ? username : (isUUID(rawName) ? '' : (rawName.toLowerCase().replace(/\s/g, '') || ''));
+    return { name, lastName, username: safeUsername };
+  };
 
-
-      console.log('Fetched postsData:', postsData?.length, 'items. Pinned count:', postsData?.filter(p => p.is_pinned).length);
-      console.log('Fetched newsData:', newsData?.length, 'items. Pinned count:', newsData?.filter(p => p.is_pinned).length);
-
-      const commentsMap = new Map<string, Comment[]>();
-      const repliesMap = new Map<string, any[]>();
-      const allRepliesById = new Map<string, any>();
-
-      // First pass: create objects for all replies and index by ID
-      commentReplies?.forEach((r: any) => {
-        const replyObj = {
-          id: r.id,
-          commentId: r.comment_id,
-          parentReplyId: r.parent_reply_id,
-          authorId: r.author_id,
-          authorName: `${r.author?.name} ${r.author?.last_name || ''}`,
-          authorUsername: r.author?.username || r.author?.name?.toLowerCase().replace(/\s/g, ''),
-          authorAvatar: getSafeAvatar(r.author?.avatar),
-          text: r.text,
-          timestamp: r.created_at,
-          replies: []
-        };
-        allRepliesById.set(r.id, replyObj);
-      });
-
-      // Second pass: build the tree
-      commentReplies?.forEach((r: any) => {
-        const replyObj = allRepliesById.get(r.id);
-        if (r.parent_reply_id && allRepliesById.has(r.parent_reply_id)) {
-          // Nest under parent reply
-          const parent = allRepliesById.get(r.parent_reply_id);
-          parent.replies.push(replyObj);
-        } else {
-          // Top level reply for this comment
-          const targetId = r.comment_id;
-          const list = repliesMap.get(targetId) || [];
-          list.push(replyObj);
-          repliesMap.set(targetId, list);
-        }
-      });
-
-      const processComments = (data: any[], idField: string) => {
-        data?.forEach((c: any) => {
-          const targetId = c[idField];
-          const list = commentsMap.get(targetId) || [];
-          list.push({
-            id: c.id,
-            authorId: c.author_id,
-            authorName: `${c.author?.name} ${c.author?.last_name || ''}`,
-            authorUsername: c.author?.username || c.author?.name?.toLowerCase().replace(/\s/g, ''),
-            authorAvatar: getSafeAvatar(c.author?.avatar),
-            text: c.text,
-            timestamp: c.created_at,
-            replies: repliesMap.get(c.id) || []
-          });
-          commentsMap.set(targetId, list);
-        });
-      };
-      processComments(postComments || [], 'post_id');
-      processComments(newsComments || [], 'news_id');
-
-      const upvotedIds = new Set([
-        ...(myPostLikes?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []),
-        ...(myNewsVotes?.filter(l => l.vote_type === 'up').map(l => l.news_id) || [])
-      ]);
-      const downvotedIds = new Set([
-        ...(myPostLikes?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []),
-        ...(myNewsVotes?.filter(l => l.vote_type === 'down').map(l => l.news_id) || [])
-      ]);
-      const repostedIds = new Set([
-        ...(myReposts?.map(r => r.post_id).filter(Boolean) || []),
-        ...(myReposts?.map(r => r.news_id).filter(Boolean) || [])
-      ]);
-
-      const mapPosts = (items: any[], type: 'post' | 'news') => items?.map(p => ({
+  const mapPostsData = useCallback((items: any[], type: 'post' | 'news', commentsMap: Map<string, any[]>, upvotedIds: Set<string>, downvotedIds: Set<string>, repostedIds: Set<string>) => {
+    return items?.map(p => {
+      const { name, lastName, username } = getSafeNames(p.author);
+      return {
         id: p.id,
         authorId: p.author_id,
-        authorName: `${p.author?.name} ${p.author?.last_name || ''}`,
-        authorUsername: p.author?.username || p.author?.name.toLowerCase().replace(/\s/g, ''),
+        authorName: `${name} ${lastName}`.trim(),
+        authorUsername: username,
         authorPosition: p.author?.position,
         authorAvatar: getSafeAvatar(p.author?.avatar),
         title: p.titulo,
@@ -612,29 +749,236 @@ const App: React.FC = () => {
         userDownvoted: downvotedIds.has(p.id),
         userReposted: repostedIds.has(p.id),
         isPinned: p.is_pinned,
-        pinnedAt: p.pinned_at
-      })) || [];
+        pinnedAt: p.pinned_at,
+        linkedEventId: p.event_id,
+        linkedEvent: p.linked_event
+      };
+    }) || [];
+  }, []);
 
-      const allPosts = [...mapPosts(postsData || [], 'post'), ...mapPosts(newsData || [], 'news')];
-      setPosts(allPosts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  const fetchFeed = useCallback(async (customOffset?: number, customType?: 'post' | 'news', authorId?: string) => {
+    if (!session?.user) return;
+    try {
+      console.log('Fetching feed...', { customOffset, customType, authorId });
+      const pLimit = 10;
+      const pOffset = customOffset || 0;
+      const isLoadMore = pOffset > 0;
+
+      let postsQuery = supabase.from('posts').select('*, is_pinned, pinned_at, author:profiles!author_id(*), linked_event:user_events!event_id(*)').order('created_at', { ascending: false });
+      let newsQuery = supabase.from('news').select('*, is_pinned, pinned_at, author:profiles!author_id(*)').order('created_at', { ascending: false });
+
+      if (authorId) {
+        postsQuery = postsQuery.eq('author_id', authorId);
+        newsQuery = newsQuery.eq('author_id', authorId);
+      }
+
+      let postsRes, newsRes;
+
+      if (customType === 'post') {
+        postsRes = await postsQuery.range(pOffset, pOffset + pLimit - 1);
+        newsRes = { data: [] };
+      } else if (customType === 'news') {
+        newsRes = await newsQuery.range(pOffset, pOffset + pLimit - 1);
+        postsRes = { data: [] };
+      } else {
+        [postsRes, newsRes] = await Promise.all([
+          postsQuery.range(0, pLimit - 1),
+          newsQuery.range(0, pLimit - 1)
+        ]);
+      }
+
+      const freshPostsData = postsRes.data || [];
+      const freshNewsData = newsRes.data || [];
+      
+      const allNewIds = [
+        ...freshPostsData.map(p => p.id),
+        ...freshNewsData.map(n => n.id)
+      ];
+
+      if (allNewIds.length === 0) {
+        if (!isLoadMore) {
+          setPosts([]);
+          setHasMorePosts(false);
+          setHasMoreNews(false);
+        } else {
+          if (customType === 'post') setHasMorePosts(false);
+          if (customType === 'news') setHasMoreNews(false);
+        }
+        return;
+      }
+
+      const [
+        postComments,
+        newsComments,
+        commentReplies,
+        myPostLikes,
+        myNewsVotes,
+        myReposts,
+        myCommentLikes
+      ] = await Promise.all([
+        supabase.from('post_comments').select('*, author:profiles!author_id(*)').in('post_id', allNewIds).order('created_at', { ascending: false }),
+        supabase.from('news_comments').select('*, author:profiles!author_id(*)').in('news_id', allNewIds).order('created_at', { ascending: false }),
+        supabase.from('comment_replies').select('*, author:profiles!author_id(*)').order('created_at', { ascending: true }),
+        supabase.from('post_likes').select('post_id, vote_type').eq('user_id', session.user.id).in('post_id', allNewIds),
+        supabase.from('news_votes').select('news_id, vote_type').eq('user_id', session.user.id).in('news_id', allNewIds),
+        supabase.from('reposts').select('post_id, news_id').eq('user_id', session.user.id),
+        supabase.from('comment_likes').select('comment_id, reply_id').eq('user_id', session.user.id)
+      ]);
+
+      if (customType === 'post') setHasMorePosts(freshPostsData.length === pLimit);
+      else if (customType === 'news') setHasMoreNews(freshNewsData.length === pLimit);
+      else {
+        setHasMorePosts(freshPostsData.length === pLimit);
+        setHasMoreNews(freshNewsData.length === pLimit);
+      }
+
+      const commentsMap = new Map<string, Comment[]>();
+      const repliesMap = new Map<string, any[]>();
+      const allRepliesById = new Map<string, any>();
+
+      const userLikedComments = new Set(myCommentLikes?.data?.map(l => l.comment_id).filter(Boolean));
+      const userLikedReplies = new Set(myCommentLikes?.data?.map(l => l.reply_id).filter(Boolean));
+
+      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+      const getSafeNames = (u: any) => {
+        const name = u?.name || 'Usuario';
+        const lastName = u?.last_name || '';
+        const rawName = `${name} ${lastName}`.trim();
+        const username = u?.username;
+        const safeUsername = (username && !isUUID(username)) ? username : (isUUID(rawName) ? '' : (rawName.toLowerCase().replace(/\s/g, '') || ''));
+        return { name, lastName, username: safeUsername };
+      };
+
+      commentReplies?.data?.forEach((r: any) => {
+        const { name, username } = getSafeNames(r.author);
+        const replyObj = {
+          id: r.id,
+          commentId: r.comment_id,
+          parentReplyId: r.parent_reply_id,
+          authorId: r.author_id,
+          authorName: name,
+          authorUsername: username,
+          authorAvatar: getSafeAvatar(r.author?.avatar),
+          text: r.text,
+          timestamp: r.created_at,
+          likes: r.likes || 0,
+          userLiked: userLikedReplies.has(r.id),
+          replies: []
+        };
+        allRepliesById.set(r.id, replyObj);
+      });
+
+      commentReplies?.data?.forEach((r: any) => {
+        const replyObj = allRepliesById.get(r.id);
+        if (r.parent_reply_id && allRepliesById.has(r.parent_reply_id)) {
+          const parent = allRepliesById.get(r.parent_reply_id);
+          if (parent) parent.replies.push(replyObj);
+        } else {
+          const targetId = r.comment_id;
+          const list = repliesMap.get(targetId) || [];
+          list.push(replyObj);
+          repliesMap.set(targetId, list);
+        }
+      });
+
+      const processComments = (data: any[], idField: string) => {
+        data?.forEach((c: any) => {
+          const targetId = c[idField];
+          const list = commentsMap.get(targetId) || [];
+          const { name, username } = getSafeNames(c.author);
+          list.push({
+            id: c.id,
+            authorId: c.author_id,
+            authorName: name,
+            authorUsername: username,
+            authorAvatar: getSafeAvatar(c.author?.avatar),
+            text: c.text,
+            timestamp: c.created_at,
+            likes: c.likes || 0,
+            userLiked: userLikedComments.has(c.id),
+            replies: repliesMap.get(c.id) || []
+          });
+          commentsMap.set(targetId, list);
+        });
+      };
+      processComments(postComments?.data || [], 'post_id');
+      processComments(newsComments?.data || [], 'news_id');
+
+      const upvotedIds = new Set([
+        ...(myPostLikes?.data?.filter(l => l.vote_type === 'up').map(l => l.post_id) || []),
+        ...(myNewsVotes?.data?.filter(l => l.vote_type === 'up').map(l => l.news_id) || [])
+      ]);
+      const downvotedIds = new Set([
+        ...(myPostLikes?.data?.filter(l => l.vote_type === 'down').map(l => l.post_id) || []),
+        ...(myNewsVotes?.data?.filter(l => l.vote_type === 'down').map(l => l.news_id) || [])
+      ]);
+      const repostedIds = new Set([
+        ...(myReposts?.data?.map(r => r.post_id).filter(Boolean) || []),
+        ...(myReposts?.data?.map(r => r.news_id).filter(Boolean) || [])
+      ]);
+
+      const newBatch = [
+        ...mapPostsData(freshPostsData, 'post', commentsMap, upvotedIds, downvotedIds, repostedIds),
+        ...mapPostsData(freshNewsData, 'news', commentsMap, upvotedIds, downvotedIds, repostedIds)
+      ];
+      
+      if (isLoadMore) {
+        setPosts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const filteredNewBatch = newBatch.filter(p => !existingIds.has(p.id));
+          return [...prev, ...filteredNewBatch].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        });
+      } else {
+        setPosts(newBatch.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      }
+
+      // Update pagination control states
+      if (customType === 'post' || !customType) {
+        setHasMorePosts(freshPostsData.length === pLimit);
+      }
+      if (customType === 'news' || !customType) {
+        setHasMoreNews(freshNewsData.length === pLimit);
+      }
+
+    } catch (err) {
+      console.error("Critical error in fetchFeed:", err);
     } finally {
       setIsLoadingMorePosts(false);
       setIsLoadingMoreNews(false);
       setIsLoadingFeed(false);
     }
-  }, [session?.user?.id, postsLimit, newsLimit]);
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    fetchFeed();
+  }, [fetchFeed]);
 
   const handleLoadMorePosts = useCallback(async () => {
     if (isLoadingMorePosts || !hasMorePosts) return;
     setIsLoadingMorePosts(true);
-    setPostsLimit(prev => prev + 10);
-  }, [isLoadingMorePosts, hasMorePosts]);
+    
+    // Using a ref-like approach via setPosts to get current count without including 'posts' as dependency
+    // but since we already have 'posts', let's just make sure we are using the latest value.
+    const count = posts.filter(p => p.type === 'post').length;
+    console.log(`[InfiniteScroll] Triggering load more posts. Current count: ${count}, hasMore: ${hasMorePosts}`);
+    await fetchFeed(count, 'post');
+  }, [isLoadingMorePosts, hasMorePosts, fetchFeed, posts]);
 
   const handleLoadMoreNews = useCallback(async () => {
     if (isLoadingMoreNews || !hasMoreNews) return;
     setIsLoadingMoreNews(true);
-    setNewsLimit(prev => prev + 10);
-  }, [isLoadingMoreNews, hasMoreNews]);
+    const count = posts.filter(p => p.type === 'news').length;
+    console.log(`[InfiniteScroll] Triggering load more news. Current count: ${count}, hasMore: ${hasMoreNews}`);
+    await fetchFeed(count, 'news');
+  }, [isLoadingMoreNews, hasMoreNews, fetchFeed, posts]);
+
+  const handleLoadMoreProfile = useCallback(async (authorId: string) => {
+    if (isLoadingMorePosts) return;
+    setIsLoadingMorePosts(true);
+    const count = posts.filter(p => p.authorId === authorId).length;
+    console.log(`[InfiniteScroll] Triggering load more profile. Author: ${authorId}, Current count: ${count}`);
+    await fetchFeed(count, undefined, authorId);
+  }, [isLoadingMorePosts, fetchFeed, posts]);
 
   const handleAddPost = async (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => {
     if (!session?.user) return;
@@ -678,20 +1022,25 @@ const App: React.FC = () => {
     }
 
     try {
-      const { data, error } = await supabase.from(table)
-        .insert(payload)
-        .select('*, author:profiles!author_id(*)')
-        .single();
+      const { data, error } = (isNews
+        ? await supabase.from('news').insert(payload).select('*, author:profiles!author_id(*)').maybeSingle()
+        : await supabase.from('posts').insert(payload).select('*, author:profiles!author_id(*), linked_event:user_events!event_id(*)').maybeSingle()) as { data: any, error: any };
 
       if (!error && data) {
         console.log(`✅ Publicado correctamente en ${table}`);
 
         // Optimistic update: map the new record to our Post type and add it to state immediately
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+        const rawName = `${data.author?.name || ''} ${data.author?.last_name || ''}`.trim();
+        const authorUsername = data.author?.username;
+        const authorName = (!rawName || rawName === 'Usuario' || isUUID(rawName)) ? (authorUsername ? `@${authorUsername}` : (rawName || 'Usuario')) : rawName;
+        const safeUsername = (authorUsername && !isUUID(authorUsername)) ? authorUsername : (isUUID(rawName) ? '' : (rawName.toLowerCase().replace(/\s/g, '') || ''));
+
         const newPost: Post = {
           id: data.id,
           authorId: data.author_id,
-          authorName: `${data.author?.name} ${data.author?.last_name || ''}`,
-          authorUsername: data.author?.username || data.author?.name.toLowerCase().replace(/\s/g, ''),
+          authorName: authorName,
+          authorUsername: safeUsername,
           authorPosition: data.author?.position,
           authorAvatar: getSafeAvatar(data.author?.avatar),
           title: data.titulo,
@@ -708,11 +1057,16 @@ const App: React.FC = () => {
           commentsList: [],
           userLiked: false,
           userDownvoted: false,
-          userReposted: false
+          userReposted: false,
+          linkedEventId: data.event_id,
+          linkedEvent: data.linked_event
         };
 
         setPosts(prev => [newPost, ...prev]);
 
+        // Process mentions
+        await processMentions(content, isNews ? null : data.id, isNews ? data.id : null, isNews ? 'noticia' : 'post');
+        fetchWeeklyTrends();
         // Removed fetchFeed() here because the newPost already contains the full data
         // from the insert(...).select() call. Calling fetchFeed() in the background
         // causes a flicker if it resolves before the database fully indexes the new row.
@@ -737,6 +1091,10 @@ const App: React.FC = () => {
       if (post.authorId !== session.user.id) {
         await supabase.from('notifications').insert({ user_id: post.authorId, sender_id: session.user.id, type: 'comment', content: `ha hecho un comentario en tu ${post.type === 'news' ? 'noticia' : 'post'}`, post_id: postId });
       }
+      
+      // Process mentions in comments
+      await processMentions(text, postId, null, 'comentario');
+
       fetchFeed();
     }
   };
@@ -792,6 +1150,9 @@ const App: React.FC = () => {
         });
       }
 
+      // Process mentions in replies
+      await processMentions(text, null, null, 'comentario');
+
       fetchFeed();
     }
   };
@@ -800,6 +1161,38 @@ const App: React.FC = () => {
     if (isVoting || !session?.user) return;
     setIsVoting(true);
     console.log('🚀 handleVote triggered:', { id, dir });
+
+    // Optimistic Update
+    setPosts(prevPosts => prevPosts.map(p => {
+      if (p.id === id) {
+        const currentVote = p.userLiked ? 'up' : (p.userDownvoted ? 'down' : null);
+        let newLikes = p.likes || 0;
+        let newUpvotes = p.upvotes !== undefined ? p.upvotes : p.likes;
+
+        if (currentVote === dir) {
+          // Remover voto actual
+          if (dir === 'up') {
+            newLikes -= 1;
+            newUpvotes -= 1;
+          }
+          return { ...p, likes: newLikes, upvotes: newUpvotes, userLiked: false, userDownvoted: false };
+        } else {
+          // Cambiar o añadir voto
+          // Si estamos quitando un UP, restamos
+          if (currentVote === 'up') { newLikes -= 1; newUpvotes -= 1; }
+          
+          // Si estamos poniendo un UP, sumamos
+          if (dir === 'up') {
+            newLikes += 1;
+            newUpvotes += 1;
+          }
+          // El DOWN no suma ni resta al contador público
+
+          return { ...p, likes: newLikes, upvotes: newUpvotes, userLiked: dir === 'up', userDownvoted: dir === 'down' };
+        }
+      }
+      return p;
+    }));
 
     try {
       const post = posts.find(p => p.id === id);
@@ -824,6 +1217,38 @@ const App: React.FC = () => {
       } else {
         console.log('➕ Creating new vote');
         await supabase.from(table).insert({ user_id: session.user.id, [idField]: id, vote_type: dir });
+
+        // Notify author if it's an upvote
+        if (dir === 'up' && post.authorId !== session.user.id) {
+          // Check if a "like" notification already exists for this post from this user
+          const { data: existingNotif } = await supabase
+            .from('notifications')
+            .select('id')
+            .eq('user_id', post.authorId)
+            .eq('sender_id', session.user.id)
+            .eq('post_id', id)
+            .eq('type', 'like')
+            .maybeSingle();
+
+          if (existingNotif) {
+            // Update existing notification to "unread" and fresh timestamp
+            await supabase
+              .from('notifications')
+              .update({ 
+                is_read: false, 
+                created_at: new Date().toISOString() 
+              })
+              .eq('id', existingNotif.id);
+          } else {
+            await supabase.from('notifications').insert({
+              user_id: post.authorId,
+              sender_id: session.user.id,
+              type: 'like',
+              content: post.type === 'news' ? 'ha dado flecha arriba a tu noticia' : 'ha dado me gusta a tu post',
+              post_id: id
+            });
+          }
+        }
       }
 
       await fetchFeed();
@@ -834,6 +1259,154 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLikeComment = async (commentId: string) => {
+    if (!session?.user) return;
+
+    // Optimistic update
+    setPosts(prevPosts => prevPosts.map(post => ({
+      ...post,
+      commentsList: post.commentsList.map(comment => {
+        if (comment.id === commentId) {
+          const newUserLiked = !comment.userLiked;
+          return {
+            ...comment,
+            userLiked: newUserLiked,
+            likes: (comment.likes || 0) + (newUserLiked ? 1 : -1)
+          };
+        }
+        return comment;
+      })
+    })));
+
+    try {
+      const { data: existingLike, error: fetchError } = await supabase
+        .from('comment_likes')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .eq('comment_id', commentId)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (existingLike) {
+        const { error: deleteError } = await supabase.from('comment_likes').delete().eq('id', existingLike.id);
+        if (deleteError) throw deleteError;
+        console.log("✅ Comment like removed from DB");
+      } else {
+        const { error: insertError } = await supabase.from('comment_likes').insert({
+          user_id: session.user.id,
+          comment_id: commentId
+        });
+        if (insertError) throw insertError;
+        console.log("✅ Comment like stored in DB");
+
+        // Notify author
+        const allComments = posts.flatMap(p => p.commentsList);
+        const comment = allComments.find(c => c.id === commentId);
+        if (comment && comment.authorId && comment.authorId !== session.user.id) {
+          await supabase.from('notifications').insert({
+            user_id: comment.authorId,
+            sender_id: session.user.id,
+            type: 'like',
+            content: 'ha dado me gusta a tu comentario',
+            post_id: null
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error in handleLikeComment:', error);
+      // Rollback optimistic update on error
+      fetchFeed();
+      alert("Error al guardar el like: " + (error.message || "Desconocido"));
+    }
+  };
+
+  const handleLikeReply = async (replyId: string) => {
+    if (!session?.user) return;
+
+    // Recursive helper to update reply in nested tree
+    const updateReplyInTree = (replies: any[]): any[] => {
+      return replies.map(reply => {
+        if (reply.id === replyId) {
+          const newUserLiked = !reply.userLiked;
+          return {
+            ...reply,
+            userLiked: newUserLiked,
+            likes: (reply.likes || 0) + (newUserLiked ? 1 : -1)
+          };
+        }
+        if (reply.replies && reply.replies.length > 0) {
+          return {
+            ...reply,
+            replies: updateReplyInTree(reply.replies)
+          };
+        }
+        return reply;
+      });
+    };
+
+    // Optimistic update
+    setPosts(prevPosts => prevPosts.map(post => ({
+      ...post,
+      commentsList: post.commentsList.map(comment => ({
+        ...comment,
+        replies: updateReplyInTree(comment.replies || [])
+      }))
+    })));
+
+    try {
+      const { data: existingLike, error: fetchError } = await supabase
+        .from('comment_likes')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .eq('reply_id', replyId)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (existingLike) {
+        const { error: deleteError } = await supabase.from('comment_likes').delete().eq('id', existingLike.id);
+        if (deleteError) throw deleteError;
+        console.log("✅ Reply like removed from DB");
+      } else {
+        const { error: insertError } = await supabase.from('comment_likes').insert({
+          user_id: session.user.id,
+          reply_id: replyId
+        });
+        if (insertError) throw insertError;
+        console.log("✅ Reply like stored in DB");
+
+        // Notify author
+        const allReplies = posts.flatMap(p => p.commentsList.flatMap(c => c.replies || []));
+        const findInTree = (replies: any[]): any => {
+          for (const r of replies) {
+            if (r.id === replyId) return r;
+            if (r.replies && r.replies.length > 0) {
+              const found = findInTree(r.replies);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const reply = findInTree(allReplies);
+
+        if (reply && reply.authorId && reply.authorId !== session.user.id) {
+          await supabase.from('notifications').insert({
+            user_id: reply.authorId,
+            sender_id: session.user.id,
+            type: 'like',
+            content: 'ha dado me gusta a tu respuesta',
+            post_id: null
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error in handleLikeReply:', error);
+      fetchFeed();
+      alert("Error al guardar el like en respuesta: " + (error.message || "Desconocido"));
+    }
+  };
+
   const handleRepost = async (id: string) => {
     if (!session?.user) return;
     const post = posts.find(p => p.id === id);
@@ -841,6 +1414,15 @@ const App: React.FC = () => {
 
     const isNews = post.type === 'news';
     const idField = isNews ? 'news_id' : 'post_id';
+
+    // Optimistic Update
+    setPosts(prevPosts => prevPosts.map(p => {
+      if (p.id === id) {
+        const isReposted = !p.userReposted;
+        return { ...p, reposts: p.reposts + (isReposted ? 1 : -1), userReposted: isReposted };
+      }
+      return p;
+    }));
 
     try {
       const { data: existing } = await supabase.from('reposts').select('id').eq('user_id', session.user.id).eq(idField, id).maybeSingle();
@@ -873,10 +1455,25 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleNotificationClick = (postId?: string) => {
-    if (!postId) return;
-    const post = posts.find(p => p.id === postId);
-    if (post) setSelectedPostFromNotify(post);
+  const handleNotificationClick = async (postId?: string, senderId?: string, type?: string, newsId?: string) => {
+    if (type === 'registration_request' && senderId) {
+      handleViewRegistrationData(senderId);
+      return;
+    }
+    
+    const targetId = postId || newsId;
+    if (!targetId) return;
+
+    // Check if post exists, if not we could fetch it, but for now we navigate
+    // handleNavigateToPost will check the type to choose the route
+    
+    // To ensure handleNavigateToPost works even if not loaded:
+    if (newsId) {
+      navigate(`/noticias/${newsId}`);
+    } else {
+      navigate(`/inicio/${targetId}`);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeletePost = async (postId: string) => {
@@ -892,6 +1489,7 @@ const App: React.FC = () => {
 
     if (!error) {
       await fetchFeed();
+      fetchWeeklyTrends();
       // If we are in the detail view for this post, go back to the correct section
       const isPostDetail = location.pathname.startsWith('/inicio/') || location.pathname.startsWith('/noticias/');
       if (isPostDetail && location.pathname.includes(postId)) {
@@ -948,11 +1546,31 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (recipientId: string, text: string) => {
+  const handleSendMessage = useCallback(async (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => {
     if (!session?.user) return;
-    const { error } = await supabase.from('messages').insert({ sender_id: session.user.id, recipient_id: recipientId, text });
-    if (!error) fetchChats();
-  };
+    
+    const table = scheduledAt ? 'scheduled_messages' : 'messages';
+    const deliveryField = scheduledAt ? { deliver_at: scheduledAt.toISOString() } : {};
+
+    const { error } = await supabase.from(table).insert({ 
+      sender_id: session.user.id, 
+      recipient_id: recipientId, 
+      text,
+      post_id: postId || null,
+      news_id: newsId || null,
+      is_post_share: !!postId || !!newsId,
+      shared_profile_id: sharedProfileId || null,
+      shared_event_id: sharedEventId || null,
+      image_url: imageUrls || [],
+      ...deliveryField
+    });
+    
+    if (!error && !scheduledAt) fetchChats();
+    else if (error) {
+      console.error('Error sending/scheduling message:', error.message);
+      alert('Error al enviar/programar el mensaje: ' + error.message);
+    }
+  }, [session?.user?.id, fetchChats]);
 
   const handleEditMessage = async (recipientId: string, messageId: string, text: string) => {
     if (!session?.user) return;
@@ -1008,7 +1626,10 @@ const App: React.FC = () => {
 
   const handleStartChat = (targetUser: User) => {
     setActiveChatUserId(targetUser.id);
-    navigate(`/mensajes/${targetUser.username || targetUser.id}`);
+    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+    const username = targetUser.username;
+    const safeUsername = (username && !isUUID(username)) ? username : (targetUser.name && !isUUID(targetUser.name) ? targetUser.name.toLowerCase().replace(/\s/g, '') : targetUser.id);
+    navigate(`/mensajes/${safeUsername}`);
   };
 
   const handleUpdateUser = async (updatedUser: User) => {
@@ -1093,6 +1714,17 @@ const App: React.FC = () => {
     await fetchUserProfile(updatedUser.id);
   };
 
+  const handlePromoteEvent = (event: CalendarEvent) => {
+    if (!session?.user) return;
+    const typeTag = event.type === 'online' ? 'Online' : 'Presencial';
+    navigate('/inicio', { 
+      state: { 
+        initialContent: `¡Mira este evento! #Evento #${typeTag}`, 
+        prefilledEvent: event 
+      } 
+    });
+  };
+
   const [searchParams] = useSearchParams();
   useEffect(() => {
     const q = searchParams.get('q');
@@ -1105,7 +1737,8 @@ const App: React.FC = () => {
   /* eslint-disable-next-line react-hooks/exhaustive-deps */
 
   const handleMarkNotificationsRead = useCallback(async (tab?: string, adminSubTab?: string) => {
-    if (!session?.user) return;
+    if (!session?.user || !tab) return;
+    console.log(`[handleMarkNotificationsRead] tab: ${tab}, adminSubTab: ${adminSubTab}`);
 
     let query = supabase.from('notifications').update({ is_read: true }).eq('user_id', session.user.id).eq('is_read', false);
 
@@ -1114,22 +1747,32 @@ const App: React.FC = () => {
     } else if (tab === 'followers') {
       query = query.eq('type', 'follow');
     } else if (tab === 'all') {
-      // Non-admin "all" notifications
-      query = query.not('type', 'in', '("registration_request","reward_request")');
+      // Non-admin "all" notifications: exclude specific categories
+      // Must match NotificationsView.tsx filtering
+      query = query.not('type', 'in', '("mention","follow","registration_request","reward_request","reward_accepted")')
+        .not('content', 'ilike', '%Canje de%')
+        .not('content', 'ilike', '%novas%')
+        .not('content', 'ilike', '%recompensa%')
+        .not('content', 'ilike', '%ganado%');
     } else if (tab === 'admin') {
       if (adminSubTab === 'solicitudes') {
         query = query.or('type.eq.registration_request,and(type.eq.system,or(content.ilike.%solicitud%,content.ilike.%aprobado%,content.ilike.%rechazado%)),not(content.ilike.%canje%)');
       } else if (adminSubTab === 'recompensas') {
-        query = query.or('type.eq.reward_request,type.eq.reward_accepted,content.ilike.%canje%');
+        query = query.or('type.eq.reward_request,and(type.eq.system,content.ilike.%solicitud de canje%)');
       } else {
-        query = query.or('type.eq.registration_request,type.eq.reward_request,type.eq.reward_accepted,content.ilike.%solicitud%,content.ilike.%canje%');
+        query = query.or('type.eq.registration_request,type.eq.reward_request,and(type.eq.system,or(content.ilike.%solicitud%,content.ilike.%canje%)),not(content.ilike.%aceptado%),not(content.ilike.%rechazado%)');
       }
     } else if (tab === 'rewards') {
-      query = query.or('type.eq.reward_request,type.eq.reward_accepted,content.ilike.%canje%');
+      query = query.or('type.eq.reward_request,type.eq.reward_accepted,content.ilike.%canje%,content.ilike.%novas%,content.ilike.%insignia%,content.ilike.%enhorabuena%,content.ilike.%earned%,content.ilike.%has ganado%');
     }
 
     const { error } = await query;
-    if (!error) fetchNotifications();
+    if (error) {
+      console.error('[handleMarkNotificationsRead] Error:', error.message);
+    } else {
+      console.log('[handleMarkNotificationsRead] Success, fetching notifications...');
+      fetchNotifications();
+    }
   }, [session?.user?.id, fetchNotifications]);
 
   useEffect(() => {
@@ -1168,10 +1811,12 @@ const App: React.FC = () => {
         .on('postgres_changes' as any, { event: '*', table: 'posts', schema: 'public' } as any, (payload: any) => {
           if (payload.eventType === 'INSERT' && payload.new?.author_id === session?.user?.id) return;
           fetchFeed();
+          fetchWeeklyTrends();
         })
         .on('postgres_changes' as any, { event: '*', table: 'news', schema: 'public' } as any, (payload: any) => {
           if (payload.eventType === 'INSERT' && payload.new?.author_id === session?.user?.id) return;
           fetchFeed();
+          fetchWeeklyTrends();
         })
         .on('postgres_changes' as any, { event: '*', table: 'profiles', schema: 'public' } as any, () => {
           if (session?.user) fetchUserProfile(session.user.id);
@@ -1197,7 +1842,6 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: AppView) => {
     if (view === 'profile') setViewingUserId(currentUserData?.id || null);
-    if (view === 'notifications') handleMarkNotificationsRead();
     setCurrentView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1212,6 +1856,34 @@ const App: React.FC = () => {
     navigate(`/${identifier}`);
   };
 
+  useEffect(() => {
+    // El tutorial aparece siempre que firstTime sea true y el usuario esté activo
+    // Usamos hasTriggeredTutorial para evitar re-disparos en la misma sesión/recarga si ya se mostró
+    if (session && currentUserData?.status === 'active' && currentUserData?.firstTime === true && !showTutorial && !hasTriggeredTutorial) {
+      setShowTutorial(true);
+      setHasTriggeredTutorial(true);
+    }
+  }, [session, currentUserData?.id, currentUserData?.firstTime, currentUserData?.status, showTutorial, hasTriggeredTutorial]);
+
+  const handleCloseTutorial = async () => {
+    setShowTutorial(false);
+    setActiveTourStepId(null);
+    if (currentUserData) {
+      // Actualización optimista inmediata para evitar que el efecto se dispare si hubiera algún retraso
+      setCurrentUserData(prev => prev ? { ...prev, firstTime: false } : null);
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({ first_time: false })
+        .eq('id', currentUserData.id);
+      
+      if (error) {
+        console.error('Error updating first_time:', error);
+        // Si fallara, podríamos revertir, pero lo más seguro es dejarlo en false localmente para no molestar al usuario
+      }
+    }
+  };
+
   const handleNavigateToPost = (postId: string) => {
     const post = posts.find(p => p.id === postId);
     if (post?.type === 'news') {
@@ -1219,6 +1891,18 @@ const App: React.FC = () => {
     } else {
       navigate(`/inicio/${postId}`);
     }
+  };
+
+  const handleNavigateToEvent = (userId: string, eventId: string) => {
+    const targetUser = users.find(u => u.id === userId);
+    const identifier = targetUser?.username || userId;
+    navigate(`/${identifier}/${eventId}`);
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    // Optimistic UI: remove immediately from real notifications state
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+    await supabase.from('notifications').delete().eq('id', notificationId);
   };
 
   const PendingApprovalView = () => (
@@ -1263,30 +1947,31 @@ const App: React.FC = () => {
     </div>
   );
 
-  if (isLoadingAuth || (!currentUserData && session)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
+  if (isLoadingAuth || (!currentUserData && session && !hasCheckedProfile)) return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-black"><Loader2 className="animate-spin text-brand" size={48} /></div>;
 
-  // Status-based redirection logic
-  if (session && currentUserData) {
-    if (currentUserData.status === 'pending') return <PendingApprovalView />;
-    if (currentUserData.status === 'rejected') return <RejectedApprovalView />;
-  }
 
   return (
     <div className={theme === 'dark' ? 'dark' : ''}>
       <ScrollManager />
       <Routes>
         <Route path="/inicio-sesion" element={!session ? <Login onLogin={() => navigate('/inicio')} onRegister={() => navigate('/registro')} /> : <Navigate to="/inicio" replace />} />
-        <Route path="/registro" element={!session ? <Onboarding onComplete={() => navigate('/inicio-sesion')} onCancel={() => navigate('/inicio-sesion')} /> : <Navigate to="/inicio" replace />} />
+        <Route path="/registro" element={!session || !currentUserData ? <Onboarding onComplete={() => navigate('/inicio-sesion')} onCancel={() => navigate('/inicio-sesion')} /> : <Navigate to="/inicio" replace />} />
 
         <Route path="*" element={
           !session ? (
             <Navigate to="/inicio-sesion" replace />
+          ) : currentUserData?.status === 'pending' ? (
+            <PendingApprovalView />
+          ) : currentUserData?.status === 'rejected' ? (
+            <RejectedApprovalView />
+          ) : !currentUserData ? (
+            <Navigate to="/registro" replace />
           ) : (
             <Layout
               currentView={currentView}
               onViewChange={handleViewChange}
               user={currentUserData!}
-              notifications={notifications}
+              notifications={allNotifications}
               posts={posts}
               chats={chats}
               searchQuery={searchQuery}
@@ -1301,34 +1986,38 @@ const App: React.FC = () => {
               onRefresh={fetchFeed}
               isLoading={isLoadingFeed}
               trendingTags={weeklyTrends}
+              activeTourStepId={activeTourStepId}
+              isTutorialActive={showTutorial}
             >
               <Routes>
                 <Route path="/" element={<Navigate to="/inicio" replace />} />
-                <Route path="/inicio" element={<SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} globalEvents={globalEvents} chats={chats} onShareViaChat={handleSendMessage} language="es" onLoadMore={handleLoadMorePosts} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} />} />
-                <Route path="/noticias" element={<NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} followedUserIds={followedUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} onLoadMore={handleLoadMoreNews} hasMore={hasMoreNews} isLoadingMore={isLoadingMoreNews} language="es" />} />
+                <Route path="/inicio" element={<SocialFeed posts={posts.filter(p => p.type === 'post')} user={currentUserData!} onLike={(id) => handleVote(id, 'up')} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} globalEvents={globalEvents} chats={chats} onShareViaChat={handleSendMessage} language="es" onLoadMore={handleLoadMorePosts} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} initialContent={location.state?.initialContent} prefilledEvent={location.state?.prefilledEvent} onClearInitialContent={() => navigate(location.pathname, { replace: true, state: {} })} />} />
+                <Route path="/noticias" element={<NewsHubView posts={posts.filter(p => p.type === 'news')} user={currentUserData!} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddPost={handleAddPost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} currentUser={currentUserData!} users={users} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onSearchHashtag={handleSearchHashtag} searchQuery={searchQuery} onSearchChange={setSearchQuery} onSearchSubmit={handleSearchSubmit} onLoadMore={handleLoadMoreNews} hasMore={hasMoreNews} isLoadingMore={isLoadingMoreNews} language="es" chats={chats} onShareViaChat={handleSendMessage} />} />
                 <Route path="/calendario" element={<CalendarView language={'es'} />} />
-                <Route path="/mensajes/:chatId" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
-                <Route path="/mensajes" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
-                <Route path="/notificaciones" element={<NotificationsView notifications={notifications} onMarkAllRead={handleMarkNotificationsRead} onNotificationClick={handleNotificationClick} language={'es'} currentUser={currentUserData!} onApproveUser={handleApproveUser} onRejectUser={handleRejectUser} onApproveRedemption={handleApproveRedemption} onNavigateToProfile={handleNavigateToProfile} onViewRegistrationData={handleViewRegistrationData} users={users} />} />
+                <Route path="/mensajes/:chatId" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} onViewPost={handleNavigateToPost} onNavigateToEvent={handleNavigateToEvent} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
+                <Route path="/mensajes" element={<MessagesView user={currentUserData!} chats={chats} posts={posts} onSendMessage={handleSendMessage} onEditMessage={handleEditMessage} onDeleteMessage={handleDeleteMessage} onNavigateToProfile={handleNavigateToProfile} onNavigateToPost={handleNavigateToPost} onViewPost={handleNavigateToPost} onNavigateToEvent={handleNavigateToEvent} onMarkChatAsRead={handleMarkChatAsRead} externalActiveId={activeChatUserId} users={users} globalEvents={globalEvents} language={'es'} />} />
+                <Route path="/notificaciones" element={<NotificationsView notifications={allNotifications} onMarkAllRead={handleMarkNotificationsRead} onNotificationClick={handleNotificationClick} language={'es'} currentUser={currentUserData!} onApproveUser={handleApproveUser} onRejectUser={handleRejectUser} onApproveRedemption={handleApproveRedemption} onNavigateToProfile={handleNavigateToProfile} onViewRegistrationData={handleViewRegistrationData} users={users} rewards={storeRewards} onDeleteNotification={handleDeleteNotification} />} />
                 <Route path="/recompensas" element={<StoreView user={currentUserData!} language={'es'} onRedeemReward={handleRedeemReward} storeRewards={storeRewards} userRedemptions={userRedemptions} />} />
-                <Route path="/buscar" element={<SearchRoute posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} chats={chats} onShareViaChat={handleSendMessage} language={'es'} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} />} />
-                <Route path="/inicio/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} users={users} language={'es'} />} />
-                <Route path="/noticias/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} users={users} language={'es'} />} />
+                <Route path="/buscar" element={<SearchRoute posts={posts} users={users} onLike={(id) => handleVote(id, 'up')} onVote={(id, dir) => handleVote(id, dir)} onRepost={handleRepost} onAddComment={handleAddComment} onDeletePost={handleDeletePost} onViewChange={handleViewChange} currentUser={currentUserData!} followedUserIds={followedUserIds} followerUserIds={followerUserIds} onToggleFollow={handleToggleFollow} onNavigateToProfile={handleNavigateToProfile} onSearchHashtag={handleSearchHashtag} chats={chats} onShareViaChat={handleSendMessage} language={'es'} onNavigateToPost={handleNavigateToPost} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} />} />
+                <Route path="/inicio/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onLikeComment={handleLikeComment} onLikeReply={handleLikeReply} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} users={users} language={'es'} chats={chats} onShareViaChat={handleSendMessage} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />} />
+                <Route path="/noticias/:postId" element={<PostDetailView posts={posts} user={currentUserData!} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onLikeComment={handleLikeComment} onLikeReply={handleLikeReply} onVote={handleVote} onRepost={handleRepost} onDeletePost={handleDeletePost} onSearchHashtag={handleSearchHashtag} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} users={users} language={'es'} chats={chats} onShareViaChat={handleSendMessage} followedUserIds={followedUserIds} followerUserIds={followerUserIds} />} />
                 <Route path="/configuracion" element={<SettingsView user={currentUserData!} onUpdateUser={handleUpdateUser} onLogout={() => supabase.auth.signOut()} onViewChange={handleViewChange} theme={theme} onThemeChange={setTheme} language={'es'} />} />
-                <Route path="/:identifier" element={<ProfileRoute users={users} currentUserData={currentUserData} posts={posts} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onUpdateUser={handleUpdateUser} onRepost={handleRepost} onToggleFollow={handleToggleFollow} onDeletePost={handleDeletePost} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} onStartChat={handleStartChat} onAddPost={handleAddPost} onPromoteEvent={undefined} onShareViaChat={handleSendMessage} focusedEventId={location.state?.scrollToEventId || null} onClearFocusedEvent={() => { }} onSearchHashtag={handleSearchHashtag} onNavigateToPost={handleNavigateToPost} onNavigateToProfile={handleNavigateToProfile} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onAddReply={handleAddReply} onVoteComment={undefined} onPreviewImage={undefined} globalEvents={globalEvents} language="es" pinnedPosts={new Set(posts.filter(p => p.isPinned && p.authorId === session?.user?.id).map(p => p.id))} onTogglePin={handleTogglePin} onSupportEvent={undefined} targetEventId={null} onClearTargetEvent={() => { }} />} />
+                <Route path="/:identifier/:eventId" element={<ProfileRoute users={users} currentUserData={currentUserData} posts={posts} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onUpdateUser={handleUpdateUser} onRepost={handleRepost} onToggleFollow={handleToggleFollow} onDeletePost={handleDeletePost} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} onStartChat={handleStartChat} onAddPost={handleAddPost} onPromoteEvent={handlePromoteEvent} onShareViaChat={handleSendMessage} focusedEventId={location.state?.scrollToEventId || null} onClearFocusedEvent={() => { }} onSearchHashtag={handleSearchHashtag} onNavigateToPost={handleNavigateToPost} onNavigateToProfile={handleNavigateToProfile} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onAddReply={handleAddReply} onLikeComment={handleLikeComment} onLikeReply={handleLikeReply} onVoteComment={undefined} onPreviewImage={undefined} globalEvents={globalEvents} language="es" pinnedPosts={new Set(posts.filter(p => p.isPinned && p.authorId === session?.user?.id).map(p => p.id))} onTogglePin={handleTogglePin} onSupportEvent={undefined} targetEventId={null} onClearTargetEvent={() => { }} onLoadMore={handleLoadMoreProfile} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} />} />
+                <Route path="/:identifier" element={<ProfileRoute users={users} currentUserData={currentUserData} posts={posts} chats={chats} followerUserIds={followerUserIds} followedUserIds={followedUserIds} onUpdateUser={handleUpdateUser} onRepost={handleRepost} onToggleFollow={handleToggleFollow} onDeletePost={handleDeletePost} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} onStartChat={handleStartChat} onAddPost={handleAddPost} onPromoteEvent={handlePromoteEvent} onShareViaChat={handleSendMessage} focusedEventId={location.state?.scrollToEventId || null} onClearFocusedEvent={() => { }} onSearchHashtag={handleSearchHashtag} onNavigateToPost={handleNavigateToPost} onNavigateToProfile={handleNavigateToProfile} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onAddComment={handleAddComment} onAddReply={handleAddReply} onLikeComment={handleLikeComment} onLikeReply={handleLikeReply} onVoteComment={undefined} onPreviewImage={undefined} globalEvents={globalEvents} language="es" pinnedPosts={new Set(posts.filter(p => p.isPinned && p.authorId === session?.user?.id).map(p => p.id))} onTogglePin={handleTogglePin} onSupportEvent={undefined} targetEventId={null} onClearTargetEvent={() => { }} onLoadMore={handleLoadMoreProfile} hasMore={hasMorePosts} isLoadingMore={isLoadingMorePosts} />} />
               </Routes>
             </Layout>
           )
         }
         />
       </Routes>
-      {selectedPostFromNotify && <PostDetailsModal post={selectedPostFromNotify} onClose={() => setSelectedPostFromNotify(null)} onAddComment={handleAddComment} onAddReply={handleAddReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/calendario`, { state: { eventId: eid } })} onSearchHashtag={handleSearchHashtag} users={users} language={'es'} />}
+      {selectedPostFromNotify && <PostDetailsModal post={selectedPostFromNotify} onClose={() => setSelectedPostFromNotify(null)} onAddComment={handleAddComment} onAddReply={handleAddReply} onLikeComment={handleLikeComment} onLikeReply={handleLikeReply} onLike={(id) => handleVote(id, 'up')} onVote={handleVote} onRepost={handleRepost} onNavigateToProfile={handleNavigateToProfile} onNavigateToEvent={(uid, eid) => navigate(`/${uid}/${eid}`)} onSearchHashtag={handleSearchHashtag} users={users} language={'es'} />}
       {selectedRegistrationUserId && (
         <RegistrationDetailsModal
           user={users.find(u => u.id === selectedRegistrationUserId)!}
           onClose={() => setSelectedRegistrationUserId(null)}
         />
       )}
+      {showTutorial && <TutorialModal onClose={handleCloseTutorial} onStepChange={setActiveTourStepId} language="es" />}
       {toast && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-all animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center transform transition-all animate-in zoom-in-95">

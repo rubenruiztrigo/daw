@@ -138,6 +138,9 @@ export const COUNTRIES_DATA: Record<string, string[]> = {
         "Lavalleja", "Maldonado", "Montevideo", "Paysandú", "Río Negro", "Rivera", "Rocha",
         "Salto", "San José", "Soriano", "Tacuarembó", "Treinta y Tres"
     ],
+    "Otro": [
+        "Otra"
+    ],
     "Venezuela": [
         "Amazonas", "Anzoátegui", "Apure", "Aragua", "Barinas", "Bolívar", "Carabobo",
         "Cojedes", "Delta Amacuro", "Dependencias Federales", "Distrito Capital", "Falcón",
