@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { X, Check, Save, Heart } from 'lucide-react';
+import { X, Check, Heart } from 'lucide-react';
 import { User } from '../types';
 import { PUBLIC_INTERESTS } from '../constants';
+import { supabase } from '../supabaseClient';
 
 interface PreferencesModalProps {
   user: User;
@@ -15,6 +16,13 @@ interface PreferencesModalProps {
 export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClose, onSave }) => {
   useScrollLock();
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
+  const [availableInterests, setAvailableInterests] = useState<string[]>(PUBLIC_INTERESTS);
+
+  useEffect(() => {
+    supabase.from('platform_interests').select('name').order('name').then(({ data }) => {
+      if (data && data.length > 0) setAvailableInterests(data.map((d: any) => d.name));
+    });
+  }, []);
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests(prev =>
@@ -57,9 +65,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({ user, onClos
         </div>
 
 
-        <div className="flex-1 overflow-y-auto p-8 pt-6">
+        <div className="flex-1 overflow-y-auto p-8 pt-6 mb-2 scrollbar-modal">
           <div className="grid grid-cols-2 gap-3">
-            {PUBLIC_INTERESTS.map(interest => {
+            {availableInterests.map(interest => {
               const isSelected = selectedInterests.includes(interest);
               return (
                 <button

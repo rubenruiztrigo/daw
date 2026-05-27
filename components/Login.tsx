@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, ShieldCheck, Loader2, Check, ArrowLeft, Mail, AtSign, Sparkles, ArrowRight, Eye, EyeOff, Clock, XCircle, Ban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { supabase, REMEMBER_ME_KEY, SESSION_ALIVE_KEY } from '../supabaseClient';
 import { encryptMessage, decryptMessage } from '../utils/encryption';
 
 interface LoginProps {
@@ -17,6 +17,9 @@ export const Login: React.FC<LoginProps> = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [accountStatus, setAccountStatus] = useState<'pending' | 'rejected' | null>(null);
+  const [bannedUntil, setBannedUntil] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -52,13 +55,28 @@ export const Login: React.FC<LoginProps> = () => {
   }, [isRecoverySent]);
 
   useEffect(() => {
-    const savedId = localStorage.getItem(STORAGE_KEY);
-    if (savedId) {
-      setIdentifier(savedId);
-      setRememberMe(true);
-      fetchDisplayName(savedId);
+    // Only load if the user explicitly chose to be remembered in a previous successful login
+    const isRemembered = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    if (isRemembered) {
+      const savedId = localStorage.getItem(STORAGE_KEY);
+      if (savedId) {
+        setIdentifier(savedId);
+        setRememberMe(true);
+        fetchDisplayName(savedId);
+      }
+    } else {
+      // Ensure everything is clean if not remembered
+      setIdentifier('');
+      setRememberMe(false);
+      localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    if (!bannedUntil) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [bannedUntil]);
 
   const fetchDisplayName = async (id: string) => {
     try {
@@ -108,7 +126,15 @@ export const Login: React.FC<LoginProps> = () => {
       emailToUse = profile.email;
     }
 
-    const { error: loginError } = await supabase.auth.signInWithPassword({
+    if (rememberMe) {
+      localStorage.setItem(REMEMBER_ME_KEY, 'true');
+      sessionStorage.removeItem(SESSION_ALIVE_KEY);
+    } else {
+      localStorage.removeItem(REMEMBER_ME_KEY);
+      sessionStorage.setItem(SESSION_ALIVE_KEY, 'true');
+    }
+
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
       email: emailToUse,
       password,
     });
@@ -116,14 +142,41 @@ export const Login: React.FC<LoginProps> = () => {
     if (loginError) {
       setError("Credenciales incorrectas. Comprueba tu contraseña.");
       setLoading(false);
-    } else {
-      if (rememberMe) {
-        localStorage.setItem(STORAGE_KEY, identifier);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-      // Removed onLogin() call as App.tsx handles redirection based on session change
+      return;
     }
+
+    // Check profile status before allowing access
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('status, is_banned, banned_until')
+      .eq('id', loginData.user!.id)
+      .maybeSingle();
+
+    if (profile?.status === 'pending' || profile?.status === 'rejected' || profile?.status === 'expelled') {
+      // Keep session alive — App.tsx shows PendingApprovalView / RejectedApprovalView / ExpelledView
+      // based on currentUserData.status. Signing out here causes a remount that
+      // resets local state and flashes back to the login form.
+      setLoading(false);
+      return;
+    }
+
+    if (profile?.is_banned) {
+      const banExpired = !profile.banned_until || new Date(profile.banned_until) <= new Date();
+      if (banExpired) {
+        // Baneo expirado — limpiar el flag automáticamente y dejar pasar
+        await supabase.from('profiles').update({ is_banned: false }).eq('id', loginData.user!.id);
+      }
+      // Si no ha expirado, NO cerramos sesión. 
+      // Dejamos que App.tsx detecte el baneo y muestre la BannedView persistente.
+    }
+
+    if (rememberMe) {
+      localStorage.setItem(STORAGE_KEY, identifier);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    // Explicitly navigate to /inicio to ensure immediate redirection
+    navigate('/inicio');
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -132,7 +185,7 @@ export const Login: React.FC<LoginProps> = () => {
     setError(null);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
-      redirectTo: `${window.location.origin}/recover-password/`,
+      redirectTo: 'https://id.novagob.org/reset-password'
     });
 
     if (resetError) {
@@ -151,6 +204,55 @@ export const Login: React.FC<LoginProps> = () => {
     }
     return "Te damos la bienvenida";
   };
+
+
+  if (accountStatus === 'pending') {
+    return (
+      <div className="min-h-screen bg-[#f0edff] dark:bg-[#13111a] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-6 border border-gray-100 dark:border-zinc-900 text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 text-amber-500 rounded-full flex items-center justify-center mx-auto">
+            <Clock size={32} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">Solicitud pendiente</h2>
+            <p className="text-slate-500 dark:text-gray-400 text-sm font-medium leading-relaxed">
+              Tu solicitud de acceso está siendo revisada por un administrador. Recibirás una notificación cuando tu cuenta esté activa.
+            </p>
+          </div>
+          <button
+            onClick={() => setAccountStatus(null)}
+            className="w-full py-3.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-white font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (accountStatus === 'rejected') {
+    return (
+      <div className="min-h-screen bg-[#f0edff] dark:bg-[#13111a] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-[40px] p-10 space-y-6 border border-gray-100 dark:border-zinc-900 text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center mx-auto">
+            <XCircle size={32} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">Solicitud rechazada</h2>
+            <p className="text-slate-500 dark:text-gray-400 text-sm font-medium leading-relaxed">
+              Tu solicitud de registro no ha sido aprobada. Si crees que es un error, contacta con el administrador de la red.
+            </p>
+          </div>
+          <button
+            onClick={() => setAccountStatus(null)}
+            className="w-full py-3.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-white font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isForgotPassword) {
     return (
@@ -260,30 +362,33 @@ export const Login: React.FC<LoginProps> = () => {
 
   return (
     <div className="min-h-screen bg-[#f0edff] dark:bg-[#13111a] flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-3xl p-8 space-y-6 border border-gray-100 dark:border-zinc-900">
-        <div className="text-center space-y-3">
-          <div className="inline-flex p-4 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600 mb-2">
-            <ShieldCheck size={32} />
+      <div className="max-w-md w-full bg-white dark:bg-[#0a0a0a] rounded-3xl p-7 space-y-5 border border-gray-100 dark:border-zinc-900">
+        <div className="text-center space-y-1">
+          <div className="inline-flex p-3 bg-blue-50 dark:bg-zinc-900 rounded-2xl text-blue-600">
+            <ShieldCheck size={28} />
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white leading-tight">
             {getWelcomeMessage()}
           </h2>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-4">
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-xl border border-red-100 dark:border-red-800">
               {error}
             </div>
           )}
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-400 dark:text-zinc-600 uppercase ml-1">Usuario o Correo</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type="text"
+                  name="novagob_user_identifier"
+                  id="novagob_user_identifier"
+                  autoComplete="off"
                   value={identifier}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -293,8 +398,7 @@ export const Login: React.FC<LoginProps> = () => {
                     }
                   }}
                   placeholder="Ej. novo o novo@novagob.org"
-                  required
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -305,11 +409,13 @@ export const Login: React.FC<LoginProps> = () => {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type={showPassword ? "text" : "password"}
+                  name="novagob_user_password"
+                  id="novagob_user_password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  required
-                  className="w-full pl-12 pr-12 py-3 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full pl-12 pr-12 py-3.5 bg-gray-50 dark:bg-zinc-900 border-none rounded-2xl text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
                 <button
                   type="button"

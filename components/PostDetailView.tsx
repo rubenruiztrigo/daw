@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { sortComments } from '../utils/sortUtils';
-import { ArrowLeft, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Loader2, Trash2, Calendar, Clock, MapPin, Share2, Repeat } from 'lucide-react';
+import { ArrowLeft, Send, MessageSquare, Heart, ChevronUp, ChevronDown, Reply, Loader2, Trash2, Calendar, Clock, MapPin, Share2, Repeat } from 'lucide-react';
 import { Post, Comment, User, CommentReply, Chat } from '../types';
 import { ImageLightbox } from './ImageLightbox';
 import { ShareModal } from './ShareModal';
-import { timeAgo } from '../utils/stringUtils';
+import { extractAllExternalUrls, isExternalUrl, timeAgo } from '../utils/stringUtils';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
 import { Language, useTranslation } from '../utils/translations';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { EventPreview } from './EventPreview';
+import { LinkPreview } from './LinkPreview';
 import { getSafeAvatar } from '../utils/avatarUtils';
 import { supabase } from '../supabaseClient';
 
@@ -17,7 +18,7 @@ interface PostDetailViewProps {
     posts: Post[];
     user: User;
     onAddComment: (postId: string, text: string) => void;
-    onAddReply: (commentId: string, text: string, parentReplyId?: string) => void;
+    onAddReply: (commentId: string, text: string, parentReplyId?: string) => Promise<string | null> | void;
     onLike?: (id: string) => void;
     onLikeComment?: (id: string) => void;
     onLikeReply?: (id: string) => void;
@@ -33,19 +34,142 @@ interface PostDetailViewProps {
     followedUserIds?: Set<string>;
     followerUserIds?: Set<string>;
     language: Language;
+    likedIds?: Set<string>;
+    votedUpIds?: Set<string>;
+    votedDownIds?: Set<string>;
+    repostedIds?: Set<string>;
 }
 
 export const PostDetailView: React.FC<PostDetailViewProps> = ({
-    posts, user, onAddComment, onAddReply, onLike, onLikeComment, onLikeReply, onVote, onRepost, onDeletePost, onSearchHashtag, onNavigateToProfile, onNavigateToEvent, users = [], chats = [], onShareViaChat, followedUserIds = new Set(), followerUserIds = new Set(), language
+    posts, user, onAddComment, onAddReply, onLike, onLikeComment, onLikeReply, onVote, onRepost, onDeletePost, onSearchHashtag, onNavigateToProfile, onNavigateToEvent, users = [], chats = [], onShareViaChat, followedUserIds = new Set(), followerUserIds = new Set(), language,
+    likedIds = new Set(), votedUpIds = new Set(), votedDownIds = new Set(), repostedIds = new Set()
 }) => {
     const { postId } = useParams<{ postId: string }>();
     const navigate = useNavigate();
     const t = useTranslation(language);
 
     const [localPost, setLocalPost] = useState<Post | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isCommentsLoading, setIsCommentsLoading] = useState(true);
 
-    const post = useMemo(() => posts.find(p => p.id === postId) || localPost, [posts, postId, localPost]);
+    const handleLikeLocal = () => {
+        if (!post) return;
+        const isCurrentlyLiked = post.userLiked;
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                likes: Math.max(0, (prev.likes || 0) + (isCurrentlyLiked ? -1 : 1))
+            };
+        });
+        onLike?.(post.id);
+    };
+
+    const handleRepostLocal = () => {
+        if (!post) return;
+        const isCurrentlyReposted = post.userReposted;
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                reposts: Math.max(0, (prev.reposts || 0) + (isCurrentlyReposted ? -1 : 1))
+            };
+        });
+        onRepost?.(post.id);
+    };
+
+    const handleVoteLocal = (dir: 'up' | 'down') => {
+        if (!post) return;
+        const isCurrentlyUp = post.userLiked;
+        const isCurrentlyDown = post.userDownvoted;
+        
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            const togglingOff = (dir === 'up' && isCurrentlyUp) || (dir === 'down' && isCurrentlyDown);
+            let upDelta = 0;
+            let downDelta = 0;
+            
+            if (togglingOff) {
+                if (dir === 'up') upDelta = -1;
+                else downDelta = -1;
+            } else {
+                if (isCurrentlyUp) upDelta = -1;
+                if (isCurrentlyDown) downDelta = -1;
+                if (dir === 'up') upDelta += 1;
+                else downDelta += 1;
+            }
+
+            return {
+                ...prev,
+                upvotes: Math.max(0, (prev.upvotes ?? 0) + upDelta),
+                downvotes: Math.max(0, (prev.downvotes ?? 0) + downDelta),
+            };
+        });
+        onVote?.(post.id, dir);
+    };
+
+    const handleLikeCommentLocal = (commentId: string) => {
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                commentsList: (prev.commentsList || []).map(c => {
+                    if (c.id !== commentId) return c;
+                    const newLiked = !c.userLiked;
+                    return { ...c, userLiked: newLiked, likes: (c.likes || 0) + (newLiked ? 1 : -1) };
+                })
+            };
+        });
+        onLikeComment?.(commentId);
+    };
+
+    const handleLikeReplyLocal = (replyId: string) => {
+        if (!replyId || replyId.startsWith('temp-')) return;
+        const updateInTree = (replies: CommentReply[]): CommentReply[] =>
+            replies.map(r => {
+                if (r.id === replyId) {
+                    const newLiked = !r.userLiked;
+                    return { ...r, userLiked: newLiked, likes: (r.likes || 0) + (newLiked ? 1 : -1) };
+                }
+                if (r.replies && r.replies.length > 0) return { ...r, replies: updateInTree(r.replies) };
+                return r;
+            });
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                commentsList: (prev.commentsList || []).map(c => ({
+                    ...c,
+                    replies: updateInTree(c.replies || [])
+                }))
+            };
+        });
+        onLikeReply?.(replyId);
+    };
+
+    // Prefer localPost (has full comments from Supabase), fall back to feed post as placeholder.
+    // Always recompute userLiked/userDownvoted/userReposted from current props so they stay
+    // correct on refresh (likedIds etc. may load after the Supabase fetch completes).
+    const post = useMemo(() => {
+        const globalPost = posts.find(p => p.id === postId) || null;
+        const base = localPost || globalPost;
+        if (!base) return null;
+
+        return {
+            ...base,
+            // Sync counters from global state if available (optimistic updates from feed)
+            likes: globalPost ? globalPost.likes : (base.likes || 0),
+            upvotes: globalPost ? (globalPost.upvotes ?? globalPost.likes) : (base.upvotes || 0),
+            downvotes: globalPost ? globalPost.downvotes : (base.downvotes || 0),
+            comments: globalPost ? globalPost.comments : (base.comments || 0),
+            reposts: globalPost ? globalPost.reposts : (base.reposts || 0),
+            
+            // Sync user interaction states
+            userLiked: likedIds.has(base.id) || votedUpIds.has(base.id),
+            userDownvoted: votedDownIds.has(base.id),
+            userReposted: repostedIds.has(base.id),
+        };
+    }, [localPost, posts, postId, likedIds, votedUpIds, votedDownIds, repostedIds]);
     const isNews = window.location.pathname.includes('/noticias');
 
     const [text, setText] = useState('');
@@ -57,6 +181,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     const [currentImgIndex, setCurrentImgIndex] = useState(0);
     const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
     const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+
     const [sharingPost, setSharingPost] = useState<Post | null>(null);
 
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -70,37 +195,65 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     }, []);
 
     useEffect(() => {
-        if (!postId || posts.find(p => p.id === postId)) return;
+        if (!postId) {
+            setIsLoading(false);
+            setIsCommentsLoading(false);
+            return;
+        }
+
+        let cancelled = false;
 
         const fetchPost = async () => {
             setIsLoading(true);
+            setIsCommentsLoading(true);
             try {
                 const table = isNews ? 'news' : 'posts';
-                const selectStr = isNews 
-                    ? '*, author:profiles!author_id(*)' 
-                    : '*, author:profiles!author_id(*), linked_event:user_events!event_id(*)';
+                const selectStr = isNews
+                    ? 'id, author_id, content, titulo, created_at, likes_count, up_votes_count, down_votes_count, comments_count, reposts_count, image_url, tags, linked_event_id, is_pinned, pinned_at, show_link_preview, link_preview_url, author:profiles!author_id(id, name, last_name, username, avatar, position, is_organization)'
+                    : 'id, author_id, content, created_at, likes_count, comments_count, reposts_count, image_url, tags, event_id, is_pinned, pinned_at, show_link_preview, link_preview_url, doc_url, doc_name, author:profiles!author_id(id, name, last_name, username, avatar, position, is_organization), linked_event:user_events!event_id(id, title, event_date, event_time, type, creator_id, attendees_count, image_url, description, location)';
 
-                const { data: itemData, error: itemError } = await supabase
-                    .from(table)
-                    .select(selectStr)
-                    .eq('id', postId)
-                    .single();
+                // Fetch itemData and counts in parallel to be as fast as possible!
+                const [itemRes, countsRes, commentCountRes, repostsRes] = await Promise.all([
+                    supabase.from(table).select(selectStr).eq('id', postId).single() as any,
+                    (isNews 
+                        ? supabase.from('news_votes').select('vote_type').eq('news_id', postId)
+                        : supabase.from('post_likes').select('*', { count: 'exact', head: true }).eq('post_id', postId)) as any,
+                    supabase.from(isNews ? 'news_comments' : 'post_comments').select('*', { count: 'exact', head: true }).eq(isNews ? 'news_id' : 'post_id', postId) as any,
+                    supabase.from('reposts').select('id').eq(isNews ? 'news_id' : 'post_id', postId) as any
+                ]);
 
-                if (itemData && !itemError) {
-                    const { data: commentsData } = await supabase
-                        .from(isNews ? 'news_comments' : 'post_comments')
-                        .select('*, author:profiles!author_id(*)')
-                        .eq(isNews ? 'news_id' : 'post_id', postId);
+                const itemData = itemRes.data;
+                const itemError = itemRes.error;
 
-                    const { data: repliesData } = await supabase
-                        .from('comment_replies')
-                        .select('*, author:profiles!author_id(*)')
-                        .in('comment_id', commentsData?.map(c => c.id) || []);
+                if (itemError) {
+                    console.error("Error fetching post data in PostDetailView:", itemError);
+                    if (!cancelled) {
+                        setIsLoading(false);
+                        setIsCommentsLoading(false);
+                    }
+                    return;
+                }
 
-                    const mapper = (p: any, type: 'post' | 'news', commentsMap: Map<string, any[]>) => {
+                if (itemData) {
+                    // Update counts in itemData from resolved parallel queries
+                    if (isNews && countsRes.data) {
+                        itemData.up_votes_count = (countsRes.data as any[]).filter((v: any) => v.vote_type === 'up').length;
+                        itemData.down_votes_count = (countsRes.data as any[]).filter((v: any) => v.vote_type === 'down').length;
+                    } else if (!isNews && countsRes.count !== null) {
+                        itemData.likes_count = countsRes.count;
+                    }
+                    if (commentCountRes.count !== null) {
+                        itemData.comments_count = commentCountRes.count;
+                    }
+                    if (repostsRes.data) {
+                        itemData.reposts_count = repostsRes.data.length;
+                    }
+
+                    // Mapper definition for post formatting
+                    const mapper = (p: any, type: 'post' | 'news', commentsList: any[]) => {
                         const name = p.author?.name || 'Usuario';
-                        const lastName = p.author?.last_name || '';
-                        const rawName = `${name} ${lastName}`.trim();
+                        const lastName = p.author?.last_name || p.author?.lastName || p.author?.surname || p.author?.apellidos || '';
+                        const rawName = (lastName.length > 0 && name.toLowerCase().includes(lastName.toLowerCase())) ? name : `${name} ${lastName}`.trim();
                         const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
                         const username = p.author?.username;
                         const safeUsername = (username && !isUUID(username)) ? username : (isUUID(rawName) ? '' : (rawName.toLowerCase().replace(/\s/g, '') || ''));
@@ -121,88 +274,187 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                             type: type,
                             tags: p.tags || [],
                             likes: p.likes_count || 0,
+                            upvotes: p.up_votes_count ?? 0,
+                            downvotes: p.down_votes_count ?? 0,
                             comments: p.comments_count || 0,
                             reposts: p.reposts_count || 0,
-                            commentsList: commentsMap.get(p.id) || [],
-                            userLiked: false,
-                            userDownvoted: false,
-                            userReposted: false,
+                            commentsList: commentsList,
+                            userLiked: likedIds.has(p.id) || votedUpIds.has(p.id),
+                            userDownvoted: votedDownIds.has(p.id),
+                            userReposted: repostedIds.has(p.id),
                             isPinned: p.is_pinned,
                             pinnedAt: p.pinned_at,
                             linkedEventId: p.event_id,
-                            linkedEvent: p.linked_event
+                            linkedEvent: p.linked_event,
+                            showLinkPreview: p.show_link_preview !== false,
+                            linkPreviewUrl: p.link_preview_url ?? null,
+                            authorIsOrganization: !!(p.author?.is_organization || p.author?.isOrganization)
                         };
                     };
+
+                    // Instantly set the post so the main card is fully visible!
+                    if (!cancelled) {
+                        setLocalPost(mapper(itemData, isNews ? 'news' : 'post', []));
+                        setIsLoading(false); // Spinner for post disappears instantly!
+                    }
+
+                    // Now load comments & replies in the background!
+                    const { data: commentsData, error: commentsError } = await supabase
+                        .from(isNews ? 'news_comments' : 'post_comments')
+                        .select('id, author_id, text, created_at, likes, author:profiles!author_id(id, name, last_name, username, avatar)')
+                        .eq(isNews ? 'news_id' : 'post_id', postId);
+
+                    if (commentsError) console.error('Error fetching comments:', commentsError);
+
+                    const commentIds = commentsData?.map(c => c.id) || [];
+
+                    // Fetch replies in parallel with comment/reply likes to be super fast!
+                    const [repliesRes, commentsLikesRes] = await Promise.all([
+                        (commentIds.length > 0
+                            ? supabase.from('comment_replies').select('id, comment_id, parent_reply_id, author_id, text, created_at, likes, author:profiles!author_id(id, name, last_name, username, avatar)').in('comment_id', commentIds)
+                            : Promise.resolve({ data: [] as any[] })) as any,
+                        (commentIds.length > 0
+                            ? supabase.from('comment_likes').select('comment_id').eq('user_id', user.id).in('comment_id', commentIds)
+                            : Promise.resolve({ data: [] as any[] })) as any,
+                    ]);
+
+                    const repliesData = repliesRes.data || [];
+                    const replyIds = repliesData.map((r: any) => r.id) || [];
+
+                    // Fetch reply likes
+                    const replyLikesRes = replyIds.length > 0
+                        ? await supabase.from('comment_likes').select('reply_id').eq('user_id', user.id).in('reply_id', replyIds)
+                        : { data: [] };
+
+                    const likedCommentIds = new Set((commentsLikesRes.data || []).map((l: any) => l.comment_id).filter(Boolean));
+                    const likedReplyIds = new Set((replyLikesRes.data || []).map((l: any) => l.reply_id).filter(Boolean));
 
                     const commentsMap = new Map<string, any[]>();
                     const repliesMap = new Map<string, any[]>();
 
+                    // Build a flat map of all reply objects by id first
+                    const replyById = new Map<string, any>();
                     repliesData?.forEach(r => {
-                        const name = r.author?.name || 'Usuario';
-                        const lastName = r.author?.last_name || '';
+                        const rAuthor: any = Array.isArray(r.author) ? r.author[0] : r.author;
+                        const name = rAuthor?.name || 'Usuario';
+                        const lastName = rAuthor?.last_name || '';
                         const replyObj = {
                             id: r.id,
                             commentId: r.comment_id,
                             parentReplyId: r.parent_reply_id,
                             authorId: r.author_id,
                             authorName: `${name} ${lastName}`.trim(),
-                            authorUsername: r.author?.username,
-                            authorAvatar: getSafeAvatar(r.author?.avatar),
+                            authorUsername: rAuthor?.username,
+                            authorAvatar: getSafeAvatar(rAuthor?.avatar),
                             text: r.text,
                             timestamp: r.created_at,
                             likes: r.likes || 0,
-                            userLiked: false,
+                            userLiked: likedReplyIds.has(r.id),
                             replies: [] as any[]
                         };
-                        
-                        if (!r.parent_reply_id) {
-                            const list = repliesMap.get(r.comment_id) || [];
+                        replyById.set(r.id, replyObj);
+                    });
+
+                    // Now wire up the tree: attach child replies to their parent
+                    replyById.forEach((replyObj, _id) => {
+                        if (replyObj.parentReplyId) {
+                            const parent = replyById.get(replyObj.parentReplyId);
+                            if (parent) {
+                                parent.replies.push(replyObj);
+                            } else {
+                                const list = repliesMap.get(replyObj.commentId) || [];
+                                list.push(replyObj);
+                                repliesMap.set(replyObj.commentId, list);
+                            }
+                        } else {
+                            const list = repliesMap.get(replyObj.commentId) || [];
                             list.push(replyObj);
-                            repliesMap.set(r.comment_id, list);
+                            repliesMap.set(replyObj.commentId, list);
                         }
                     });
 
                     commentsData?.forEach(c => {
-                        const name = c.author?.name || 'Usuario';
-                        const lastName = c.author?.last_name || '';
+                        const cAuthor: any = Array.isArray(c.author) ? c.author[0] : c.author;
+                        const name = cAuthor?.name || 'Usuario';
+                        const lastName = cAuthor?.last_name || '';
                         const list = commentsMap.get(postId) || [];
                         list.push({
                             id: c.id,
                             authorId: c.author_id,
                             authorName: `${name} ${lastName}`.trim(),
-                            authorUsername: c.author?.username,
-                            authorAvatar: getSafeAvatar(c.author?.avatar),
+                            authorUsername: cAuthor?.username,
+                            authorAvatar: getSafeAvatar(cAuthor?.avatar),
                             text: c.text,
                             timestamp: c.created_at,
                             likes: c.likes || 0,
-                            userLiked: false,
+                            userLiked: likedCommentIds.has(c.id),
                             replies: repliesMap.get(c.id) || []
                         });
-                        commentsMap.set(postId, list);
+                        const uniqueComments = Array.from(new Set(list.map(c => c.id)))
+                            .map(id => list.find(c => c.id === id))
+                            .filter(Boolean);
+                        commentsMap.set(postId, uniqueComments);
                     });
 
-                    setLocalPost(mapper(itemData, isNews ? 'news' : 'post', commentsMap));
+                    if (!cancelled) {
+                        // Auto-expand all comments that have replies
+                        if (repliesMap.size > 0) {
+                            const initialExpanded: Record<string, boolean> = {};
+                            repliesMap.forEach((_, commentId) => { initialExpanded[commentId] = true; });
+                            setExpandedReplies(initialExpanded);
+                        }
+                        setLocalPost(prev => {
+                            if (!prev) return prev;
+                            return {
+                                ...prev,
+                                commentsList: commentsMap.get(postId) || []
+                            };
+                        });
+                    }
                 }
             } catch (err) {
                 console.error("Error fetching local post in PostDetailView:", err);
             } finally {
-                setIsLoading(false);
+                if (!cancelled) {
+                    setIsLoading(false);
+                    setIsCommentsLoading(false);
+                }
             }
         };
 
         fetchPost();
-    }, [postId, posts, isNews]);
+        return () => { cancelled = true; };
+    }, [postId, isNews]);
 
     const mentionSuggestions = useMemo(() => {
         if (mentionQuery === null) return [];
         return getMentionSuggestions(mentionQuery, users);
     }, [mentionQuery, users]);
 
-    if (!post || isLoading) {
+    // Must be before the conditional return to avoid Rules of Hooks violation
+    const externalUrls = useMemo(() => {
+        return extractAllExternalUrls(post?.content ?? '', isExternalUrl);
+    }, [post?.content]);
+
+    if (!post && isLoading) {
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800">
                 <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-                <p className="text-slate-400 font-bold tracking-tight">{isLoading ? 'Cargando publicación...' : 'Buscando publicación...'}</p>
+                <p className="text-slate-400 font-bold tracking-tight">Cargando publicación...</p>
+            </div>
+        );
+    }
+
+    if (!post) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#111] rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800">
+                <p className="text-slate-400 font-bold tracking-tight mb-4">Publicación no encontrada</p>
+                <button
+                    onClick={() => navigate(-1)}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all"
+                >
+                    ← Volver
+                </button>
             </div>
         );
     }
@@ -240,27 +492,114 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!text.trim()) return;
+        const newComment: Comment = {
+            id: `temp-${Date.now()}`,
+            authorId: user.id,
+            authorName: `${user.name} ${user.lastName || ''}`.trim(),
+            authorUsername: user.username,
+            authorAvatar: getSafeAvatar(user.avatar),
+            text: text.trim(),
+            timestamp: new Date().toISOString(),
+            likes: 0,
+            userLiked: false,
+            replies: [],
+        };
+        setLocalPost(prev => prev ? { ...prev, commentsList: [...(prev.commentsList || []), newComment] } : prev);
         onAddComment(post.id, text);
         setMentionQuery(null);
         setText('');
     };
 
-    const handleReplySubmit = (e: React.FormEvent, commentId: string) => {
+    const handleReplySubmit = async (e: React.FormEvent, commentId: string) => {
         e.preventDefault();
-        console.log("📤 Submitting reply from View:", { commentId, replyText, parentReplyId: replyingToParentReplyId });
         if (!replyText.trim() || !onAddReply) {
             console.warn("🚫 Cannot submit reply:", { textEmpty: !replyText.trim(), onAddReplyMissing: !onAddReply });
             return;
         }
-        onAddReply(commentId, replyText, replyingToParentReplyId);
+        const tempId = `temp-${Date.now()}`;
+        const newReply: CommentReply = {
+            id: tempId,
+            commentId,
+            parentReplyId: replyingToParentReplyId,
+            authorId: user.id,
+            authorName: `${user.name} ${user.lastName || ''}`.trim(),
+            authorUsername: user.username,
+            authorAvatar: getSafeAvatar(user.avatar),
+            text: replyText.trim(),
+            timestamp: new Date().toISOString(),
+            likes: 0,
+            userLiked: false,
+            replies: [],
+        };
+        setLocalPost(prev => {
+            if (!prev) return prev;
+            const addReplyToTree = (replies: CommentReply[]): CommentReply[] =>
+                replies.map(r => {
+                    if (r.id === replyingToParentReplyId) {
+                        return { ...r, replies: [...(r.replies || []), newReply] };
+                    }
+                    if (r.replies && r.replies.length > 0) {
+                        return { ...r, replies: addReplyToTree(r.replies) };
+                    }
+                    return r;
+                });
+            return {
+                ...prev,
+                commentsList: (prev.commentsList || []).map(c => {
+                    if (c.id !== commentId) return c;
+                    if (!replyingToParentReplyId) {
+                        // Direct reply to comment
+                        return { ...c, replies: [...(c.replies || []), newReply] };
+                    }
+                    // Reply to a reply — find it in the tree
+                    return { ...c, replies: addReplyToTree(c.replies || []) };
+                })
+            };
+        });
+        // Auto-expand so the new reply is visible
+        if (replyingToParentReplyId) {
+            setExpandedReplies(prev => ({ ...prev, [replyingToParentReplyId]: true }));
+        } else {
+            setExpandedReplies(prev => ({ ...prev, [commentId]: true }));
+        }
+        const savedParentReplyId = replyingToParentReplyId;
+        if (commentId.startsWith('temp-') || savedParentReplyId?.startsWith('temp-')) {
+            alert('Espera a que el comentario o respuesta anterior se guarde antes de responder.');
+            return;
+        }
         setMentionQuery(null);
         setReplyText('');
         setReplyingTo(null);
         setReplyingToParentReplyId(undefined);
+        const realId = await onAddReply(commentId, newReply.text, savedParentReplyId);
+        if (realId) {
+            setLocalPost(prev => {
+                if (!prev) return prev;
+                const replaceId = (replies: CommentReply[]): CommentReply[] =>
+                    replies.map(r => {
+                        if (r.id === tempId) return { ...r, id: realId };
+                        if (r.replies && r.replies.length > 0) return { ...r, replies: replaceId(r.replies) };
+                        return r;
+                    });
+                return {
+                    ...prev,
+                    commentsList: (prev.commentsList || []).map(c => ({
+                        ...c,
+                        replies: replaceId(c.replies || [])
+                    }))
+                };
+            });
+        }
     };
 
     const toggleReplies = (commentId: string) => {
         setExpandedReplies(prev => ({ ...prev, [commentId]: !prev[commentId] }));
+    };
+
+    const countAllComments = (comments: Comment[]): number => {
+        const countReplies = (replies: CommentReply[]): number =>
+            replies.reduce((acc, r) => acc + 1 + countReplies(r.replies || []), 0);
+        return comments.reduce((acc, c) => acc + 1 + countReplies(c.replies || []), 0);
     };
 
     const renderContentWithHashtags = (content: string) => {
@@ -268,13 +607,14 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
         const parts = content.split(RENDER_REGEX);
         return parts.map((part, i) => {
             const trimmedPart = part.trim();
+
             if (part.startsWith('#')) {
                 return (
                     <button key={i} onClick={(e) => { e.stopPropagation(); onSearchHashtag?.(part.slice(1)); }} className="font-black text-blue-600 dark:text-blue-400 hover:underline">
                         {part}
                     </button>
                 );
-            } else if (trimmedPart.startsWith('@')) {
+            } else if (trimmedPart.startsWith('@') && trimmedPart.length > 1) {
                 const mentionedUser = getUserByMention(trimmedPart, users);
                 return (
                     <button key={i} onClick={(e) => { e.stopPropagation(); if (mentionedUser) { onNavigateToProfile?.(mentionedUser.id); } }} className="text-purple-600 dark:text-purple-400 font-bold hover:underline">
@@ -342,39 +682,52 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                 onClick={() => onNavigateToProfile?.(reply.authorId)}
                             />
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2 mb-1">
                                     <span
-                                        className="text-xs font-bold text-slate-800 dark:text-white cursor-pointer hover:text-blue-600 transition-colors"
+                                        className="text-sm font-bold text-slate-800 dark:text-white cursor-pointer hover:text-blue-600 transition-colors"
                                         onClick={() => onNavigateToProfile?.(reply.authorId)}
                                     >
                                         {reply.authorName}
                                     </span>
-                                    <span className="text-[11px] text-slate-400 font-bold tracking-tighter">{timeAgo(reply.timestamp, language)}</span>
+                                    {reply.authorUsername && (
+                                        <span className="text-[11px] text-purple-500 font-medium">@{reply.authorUsername}</span>
+                                    )}
+                                    <span className="text-[11px] text-slate-400 font-bold tracking-tighter ml-auto">{timeAgo(reply.timestamp, language)}</span>
                                 </div>
                                 <div className="text-xs md:text-sm text-slate-600 dark:text-gray-400 font-medium bg-white dark:bg-zinc-900/30 p-4 rounded-2xl rounded-tl-none border border-slate-50 dark:border-zinc-800 shadow-sm">
                                     {renderContentWithHashtags(reply.text)}
                                 </div>
-                                {depth < maxDepth && (
+                                <div className="flex items-center gap-2 mt-1">
+                                    {depth < maxDepth && (
+                                        <button
+                                            onClick={() => {
+                                                setReplyingTo(commentId);
+                                                setReplyingToParentReplyId(reply.id);
+                                                setReplyText(`@${reply.authorUsername || 'usuario'} `);
+                                                setTimeout(() => replyInputRef.current?.focus(), 100);
+                                            }}
+                                            className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-2 px-2"
+                                        >
+                                            <Reply size={14} /><span>Responder</span>
+                                        </button>
+                                    )}
                                     <button
-                                        onClick={() => {
-                                            setReplyingTo(commentId);
-                                            setReplyingToParentReplyId(reply.id);
-                                            setReplyText(`@${reply.authorUsername || 'usuario'} `);
-                                            setTimeout(() => replyInputRef.current?.focus(), 100);
-                                        }}
-                                        className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-2 px-2 mt-1"
+                                        onClick={() => handleLikeReplyLocal(reply.id)}
+                                        disabled={reply.id.startsWith('temp-')}
+                                        className={`text-[10px] font-black uppercase flex items-center space-x-2 px-2 transition-colors ${reply.userLiked ? 'text-red-500' : 'text-slate-400'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                     >
-                                        <Reply size={14} /><span>Responder</span>
+                                        <Heart size={14} fill={reply.userLiked ? "currentColor" : "none"} />
+                                        <span className="text-[9px] font-black">{reply.likes || 0}</span>
                                     </button>
-                                )}
-
-                                <button
-                                    onClick={() => onLikeReply?.(reply.id)}
-                                    className={`text-[10px] font-black uppercase flex items-center space-x-2 px-2 mt-1 transition-colors ${reply.userLiked ? 'text-red-500' : 'text-slate-400'}`}
-                                >
-                                    <Heart size={14} fill={reply.userLiked ? "currentColor" : "none"} />
-                                    <span className="text-[9px] font-black">{reply.likes || 0}</span>
-                                </button>
+                                    {reply.replies && reply.replies.length > 0 && (
+                                        <button
+                                            onClick={() => setExpandedReplies(prev => ({ ...prev, [reply.id]: !prev[reply.id] }))}
+                                            className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 hover:underline flex items-center space-x-1 px-2"
+                                        >
+                                            <span>{expandedReplies[reply.id] ? 'Ocultar respuestas' : 'Ver respuestas'}</span>
+                                        </button>
+                                    )}
+                                </div>
 
                                 {replyingTo === commentId && replyingToParentReplyId === reply.id && (
                                     <div className="relative mt-4 ml-2">
@@ -407,7 +760,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                     </div>
                                 )}
 
-                                {reply.replies && reply.replies.length > 0 && (
+                                {reply.replies && reply.replies.length > 0 && expandedReplies[reply.id] && (
                                     renderRepliesList(reply.replies, commentId, depth + 1)
                                 )}
                             </div>
@@ -423,10 +776,10 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
         return (
             <div className="mb-8">
                 {post.imageUrl.length === 1 && (
-                    <div className="relative w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                    <div className="block w-fit mx-auto max-w-full rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
                         <img
                             src={post.imageUrl[0]}
-                            className="w-full h-full object-cover transition-all hover:scale-[1.01] cursor-zoom-in"
+                            className="max-h-[420px] max-w-full h-auto w-auto transition-all hover:scale-[1.01] cursor-zoom-in"
                             alt=""
                             onClick={() => { setCurrentImgIndex(0); setIsLightboxOpen(true); }}
                         />
@@ -434,7 +787,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 )}
 
                 {post.imageUrl.length === 2 && (
-                    <div className="grid grid-cols-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                    <div className="grid grid-cols-2 gap-2 w-full max-h-[420px] aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
                         {post.imageUrl.map((url, i) => (
                             <img
                                 key={i}
@@ -448,7 +801,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 )}
 
                 {post.imageUrl.length === 3 && (
-                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full max-h-[420px] aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
                         <div className="relative row-span-2">
                             <img
                                 src={post.imageUrl[0]}
@@ -477,7 +830,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 )}
 
                 {post.imageUrl.length >= 4 && (
-                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
+                    <div className="grid grid-cols-2 grid-rows-2 gap-2 w-full max-h-[420px] aspect-[2/1] rounded-[2rem] overflow-hidden border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/50">
                         {post.imageUrl.slice(0, 4).map((url, i) => (
                             <div key={i} className="relative h-full">
                                 <img
@@ -500,13 +853,12 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
     };
 
     return (
-        <div className="w-full flex-1 flex flex-col min-h-full bg-white dark:bg-[#111] pt-20 md:pt-0 -mb-24 pb-24 md:-mb-6 md:pb-6">
-            {/* Header Sticky */}
-            <div className="w-full space-y-0 flex-1 flex flex-col">
+        <div className="pt-16 md:pt-0 min-h-screen">
+            {/* Header Sticky — full width, no side margin */}
             <div
-                className="sticky top-16 md:top-0 z-40 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 px-4 md:px-8 py-3 transition-all"
+                className="sticky top-16 md:top-0 z-40 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-900 px-8 py-3 transition-all"
             >
-                <div className="w-full flex items-center space-x-2">
+                <div className="max-w-4xl mx-auto w-full flex items-center space-x-2">
                     <button
                         onClick={() => navigate(-1)}
                         className="flex items-center justify-center text-slate-500 hover:text-blue-600 transition-colors p-2 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl"
@@ -517,27 +869,32 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         className="flex-1 cursor-pointer group flex items-center gap-2 h-full"
                         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     >
-                        <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                        <h1 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
                             {post.type === 'news' ? 'Noticia' : 'Post'}
                         </h1>
                     </div>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-[#111] overflow-hidden border-b border-gray-100 dark:border-zinc-900">
-                <div className="px-4 py-4 md:p-10">
-                    <div className="flex items-center space-x-4 mb-8">
+            {/* Contenido con margen lateral */}
+            <div className="px-3 sm:px-4 md:px-6">
+            <div className="max-w-4xl mx-auto bg-white dark:bg-[#111] border-x border-slate-100 dark:border-zinc-900">
+            <div className="bg-white dark:bg-[#111] min-h-screen">
+                <div className="px-8 py-5">
+                    <div className="flex items-center space-x-3 mb-4">
                         <img
                             src={getSafeAvatar(post.authorAvatar)}
-                            className="w-16 h-16 rounded-2xl object-cover cursor-pointer hover:ring-4 hover:ring-blue-50 dark:hover:ring-blue-900/20 transition-all"
+                            className="w-10 h-10 rounded-xl object-cover cursor-pointer hover:ring-4 hover:ring-blue-50 dark:hover:ring-blue-900/20 transition-all"
                             alt=""
                             onClick={() => onNavigateToProfile?.(post.authorId)}
                         />
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
-                                <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
-                                    <h4 className="font-black text-slate-900 dark:text-white text-xl group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
-                                    <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
+                                <div className="cursor-pointer group flex-1 min-w-0" onClick={() => onNavigateToProfile?.(post.authorId)}>
+                                    <h4 className="font-black text-slate-900 dark:text-white text-sm group-hover:text-blue-600 transition-colors whitespace-nowrap overflow-visible">
+                                        {post.authorName}
+                                    </h4>
+                                    {!post.authorIsOrganization && !users.find(u => u.id === post.authorId)?.isOrganization && <p className={`text-[10px] font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>}
                                 </div>
                                 <div className="flex flex-col items-end">
                                     <p className="text-[11px] text-gray-400 font-bold mb-2">{timeAgo(post.timestamp, language)}</p>
@@ -547,10 +904,10 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                                 e.stopPropagation();
                                                 setIsDeleteModalOpen(true);
                                             }}
-                                            className="p-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all"
+                                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
                                             title="Eliminar post"
                                         >
-                                            <Trash2 size={24} />
+                                            <Trash2 size={16} />
                                         </button>
                                     )}
                                 </div>
@@ -559,14 +916,14 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                     </div>
 
                     {post.type === 'news' && post.title && (
-                        <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white mb-6 leading-tight">
+                        <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3 leading-tight">
                             {post.title}
                         </h2>
                     )}
 
                     {post.type === 'news' && renderImages()}
 
-                    <div className="text-gray-800 dark:text-gray-200 leading-relaxed text-lg md:text-xl font-medium mb-8 whitespace-pre-wrap">
+                    <div className="text-gray-800 dark:text-gray-200 leading-relaxed text-sm font-medium mb-4 whitespace-pre-wrap">
                         {renderContentWithHashtags(post.content)}
                     </div>
 
@@ -579,56 +936,88 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         />
                     )}
 
+                    {post.showLinkPreview !== false && (!post.imageUrl || post.imageUrl.length === 0) && (() => {
+                        const chosen = post.linkPreviewUrl && externalUrls.includes(post.linkPreviewUrl) ? post.linkPreviewUrl : externalUrls[0];
+                        return chosen ? (
+                            <div className="mt-4 mb-6">
+                                <LinkPreview url={chosen} language={language} />
+                            </div>
+                        ) : null;
+                    })()}
+
                     {post.type !== 'news' && renderImages()}
 
-                    <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900">
-                        <div className="flex items-center space-x-8">
-                            {post.type === 'post' ? (
-                                <button onClick={() => onLike?.(post.id)} className={`flex items-center space-x-3 group ${post.userLiked ? 'text-red-500' : 'text-slate-400'}`}>
-                                    <div className={`p-3 rounded-2xl transition-all ${post.userLiked ? 'bg-red-50 dark:bg-red-900/20' : 'group-hover:bg-red-50 dark:group-hover:bg-zinc-800'}`}>
-                                        <Heart size={28} fill={post.userLiked ? "currentColor" : "none"} />
-                                    </div>
-                                    <span className="font-black text-xl dark:text-white">{post.likes}</span>
+                    <div className="flex items-center justify-between py-3 border-y border-slate-50 dark:border-zinc-900 mb-4 text-slate-500">
+                        {post.type === 'post' ? (
+                            <>
+                                <button onClick={handleLikeLocal} className={`flex items-center space-x-2 transition-all ${post.userLiked ? 'text-pink-500' : 'text-slate-500'}`}>
+                                    <Heart
+                                        size={18}
+                                        className={post.userLiked ? 'text-pink-500' : 'text-slate-500'}
+                                        fill={post.userLiked ? "currentColor" : "none"}
+                                    />
+                                    <span className="font-black text-sm">{post.likes}</span>
                                 </button>
-                            ) : (
-                                <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-100 dark:border-zinc-800">
-                                    <button onClick={() => onVote?.(post.id, 'up')} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-500 text-white' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-500'}`}>
-                                        <ChevronUp size={28} strokeWidth={3} />
-                                    </button>
-                                    <span className={`px-5 font-black text-xl min-w-[3rem] text-center ${post.userLiked ? 'text-emerald-600' : 'dark:text-white'}`}>{post.likes}</span>
-                                    <button onClick={() => onVote?.(post.id, 'down')} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-500 text-white' : 'hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500'}`}>
-                                        <ChevronDown size={28} strokeWidth={3} />
-                                    </button>
+                                <div className="flex items-center space-x-2 text-slate-500">
+                                    <MessageSquare size={18} />
+                                    <span className="font-black text-sm">{countAllComments(post.commentsList ?? [])}</span>
                                 </div>
-                            )}
-                            <div className="flex items-center space-x-3 text-slate-400">
-                                <div className="p-3 text-slate-400">
-                                    <MessageCircle size={28} />
-                                </div>
-                                <span className="font-black text-xl dark:text-white">{post.comments}</span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center space-x-3 md:space-x-6">
-                            {post.type !== 'news' && (
                                 <button
-                                    onClick={() => onRepost?.(post.id)}
-                                    className={`flex items-center space-x-2 px-4 py-2 rounded-2xl transition-all ${post.userReposted ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:text-blue-500'}`}
+                                    onClick={handleRepostLocal}
+                                    className={`flex items-center space-x-2 transition-all ${post.userReposted ? 'text-emerald-500' : 'text-slate-500'}`}
                                     title="Republicar"
                                 >
-                                    <Repeat size={24} className={post.userReposted ? "animate-in zoom-in" : ""} />
-                                    <span className="font-black text-lg">{post.reposts || 0}</span>
+                                    <Repeat
+                                        size={18}
+                                        className={post.userReposted ? "text-emerald-500" : "text-slate-500"}
+                                    />
+                                    <span className="font-black text-sm">{post.reposts || 0}</span>
                                 </button>
-                            )}
-
-                            <button
-                                onClick={() => setSharingPost(post)}
-                                className="flex items-center space-x-2 px-4 py-2 text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:text-blue-500 rounded-2xl transition-all"
-                                title="Compartir por chat"
-                            >
-                                <Share2 size={24} />
-                            </button>
-                        </div>
+                                <button
+                                    onClick={() => setSharingPost(post)}
+                                    className="p-1 text-slate-500 hover:text-blue-500 transition-all"
+                                    title="Compartir por chat"
+                                >
+                                    <Share2 size={18} />
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center space-x-4 ml-1">
+                                    <button
+                                        className="flex items-center space-x-2 text-slate-500 hover:text-blue-500 transition-colors"
+                                        onClick={() => mainInputRef.current?.focus()}
+                                    >
+                                        <MessageSquare size={18} />
+                                        <span className="text-sm font-black">{countAllComments(post.commentsList ?? [])}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSharingPost(post)}
+                                        className="p-1 text-slate-500 hover:text-blue-500 transition-all"
+                                        title="Compartir por chat"
+                                    >
+                                        <Share2 size={18} />
+                                    </button>
+                                </div>
+                                <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1 rounded-xl border border-slate-100 dark:border-zinc-800">
+                                    <button
+                                        onClick={() => handleVoteLocal('up')}
+                                        className={`p-1.5 rounded-lg transition-all ${post.userLiked ? 'bg-emerald-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-500'}`}
+                                    >
+                                        <ChevronUp size={16} strokeWidth={3} />
+                                    </button>
+                                    <span className={`px-3 font-black text-sm min-w-[2.5rem] text-center ${post.userLiked ? 'text-emerald-500' : post.userDownvoted ? 'text-red-500' : 'text-slate-500'}`}>
+                                        {post.upvotes ?? post.likes ?? 0}
+                                    </span>
+                                    <button
+                                        onClick={() => handleVoteLocal('down')}
+                                        className={`p-1.5 rounded-lg transition-all ${post.userDownvoted ? 'bg-red-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-red-500'}`}
+                                    >
+                                        <ChevronDown size={16} strokeWidth={3} />
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {sharingPost && (
@@ -646,8 +1035,8 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         />
                     )}
 
-                    <div className="py-6 border-b border-slate-50 dark:border-zinc-900 bg-white dark:bg-[#111]">
-                        <form onSubmit={handleSubmit} className="flex items-center space-x-4 bg-slate-50 dark:bg-zinc-900/50 rounded-[1.5rem] p-2 md:p-3 border border-slate-100 dark:border-zinc-800 shadow-sm">
+                    <div className="py-3 border-b border-slate-50 dark:border-zinc-900 bg-white dark:bg-[#111]">
+                        <form onSubmit={handleSubmit} className="flex items-center space-x-3 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl p-2 border border-slate-100 dark:border-zinc-800 shadow-sm">
                             <input
                                 ref={mainInputRef}
                                 type="text"
@@ -655,10 +1044,10 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                 onChange={(e) => handleInputChange(e.target.value, 'main')}
                                 onKeyDown={(e) => { if (e.key === 'Escape') setMentionQuery(null); }}
                                 placeholder="Escribe tu aportación aquí..."
-                                className="flex-1 bg-transparent border-none px-6 py-2 text-base md:text-lg font-medium outline-none focus:ring-0 dark:text-white"
+                                className="flex-1 bg-transparent border-none px-3 py-1.5 text-sm font-medium outline-none focus:ring-0 dark:text-white"
                             />
-                            <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center">
-                                <Send size={22} />
+                            <button type="submit" disabled={!text.trim()} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center">
+                                <Send size={16} />
                             </button>
                         </form>
                         {mentionTarget === 'main' && mentionQuery !== null && (
@@ -681,15 +1070,23 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                         )}
                     </div>
 
-                    <div className="mt-8 pt-2">
-                        <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 pb-6 border-b border-slate-100 dark:border-zinc-800 px-2">Comentarios ({post.commentsList.length})</h5>
-                        <div className="space-y-6 pr-2">
-                            {sortComments(post.commentsList).slice(0, visibleCommentsCount).map((comment) => (
+                    <div className="mt-4 pt-2">
+                        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 pb-4 border-b border-slate-100 dark:border-zinc-800 px-2">
+                            Comentarios ({isCommentsLoading ? (post.comments || 0) : countAllComments(post.commentsList ?? [])})
+                        </h5>
+                        <div className="space-y-4 pr-1 max-h-[500px] overflow-y-auto scrollbar-modal">
+                            {isCommentsLoading ? (
+                                <div className="flex flex-col items-center justify-center py-10 bg-slate-50/50 dark:bg-zinc-900/10 rounded-2xl border border-dashed border-slate-100 dark:border-zinc-800/80">
+                                    <Loader2 className="animate-spin text-blue-600 mb-3" size={24} />
+                                    <p className="text-slate-400 text-xs font-bold tracking-tight">Cargando comentarios...</p>
+                                </div>
+                            ) : (
+                                sortComments(post.commentsList ?? []).slice(0, visibleCommentsCount).map((comment) => (
                                 <div key={comment.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <div className="flex space-x-5">
+                                    <div className="flex space-x-3">
                                         <img
                                             src={getSafeAvatar(comment.authorAvatar)}
-                                            className="w-12 h-12 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                                            className="w-8 h-8 rounded-xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
                                             alt=""
                                             onClick={() => onNavigateToProfile?.(comment.authorId)}
                                         />
@@ -721,22 +1118,22 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                                     <Reply size={14} /><span>Responder</span>
                                                 </button>
 
-                                                <button
-                                                    onClick={() => onLikeComment?.(comment.id)}
-                                                    className={`text-[10px] font-black uppercase flex items-center space-x-2 transition-colors ${comment.userLiked ? 'text-red-500' : 'text-slate-400'}`}
-                                                >
-                                                    <Heart size={14} fill={comment.userLiked ? "currentColor" : "none"} />
-                                                    <span className="text-[9px] font-black">{comment.likes || 0}</span>
-                                                </button>
-
                                                 {comment.replies && comment.replies.length > 0 && (
                                                     <button
                                                         onClick={() => toggleReplies(comment.id)}
                                                         className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 hover:underline flex items-center space-x-1"
                                                     >
-                                                        {expandedReplies[comment.id] ? 'Ocultar respuestas' : `Ver ${comment.replies.length} respuestas`}
+                                                        {expandedReplies[comment.id] ? 'Ocultar respuestas' : 'Ver respuestas'}
                                                     </button>
                                                 )}
+
+                                                <button
+                                                    onClick={() => handleLikeCommentLocal(comment.id)}
+                                                    className={`text-[10px] font-black uppercase flex items-center space-x-2 transition-colors ${comment.userLiked ? 'text-red-500' : 'text-slate-400'}`}
+                                                >
+                                                    <Heart size={14} fill={comment.userLiked ? "currentColor" : "none"} />
+                                                    <span className="text-[9px] font-black">{comment.likes || 0}</span>
+                                                </button>
                                             </div>
 
                                             {replyingTo === comment.id && replyingToParentReplyId === undefined && (
@@ -779,8 +1176,8 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                            {visibleCommentsCount < post.commentsList.length && (
+                            )))}
+                            {visibleCommentsCount < (post.commentsList?.length ?? 0) && (
                                 <div className="flex justify-center mt-6 pb-2">
                                     <button
                                         onClick={() => setVisibleCommentsCount(prev => prev + 10)}
@@ -808,6 +1205,7 @@ export const PostDetailView: React.FC<PostDetailViewProps> = ({
                 onClose={() => setIsLightboxOpen(false)}
             />
             </div>
+        </div>
         </div>
     );
 };

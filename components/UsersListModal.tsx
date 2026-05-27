@@ -44,19 +44,19 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
         // Personas que siguen al usuario (userId). Buscamos donde él es el "seguido".
         query = supabase
           .from('follows')
-          .select('profile:profiles!follower_id(*)')
+          .select('profile:profiles!follower_id(id, name, last_name, username, avatar, position, institution, followers_count, following_count, country, region, bio, interests, created_at)')
           .eq('followed_id', userId);
       } else if (type === 'following') {
         // Personas a las que el usuario (userId) sigue. Buscamos donde él es el "seguidor".
         query = supabase
           .from('follows')
-          .select('profile:profiles!followed_id(*)')
+          .select('profile:profiles!followed_id(id, name, last_name, username, avatar, position, institution, followers_count, following_count, country, region, bio, interests, created_at)')
           .eq('follower_id', userId);
       } else {
         // Personas que apoyan un evento (userId es el eventId aquí)
         query = supabase
           .from('event_supports')
-          .select('profile:profiles!user_id(*)')
+          .select('profile:profiles!user_id(id, name, last_name, username, avatar, position, institution, followers_count, following_count, country, region, bio, interests, created_at)')
           .eq('event_id', userId);
       }
 
@@ -71,7 +71,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
           name: profile.name,
           lastName: profile.last_name,
           position: profile.position || 'Personal Público',
-          department: profile.department || 'Administración',
+          institution: profile.institution || 'Administración',
           avatar: getSafeAvatar(profile.avatar),
           bio: profile.bio || '',
           interests: profile.interests || [],
@@ -128,7 +128,7 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
         </div>
 
         {/* List Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 mb-2 scrollbar-hide">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 space-y-3">
               <Loader2 className="animate-spin text-blue-600" size={32} />
@@ -160,7 +160,10 @@ export const UsersListModal: React.FC<UsersListModalProps> = ({ type, userId, on
                     <img src={getSafeAvatar(person.avatar)} className="w-12 h-12 rounded-xl object-cover" alt="" />
                     <div>
                       <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition-colors">{person.name} {person.lastName || ''}</p>
-                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
+                      <div className="flex flex-col">
+                        <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase truncate max-w-[180px]">{person.position}</p>
+                        <p className="text-[9px] text-slate-400/80 dark:text-zinc-500/80 font-medium truncate max-w-[180px]">{person.region}, {person.country}</p>
+                      </div>
                     </div>
                   </div>
                   {person.id !== currentUserId && (

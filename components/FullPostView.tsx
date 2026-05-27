@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, MessageCircle, Heart, Share2, Repeat, Reply, Calendar, Clock, MapPin, Trash2, MoreHorizontal, Pin, ExternalLink, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Send, MessageSquare, Heart, Share2, Repeat, Reply, Calendar, Trash2, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
@@ -21,6 +21,7 @@ interface FullPostViewProps {
   onSearchHashtag?: (tag: string) => void;
   onNavigateToProfile?: (id: string) => void;
   onDeletePost?: (id: string) => void;
+  onOpenShare?: (post: Post) => void;
   onBack: () => void;
   users?: User[];
   onNavigateToEvent?: (userId: string, eventId: string) => void;
@@ -79,12 +80,15 @@ const NestedReply: React.FC<{
 };
 
 export const FullPostView: React.FC<FullPostViewProps> = ({
-  post, currentUser, onAddComment, onAddReply, onVoteComment, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onDeletePost, onBack, users = [], onNavigateToEvent, globalEvents = [], language
+  post, currentUser, onAddComment, onAddReply, onVoteComment, onLike, onVote, onRepost, onSearchHashtag, onNavigateToProfile, onDeletePost, onOpenShare, onBack, users = [], onNavigateToEvent, globalEvents = [], language
 }) => {
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<{ commentId: string, parentReplyId?: string } | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(
+    () => new Set(post.commentsList.filter(c => c.replies && c.replies.length > 0).map(c => c.id))
+  );
+  const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
@@ -151,6 +155,10 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
   const handleReplySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim() || !onAddReply || !replyingTo) return;
+    if (replyingTo.commentId.startsWith('temp-') || replyingTo.parentReplyId?.startsWith('temp-')) {
+      alert('Espera a que el comentario o respuesta anterior se guarde antes de responder.');
+      return;
+    }
     onAddReply(replyingTo.commentId, replyText, replyingTo.parentReplyId);
     setReplyText('');
     setReplyingTo(null);
@@ -289,7 +297,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
               <img src={getSafeAvatar(post.authorAvatar)} className="w-14 h-14 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => onNavigateToProfile?.(post.authorId)} />
               <div className="cursor-pointer group" onClick={() => onNavigateToProfile?.(post.authorId)}>
                 <h4 className="font-black text-slate-900 dark:text-white leading-tight text-lg group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
-                <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
+                {!post.authorIsOrganization && !users.find(u => u.id === post.authorId)?.isOrganization && <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>}
               </div>
             </div>
             <p className="text-[11px] text-gray-400 font-bold self-start mt-1">{timeAgo(post.timestamp, language)}</p>
@@ -377,30 +385,63 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900 mb-8">
-            <div className="flex items-center space-x-8">
-              {post.type === 'post' ? (
-                <>
-                  <button onClick={() => onLike && onLike(post.id)} className={`flex items-center space-x-2 transition-all ${post.userLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}>
-                    <Heart size={24} fill={post.userLiked ? "currentColor" : "none"} /><span className="font-black dark:text-white text-lg">{post.likes}</span>
+          <div className="flex items-center justify-between py-6 border-y border-slate-50 dark:border-zinc-900 mb-8 text-slate-500">
+            {post.type === 'post' ? (
+              <>
+                <button onClick={() => onLike && onLike(post.id)} className={`flex items-center space-x-3 transition-all ${post.userLiked ? 'text-pink-500' : 'text-slate-500'}`}>
+                  <Heart
+                    size={24}
+                    className={post.userLiked ? 'text-pink-500' : 'text-slate-500'}
+                    fill={post.userLiked ? "currentColor" : "none"}
+                  />
+                  <span className="font-black text-xl">{post.likes}</span>
+                </button>
+                <div className="flex items-center space-x-3 text-slate-500">
+                  <MessageSquare size={24} />
+                  <span className="font-black text-xl">{post.comments}</span>
+                </div>
+                <button onClick={() => onRepost(post.id)} className={`flex items-center space-x-3 transition-all ${post.userReposted ? 'text-emerald-500' : 'text-slate-500'}`}>
+                  <Repeat
+                    size={24}
+                    className={post.userReposted ? 'text-emerald-500' : 'text-slate-500'}
+                  />
+                  <span className="font-black text-xl">{post.reposts}</span>
+                </button>
+                <button className="p-1.5 text-slate-500 hover:text-blue-500 transition-all" onClick={() => onOpenShare?.(post)}><Share2 size={24} /></button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-4">
+                  <button
+                    className="flex items-center space-x-2 text-slate-500 hover:text-blue-500 transition-colors"
+                    onClick={() => mainInputRef.current?.focus()}
+                  >
+                    <MessageSquare size={20} />
+                    <span className="text-sm font-black">{post.comments}</span>
                   </button>
-                  <div className="flex items-center space-x-2 text-slate-400"><MessageCircle size={24} /><span className="font-black dark:text-white text-lg">{post.comments}</span></div>
-                  <button onClick={() => onRepost(post.id)} className={`flex items-center space-x-2 transition-all ${post.userReposted ? 'text-emerald-500' : 'text-slate-400 hover:text-emerald-500'}`}>
-                    <Repeat size={24} /><span className="font-black dark:text-white text-lg">{post.reposts}</span>
+                  <button className="p-1.5 text-slate-500 hover:text-blue-500 transition-all" onClick={() => onOpenShare?.(post)}>
+                    <Share2 size={20} />
                   </button>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-100 dark:border-zinc-800">
-                    <button onClick={() => onVote && onVote(post.id, 'up')} className={`p-2 rounded-xl transition-all ${post.userLiked ? 'text-emerald-500' : 'text-slate-400 hover:text-emerald-500'}`}><ChevronUp size={24} strokeWidth={3} /></button>
-                    <span className={`px-4 font-black text-xl min-w-[3rem] text-center ${post.likes > 0 ? 'text-emerald-600' : post.likes < 0 ? 'text-orange-600' : 'text-slate-900 dark:text-white'}`}>{post.upvotes !== undefined ? post.upvotes : post.likes}</span>
-                    <button onClick={() => onVote && onVote(post.id, 'down')} className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'text-orange-500' : 'text-slate-400 hover:text-orange-500'}`}><ChevronDown size={24} strokeWidth={3} /></button>
-                  </div>
-                  <div className="flex items-center space-x-2 text-slate-400"><MessageCircle size={24} /><span className="font-black dark:text-white text-lg">{post.comments}</span></div>
-                </>
-              )}
-            </div>
-            <button className="p-3 text-slate-300 hover:text-blue-600 transition-all"><Share2 size={24} /></button>
+                </div>
+                <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-100 dark:border-zinc-800">
+                  <button
+                    onClick={() => onVote && onVote(post.id, 'up')}
+                    className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-500'}`}
+                  >
+                    <ChevronUp size={20} strokeWidth={3} />
+                  </button>
+                  <span className={`px-4 font-black text-xl min-w-[3rem] text-center ${post.userLiked ? 'text-emerald-500' : post.userDownvoted ? 'text-red-500' : 'text-slate-500'}`}>
+                    {post.upvotes !== undefined ? post.upvotes : post.likes}
+                  </span>
+                  <button
+                    onClick={() => onVote && onVote(post.id, 'down')}
+                    className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-red-500'}`}
+                  >
+                    <ChevronDown size={20} strokeWidth={3} />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="space-y-8">
@@ -444,8 +485,8 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
             {post.commentsList.length === 0 ? (
               <p className="text-slate-300 italic font-bold text-center py-12">{t('no_comments')}</p>
             ) : (
-              <div className="space-y-8 pb-10">
-                {post.commentsList.map((comment) => {
+              <div className="max-h-[500px] overflow-y-auto pr-2 scrollbar-modal space-y-8 pb-10">
+                {post.commentsList.slice(0, visibleCommentsCount).map((comment) => {
                   const isExpanded = expandedComments.has(comment.id);
                   const hasReplies = comment.replies && comment.replies.length > 0;
 
@@ -490,7 +531,7 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                                 className={`text-[10px] font-black uppercase flex items-center space-x-1 transition-all ${isExpanded ? 'text-slate-400' : 'text-blue-600 dark:text-blue-400 hover:underline'}`}
                               >
                                 <ChevronRight size={12} className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
-                                <span>{isExpanded ? t('hide_replies') : t('view_replies', { count: comment.replies?.length })}</span>
+                                <span>{isExpanded ? t('hide_replies') : t('view_replies')}</span>
                               </button>
                             )}
                           </div>
@@ -557,6 +598,16 @@ export const FullPostView: React.FC<FullPostViewProps> = ({
                     </div>
                   );
                 })}
+                {visibleCommentsCount < post.commentsList.length && (
+                  <div className="flex justify-center mt-2 pb-2">
+                    <button
+                      onClick={() => setVisibleCommentsCount(prev => prev + 10)}
+                      className="text-xs font-black text-blue-500 hover:text-blue-700 transition-colors px-4 py-2"
+                    >
+                      Ver más comentarios ({post.commentsList.length - visibleCommentsCount} restantes)
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

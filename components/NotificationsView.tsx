@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { Heart, UserPlus, MessageSquare, Bell, ChevronUp, Repeat, Star, ShieldCheck, Award, AtSign, FileText, CheckCircle2, Gift, Sparkles, Trash2 } from 'lucide-react';
 import { Notification, User, Reward } from '../types';
 import { Language, useTranslation } from '../utils/translations';
@@ -41,11 +43,24 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   onDeleteNotification
 }) => {
   const t = useTranslation(language);
-  const [activeTab, setActiveTab] = useState<Tab>('all');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<Tab>(() =>
+    location.state?.openAdminTab && currentUser?.isAdmin ? 'admin' : 'all'
+  );
   const [adminTab, setAdminTab] = useState<'solicitudes' | 'recompensas'>('solicitudes');
   const [revealedId, setRevealedId] = useState<string | null>(null);
+  const [rewardPopup, setRewardPopup] = useState<{ rewardName: string } | null>(null);
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
+
+  const scrollLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockScroll = () => {
+    const savedY = window.scrollY;
+    const prevent = () => { window.scrollTo({ top: savedY, behavior: 'instant' }); };
+    window.addEventListener('scroll', prevent);
+    if (scrollLockTimerRef.current) clearTimeout(scrollLockTimerRef.current);
+    scrollLockTimerRef.current = setTimeout(() => window.removeEventListener('scroll', prevent), 1200);
+  };
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -99,10 +114,8 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       const content = n.content || '';
       const isAdminMsg = n.type === 'registration_request' ||
         n.type === 'reward_request' ||
-        (n.type === 'system' && (content.includes('aprobado en la red') ||
-          content.includes('rechazado en la red') ||
-          content.includes('Solicitud de') ||
-          content.includes('Canje de')));
+        (n.type === 'system' && (content.includes('Solicitud de') ||
+          content.includes('Canje de'))) && !content.includes('(aceptado)') && !content.includes('(rechazado)');
 
       if (isAdminMsg) {
         counts.admin++;
@@ -119,12 +132,15 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       } else {
         if (n.type === 'mention') {
           counts.mentions++;
+          counts.all++;
         } else if (n.type === 'follow') {
           counts.followers++;
-        } else if (n.type === 'reward_accepted' || (n.type === 'system' && (content.includes('ha sido canjeada') || content.includes('canje aceptado')) || content.toLowerCase().includes('novas') || content.toLowerCase().includes('insignia'))) {
-          // User Rewards tab only for acceptances and earned items
+          counts.all++;
+        } else if (n.type === 'reward_accepted' || (n.type === 'system' && (content.includes('ha sido canjeada') || content.includes('canje aceptado') || content.toLowerCase().includes('novas') || content.toLowerCase().includes('insignia') || ((content.toLowerCase().includes('top 1') || content.toLowerCase().includes('top 2') || content.toLowerCase().includes('top 3')) && content.toLowerCase().includes('ranking'))))) {
+          // User Rewards tab only for acceptances and earned items — never reward_request (admin-only)
           counts.rewards++;
-        } else if (n.type === 'like' || n.type === 'comment' || n.type === 'event_support' || n.type === 'repost' || n.type === 'system' || n.type === 'reward_request') {
+          counts.all++;
+        } else if (n.type === 'like' || n.type === 'comment' || n.type === 'event_support' || n.type === 'repost' || n.type === 'system') {
           counts.all++;
         }
       }
@@ -137,7 +153,6 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
   useEffect(() => {
     // When the component mounts or activeTab changes, mark those specific notifications as read
-    console.log(`[NotificationsView] useEffect triggering onMarkAllRead for activeTab: ${activeTab}, adminTab: ${adminTab}`);
     if (activeTab === 'admin') {
       onMarkAllRead(activeTab, adminTab);
     } else {
@@ -229,80 +244,58 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
   const filteredNotifications = notifications.filter(n => {
     if (activeTab === 'all') {
-      // Exclude admin-only tasks, reward notifications and mentions from "All" (Todo)
+      // EXCLUDE admin tasks (registration or reward requests that are still pending)
       const c = (n.content || '').toLowerCase();
-      if (
-        n.type === 'registration_request' || 
-        n.type === 'reward_request' || 
-        n.type === 'reward_accepted' || 
-        n.type === 'mention' || 
-        n.type === 'follow' || 
-        c.includes('canje') ||
-        c.includes('novas') ||
-        c.includes('recompensa') ||
-        c.includes('ganado')
-      ) return false;
+      const isAdminTask = n.type === 'registration_request' || 
+                          n.type === 'registration_approved' || 
+                          n.type === 'registration_rejected' || 
+                          n.type === 'reward_request' || 
+                          n.type === 'reward_accepted' || 
+                          n.type === 'reward_rejected' || 
+                          (n.type === 'system' && (c.includes('solicitud de') || c.includes('canje de')));
+      
+      if (isAdminTask) return false;
 
-      // Included: likes, votes, comments, reposts, system messages, event support
+      // Included: likes, votes, comments, reposts, mentions, follows, rewards, system messages, event support
       return true;
     } else if (activeTab === 'mentions') {
       return n.type === 'mention';
     } else if (activeTab === 'followers') {
       return n.type === 'follow';
     } else if (activeTab === 'rewards') {
+      // Only user-facing reward notifications — never admin tasks (reward_request)
+      if (n.type === 'reward_request') return false;
       const c = (n.content || '').toLowerCase();
-      const type = n.type;
-      return type === 'reward_request' || 
-             type === 'reward_accepted' || 
-             c.includes('canje') || 
-             c.includes('novas') || 
-             c.includes('insignia') || 
-             c.includes('enhorabuena') || 
+      // Exclude "solicitud de canje" (admin task) but allow "ha sido canjeada" (user confirmation)
+      if (c.includes('solicitud de canje') || c.includes('canje de')) return false;
+      return n.type === 'reward_accepted' ||
+             c.includes('ha sido canjeada') ||
+             c.includes('canje aceptado') ||
+             c.includes('novas') ||
+             c.includes('insignia') ||
+             c.includes('enhorabuena') ||
              c.includes('earned') ||
-             c.includes('has ganado');
+             c.includes('has ganado') ||
+             ((c.includes('top 1') || c.includes('top 2') || c.includes('top 3')) && c.includes('ranking'));
     } else if (activeTab === 'admin') {
-      const now = new Date();
-      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      
-      const isWithin24Hours = (ts?: string) => {
-        if (!ts) return false;
-        return new Date(ts) > twentyFourHoursAgo;
-      };
       const c = (n.content || '').toLowerCase();
-      const sender = users?.find(u => u.id === n.senderId);
-      
-      // Resolution detection
-      const isRegistrationResolved = (sender && (sender.status === 'active' || sender.status === 'rejected')) || 
-                                    c.includes('(aceptado)') || c.includes('(rechazado)') || c.includes('bienvenido') || c.includes('aprobad') || c.includes('rechazad');
-      
-      const isRewardResolved = c.includes('(aceptado)') || c.includes('(rechazado)');
-
+      // Mostrar siempre solicitudes/recompensas (pendientes y resueltas). Solo se borran manualmente.
       if (adminTab === 'solicitudes') {
-        const isRequest = n.type === 'registration_request' || (n.type === 'system' && (c.includes('solicitud') || c.includes('aprobado') || c.includes('rechazado'))) && !c.includes('canje');
-        if (!isRequest) return false;
-        
-        if (isRegistrationResolved) {
-          // Use the most recent timestamp available. Fallback to NOW if resolved but no timestamp to prevent instant disappearance
-          const resolveTime = (sender && (sender.status === 'active' || sender.status === 'rejected') && sender.updatedAt) ? sender.updatedAt : (n.updatedAt || (n.content.includes('(') ? now.toISOString() : n.timestamp));
-          
-          if (!resolveTime) return false;
-          const hoursDiff = (now.getTime() - new Date(resolveTime).getTime()) / (1000 * 60 * 60);
-          return hoursDiff < 24;
-        }
-        return true;
+        const isRequest = n.type === 'registration_request' || 
+                          n.type === 'registration_approved' || 
+                          n.type === 'registration_rejected' || 
+                          (n.type === 'system' && (c.includes('solicitud') || c.includes('aprobado') || c.includes('aceptado') || c.includes('rechazado'))) && !c.includes('canje');
+        return isRequest;
       } else if (adminTab === 'recompensas') {
-        const isRewardRequest = (n.type === 'reward_request' || c.includes('solicitud de canje'));
-        if (!isRewardRequest) return false;
-
-        if (isRewardResolved) {
-          const resolveTime = n.updatedAt || (n.content.includes('(') ? now.toISOString() : n.timestamp);
-          const hoursDiff = (now.getTime() - new Date(resolveTime).getTime()) / (1000 * 60 * 60);
-          return hoursDiff < 24;
-        }
-        return true;
+        const isRewardRequest = (n.type === 'reward_request' || n.type === 'reward_accepted' || n.type === 'reward_rejected' || c.includes('solicitud de canje'));
+        return isRewardRequest;
       }
     }
     return true;
+  }).sort((a, b) => {
+    const aTime = new Date(a.updatedAt || a.timestamp).getTime();
+    const bTime = new Date(b.updatedAt || b.timestamp).getTime();
+    return bTime - aTime;
   });
 
   return (
@@ -412,12 +405,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         ) : (
           <div className="divide-y divide-gray-50 dark:divide-zinc-900">
             {filteredNotifications.map((n) => {
-              const content = n.content || '';
+              const content = (n.content || '').replace('ha respondido a tu respuesta', 'ha respondido tu comentario');
               const isRevealed = revealedId === n.id;
               return (
                 <div
                   key={n.id}
-                  className="relative overflow-hidden"
+                  className="relative overflow-hidden transition-all duration-300"
                   onTouchStart={handleTouchStart}
                   onTouchEnd={(e) => handleTouchEnd(e, n.id)}
                   onContextMenu={(e) => handleContextMenu(e, n.id)}
@@ -451,6 +444,19 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                       if (isRevealed) { setRevealedId(null); return; }
                       const target = e.target as HTMLElement;
                       if (target.closest('button')) return;
+                      // Only show popup for store redemptions accepted by admin (reward_accepted)
+                      const c = (n.content || '').toLowerCase();
+                      const isAcceptedRedemption = n.type === 'reward_accepted' ||
+                        c.includes('ha sido canjeada') || c.includes('canje aceptado');
+                      if (isAcceptedRedemption && activeTab === 'rewards') {
+                        let rewardName = n.content || '';
+                        if (n.postId && rewards) {
+                          const r = rewards.find(rw => rw.id === n.postId);
+                          if (r) rewardName = r.name;
+                        }
+                        setRewardPopup({ rewardName });
+                        return;
+                      }
                       onNotificationClick?.(n.postId, n.senderId, n.type, n.newsId);
                     }}
                     style={{ transform: isRevealed ? 'translateX(-80px)' : 'translateX(0)', transition: 'transform 0.3s ease' }}
@@ -464,7 +470,12 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                     onClick={(e) => {
                       if (n.senderId) {
                         e.stopPropagation();
-                        if (n.type === 'registration_request' && onViewRegistrationData) {
+                        const c = (n.content || '').toLowerCase();
+                        const isSolicitud = n.type === 'registration_request' || 
+                                           n.type === 'registration_approved' || 
+                                           n.type === 'registration_rejected' || 
+                                           (n.type === 'system' && (c.includes('solicitud') || c.includes('aprobado') || c.includes('aceptado') || c.includes('rechazado')) && !c.includes('canje'));
+                        if (isSolicitud && onViewRegistrationData) {
                           onViewRegistrationData(n.senderId);
                         } else {
                           onNavigateToProfile?.(n.senderId);
@@ -502,11 +513,20 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                           )}
                         </div>
                       </div>
-                    ) : n.type === 'reward_accepted' ? (
+                    ) : (n.type === 'reward_accepted' || n.type === 'reward_rejected') ? (
                       <div className="flex items-start justify-between gap-4 w-full">
                         <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
                           {(() => {
-                            let displayName = n.content;
+                            const raw = n.content || '';
+                            const m = raw.match(/^(La recompensa solicitada )"(.+)"$/);
+                            if (m) {
+                              return (
+                                <>
+                                  {m[1]}<span className="font-black text-gray-900 dark:text-white">"{m[2]}"</span>
+                                </>
+                              );
+                            }
+                            let displayName = raw;
                             if (displayName === 'Tu solicitud de recompensa ha sido canjeada' && n.postId && rewards) {
                               const r = rewards.find(rw => rw.id === n.postId);
                               if (r) displayName = r.name;
@@ -518,9 +538,15 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                             );
                           })()}
                         </p>
-                        <button className="flex-shrink-0 px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
-                          Aceptada
-                        </button>
+                        {n.type === 'reward_accepted' ? (
+                          <button className="flex-shrink-0 px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
+                            Aceptada
+                          </button>
+                        ) : (
+                          <button className="flex-shrink-0 px-4 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-lg cursor-default border border-red-200 transition-none whitespace-nowrap">
+                            Rechazada
+                          </button>
+                        )}
                       </div>
                     ) : (n.type === 'system' && (n.content || '').includes('Canje de')) ? (
                       <div className="flex items-start justify-between gap-4">
@@ -533,11 +559,11 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                           </button>
                         )}
                       </div>
-                    ) : (n.type === 'system' && ((n.content || '').toLowerCase().includes('bienvenido') || (n.content || '').toLowerCase().includes('rechazada') || (n.content || '').toLowerCase().includes('tu solicitud de registro ha sido') || (n.content || '').toLowerCase().includes('formas parte de la red social'))) ? (
+                    ) : (n.type === 'system' && ((n.content || '').toLowerCase().includes('bienvenid') || (n.content || '').toLowerCase().includes('rechazada') || (n.content || '').toLowerCase().includes('tu solicitud de registro ha sido') || (n.content || '').toLowerCase().includes('formas parte de'))) ? (
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
-                        {content.replace(/¡Bienvenido\/a!\s*/gi, '').split(/(Red Social)/gi).map((part, i) => part.toLowerCase() === 'red social' ? <span key={i} className="font-bold">{part}</span> : part)}
+                        {content.split(/(Red Social)/gi).map((part, i) => part.toLowerCase() === 'red social' ? <span key={i} className="font-bold">{part}</span> : part)}
                       </p>
-                    ) : n.type === 'registration_request' || (n.type === 'system' && (n.content || '').toLowerCase().includes('solicitud')) ? (
+                    ) : (n.type === 'registration_request' || n.type === 'registration_approved' || n.type === 'registration_rejected' || (n.type === 'system' && (n.content || '').toLowerCase().includes('solicitud'))) ? (
                       <div className="flex items-start justify-between gap-4 w-full">
                         <div className="flex flex-col space-y-1">
                           <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words flex items-center gap-2">
@@ -561,10 +587,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                             );
                           })()}
                         </div>
-                        {(() => {
-                          const c = (n.content || '').toLowerCase();
-                          const isAceptada = c.includes('aceptad') || c.includes('aprobad') || c.includes('bienvenido');
-                          const isRechazada = c.includes('rechazad');
+                          {(() => {
+                            const c = (n.content || '').toLowerCase();
+                            const isAceptada = n.type === 'registration_approved' || c.includes('aceptad') || c.includes('aprobad') || c.includes('bienvenido');
+                            const isRechazada = n.type === 'registration_rejected' || c.includes('rechazad');
                           if (isAceptada) {
                             return (
                               <button className="flex-shrink-0 px-4 py-1.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg cursor-default border border-emerald-200 transition-none whitespace-nowrap">
@@ -579,8 +605,31 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                               </button>
                             );
                           }
-                          return null;
+                          return (
+                            <div className="flex-shrink-0 flex flex-row gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => { e.stopPropagation(); onApproveUser?.(n.senderId || '', n.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                className="px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
+                              >
+                                Aceptar
+                              </button>
+                              <button
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => { e.stopPropagation(); onRejectUser?.(n.senderId || '', n.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                className="px-4 py-1.5 bg-white border border-gray-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors shadow-sm whitespace-nowrap"
+                              >
+                                Rechazar
+                              </button>
+                            </div>
+                          );
                         })()}
+                      </div>
+                    ) : (n.type === 'system' && (content.includes('TOP 1') || content.includes('TOP 2') || content.includes('TOP 3')) && content.includes('Ranking')) ? (
+                      <div>
+                        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
+                          {content}
+                        </p>
                       </div>
                     ) : (
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed break-words">
@@ -592,29 +641,6 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                         )}
                       </p>
                     )}
-
-                    {n.type === 'registration_request' &&
-                      !(n.content || '').toLowerCase().includes('aceptada') &&
-                      !(n.content || '').toLowerCase().includes('rechazada') &&
-                      !(n.content || '').toLowerCase().includes('bienvenido') &&
-                      !(n.content || '').toLowerCase().includes('aprobad') &&
-                      !(n.content || '').includes('(aceptado)') &&
-                      !(n.content || '').includes('(rechazado)') && (
-                        <div className="flex flex-wrap gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onApproveUser?.(n.senderId || '', n.id); }}
-                            className="px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                          >
-                            Aceptar
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onRejectUser?.(n.senderId || '', n.id); }}
-                            className="px-4 py-1.5 bg-white border border-gray-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors shadow-sm"
-                          >
-                            Rechazar
-                          </button>
-                        </div>
-                      )}
 
                     <p className="text-xs text-gray-400 dark:text-zinc-600 font-bold mt-1 uppercase">
                       {new Date(n.timestamp).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'long' })} {t('at_time')} {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -636,16 +662,48 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
             <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.4s]"></span>
           </div>
         </div>
-      ) : filteredNotifications.length > 0 && (
-        <div className="py-6 flex flex-col items-center justify-center space-y-3">
-          <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-          <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-            {t('end_of_results')}
-          </p>
-          <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-        </div>
-      )}
+      ) : null}
 
-    </div >
+      {/* Reward info popup — rendered via portal so fixed covers full viewport */}
+      {rewardPopup && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20 backdrop-blur-[2px] px-4 animate-in fade-in duration-200"
+          onClick={() => setRewardPopup(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#1a1a1a] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-br from-purple-600 to-purple-700 px-6 py-6 text-center">
+              <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Gift size={28} className="text-white" />
+              </div>
+              <h3 className="text-lg font-black text-white leading-tight">{rewardPopup.rewardName}</h3>
+            </div>
+            {/* Body */}
+            <div className="px-6 py-6 text-center space-y-4">
+              <p className="text-sm text-slate-600 dark:text-gray-300 font-medium leading-relaxed">
+                Para obtener tu recompensa escribe a{' '}
+                <a
+                  href="mailto:info@novagob.org"
+                  className="font-black text-purple-600 dark:text-purple-400 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  info@novagob.org
+                </a>
+              </p>
+              <button
+                onClick={() => setRewardPopup(null)}
+                className="w-full py-3 bg-purple-600 text-white font-black rounded-2xl hover:bg-purple-700 transition-colors text-sm"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
+
+    </div>
   );
 };

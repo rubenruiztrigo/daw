@@ -15,6 +15,7 @@ interface LayoutProps {
   user: UserType;
   notifications?: Notification[];
   globalEvents?: CalendarEvent[];
+  globalEventsLoading?: boolean;
   posts?: Post[];
   chats?: Chat[];
   searchQuery: string;
@@ -26,7 +27,7 @@ interface LayoutProps {
   onThemeChange: (theme: 'light' | 'dark') => void;
   onRefresh?: () => void;
   isLoading?: boolean;
-  trendingTags?: { tag: string, count: number }[];
+  trendingTags?: { tag: string, count: number }[] | null;
   activeTourStepId?: string | null;
   isTutorialActive?: boolean;
 }
@@ -46,6 +47,7 @@ export const Layout: React.FC<LayoutProps> = ({
   user,
   notifications = [],
   globalEvents = [],
+  globalEventsLoading = false,
   posts = [],
   chats = [],
   searchQuery,
@@ -57,7 +59,7 @@ export const Layout: React.FC<LayoutProps> = ({
   onThemeChange,
   onRefresh,
   isLoading = false,
-  trendingTags = [],
+  trendingTags = null,
   activeTourStepId,
   isTutorialActive
 }) => {
@@ -70,11 +72,15 @@ export const Layout: React.FC<LayoutProps> = ({
   
   useScrollLock(showLogoutConfirm);
   const unreadCount = notifications.filter(n => !n.isRead).length;
-  const unreadMessagesCount = chats.filter(c =>
-    c.messages.length > 0 &&
-    c.messages[c.messages.length - 1].senderId !== user?.id &&
-    !c.messages[c.messages.length - 1].isRead
-  ).length;
+  const unreadMessagesCount = chats.filter(c => {
+    // Si tenemos mensajes cargados (abiertos), usamos el último mensaje real
+    if (c.messages && c.messages.length > 0) {
+      const lastMsg = c.messages[c.messages.length - 1];
+      return lastMsg.senderId !== user?.id && !lastMsg.isRead;
+    }
+    // Si no hay mensajes cargados, usamos la metadata de fetchChats
+    return c.lastMessageSenderId !== user?.id && !c.lastMessageIsRead;
+  }).length;
   const location = useLocation();
   const navigate = useNavigate();
   const t = useTranslation(language);
@@ -196,41 +202,67 @@ export const Layout: React.FC<LayoutProps> = ({
           <Icon size={20} />
           <span className="font-bold text-sm">{label}</span>
         </div>
-        {badge !== undefined && badge > 0 && (
-          <span className={`${location.pathname === to || (to === '/inicio' && location.pathname.startsWith('/inicio/')) || (to === '/noticias' && location.pathname.startsWith('/noticias/')) ? 'bg-white text-blue-600' : 'bg-purple-600 text-white'} text-[10px] font-black px-2 py-0.5 rounded-full transition-colors`}>
-            {badge}
-          </span>
-        )}
+        {badge !== undefined && badge > 0 && (() => {
+          const isCurrentRoute = location.pathname === to || (to === '/inicio' && location.pathname.startsWith('/inicio/')) || (to === '/noticias' && location.pathname.startsWith('/noticias/'));
+          const isTourStep = id && id === activeTourStepId;
+          const badgeClass = (isCurrentRoute || isTourStep)
+            ? 'bg-white text-purple-600'
+            : 'bg-purple-600 text-white';
+          return (
+            <span className={`${badgeClass} text-[10px] font-black px-2 py-0.5 rounded-full transition-colors`}>
+              {badge}
+            </span>
+          );
+        })()}
       </NavLink>
     );
   };
 
   const upcomingEvents = useMemo(() => {
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const fifteenDaysFromNow = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
+    const todayStr = now.toLocaleDateString('en-CA');
+    const currentTimeStr = now.toTimeString().substring(0, 5); // 'HH:MM'
+    const fifteenDaysLimit = new Date();
+    fifteenDaysLimit.setDate(fifteenDaysLimit.getDate() + 15);
+    const limitStr = fifteenDaysLimit.toLocaleDateString('en-CA');
 
     return globalEvents.filter(event => {
-      const parts = event.event_date.split('-').map(Number);
-      let eventDate = new Date(event.event_date);
-      if (parts.length === 3) {
-        eventDate = new Date(parts[0], parts[1] - 1, parts[2]);
+      if ((event.attendees || 0) < 50) return false;
+      const eventDateStr = event.event_date;
+      if (eventDateStr < todayStr || eventDateStr > limitStr) return false;
+      // If the event is today, only show it if its time hasn't passed yet
+      if (eventDateStr === todayStr) {
+        const eventTime = (event.event_time || '00:00').substring(0, 5);
+        return eventTime >= currentTimeStr;
       }
-      eventDate.setHours(0, 0, 0, 0);
-      const isWithin15Days = eventDate >= now && eventDate <= fifteenDaysFromNow;
-      const hasEnoughSupports = (event.attendees || 0) >= 50;
-      return isWithin15Days && hasEnoughSupports;
-    }).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+      return true;
+    })
+      .sort((a, b) => {
+        const dateCompare = a.event_date.localeCompare(b.event_date);
+        if (dateCompare !== 0) return dateCompare;
+        return (a.event_time || '00:00').localeCompare(b.event_time || '00:00');
+      })
+      .slice(0, 3);
   }, [globalEvents]);
 
   const getEventTimeLabel = (dateStr: string) => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const target = new Date(dateStr);
-    target.setHours(0, 0, 0, 0);
-    const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return t('today');
-    if (diffDays === 1) return t('tomorrow');
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    if (dateStr === todayStr) return t('today');
+    
+    // Para mañana
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
+    if (dateStr === tomorrowStr) return t('tomorrow');
+
+    // Diferencia en días
+    const parts = dateStr.split('-').map(Number);
+    const targetDate = new Date(parts[0], parts[1] - 1, parts[2]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return ''; // Pasado
     return t('in_n_days', { count: diffDays });
   };
 
@@ -331,7 +363,7 @@ export const Layout: React.FC<LayoutProps> = ({
     <div className="min-h-[100dvh] bg-[#E2E8F0] dark:bg-[#0a0a0a] transition-colors duration-200 font-sans">
       <div className={`w-full flex relative ${location.pathname.startsWith('/mensajes') ? 'h-screen md:h-screen sm:h-[100dvh] max-h-screen overflow-hidden' : 'min-h-[100dvh]'}`}>
         {/* Sidebar Desktop */}
-        <aside id="tour-sidebar" className={`w-56 xl:w-64 2xl:w-72 sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 ${isTutorialActive && activeTourStepId === 'tour-sidebar-info' ? 'z-[1001]' : 'z-30'}`}>
+        <aside id="tour-sidebar" className={`w-[18%] sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-r border-slate-100 dark:border-zinc-900 hidden md:flex flex-col p-4 ${isTutorialActive && activeTourStepId === 'tour-sidebar-info' ? 'z-[1001]' : 'z-30'}`}>
           <div className="flex items-center space-x-3 mb-10 px-2 cursor-pointer" onClick={() => {
             onSearchChange('');
             if (location.pathname === '/inicio') {
@@ -375,7 +407,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <p className="text-xs font-black text-slate-900 dark:text-white leading-tight mb-1 group-hover:text-blue-600 transition-colors">
                     {user?.username === 'novagob' ? `${user?.name} ${user?.lastName || ''}` : user?.name}
                   </p>
-                  <p className="text-[10px] text-slate-400 font-bold truncate">{user?.username ? `@${user?.username.toLowerCase()}` : user?.department}</p>
+                  <p className="text-[10px] text-slate-400 font-bold truncate">{user?.username ? `@${user?.username.toLowerCase()}` : user?.institution}</p>
                 </div>
               </Link>
               <button
@@ -389,7 +421,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </aside>
 
         <div className="flex-1 min-w-0 flex flex-col relative min-h-0">
-          <main id="tour-main" className={`flex-1 w-full ${(location.pathname.startsWith('/inicio/') || location.pathname.startsWith('/noticias/')) ? 'px-0' : 'px-4'} overscroll-y-none ${location.pathname.startsWith('/mensajes') ? (isInputFocused ? 'h-full pb-0' : 'h-full pb-[66px] md:pb-0') : 'pb-16 md:pb-6'} ${location.pathname === '/' || location.pathname.startsWith('/inicio') || location.pathname.startsWith('/noticias') || location.pathname.startsWith('/buscar') || location.pathname.startsWith('/mensajes') ? 'md:px-0 md:pt-0' : 'max-w-[1200px] mx-auto md:p-6'} !px-0 min-h-0`}>
+          <main id="tour-main" className={`flex-1 w-full ${(location.pathname.startsWith('/inicio/') || location.pathname.startsWith('/noticias/')) ? 'px-0' : 'px-4'} overscroll-y-none ${location.pathname.startsWith('/mensajes') ? (isInputFocused ? 'h-full pb-0' : 'h-full pb-[66px] md:pb-0') : (location.pathname.startsWith('/panel-control') || location.pathname.startsWith('/inicio/') || location.pathname.startsWith('/noticias/')) ? 'pb-0' : 'pb-16 md:pb-6'} ${location.pathname === '/' || location.pathname.startsWith('/inicio') || location.pathname.startsWith('/noticias') || location.pathname.startsWith('/buscar') || location.pathname.startsWith('/mensajes') || location.pathname.startsWith('/panel-control') ? 'md:px-0 md:pt-0' : 'max-w-[1200px] mx-auto md:p-6'} !px-0 min-h-0`}>
             {/* Mobile Header */}
             {!location.pathname.startsWith('/mensajes') && !location.pathname.startsWith('/buscar') && (
               <header className={`bg-white dark:bg-[#0a0a0a] border-b border-slate-100 dark:border-zinc-900 px-4 py-4 flex items-center fixed md:hidden top-0 left-0 right-0 z-[70] h-16 ${['/inicio', '/noticias', '/buscar'].includes(location.pathname) ? 'transition-transform duration-300' : ''} ${['/inicio', '/noticias', '/buscar'].includes(location.pathname) && scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'}`}>
@@ -414,10 +446,16 @@ export const Layout: React.FC<LayoutProps> = ({
                     <SearchDropdown />
                   </form>
                 </div>
-                <NavLink to="/notificaciones" className={({ isActive }) => `flex-shrink-0 p-2 relative ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
-                  <Bell size={22} />
-                  {unreadCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-purple-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">{unreadCount}</span>}
-                </NavLink>
+                {user && (location.pathname === `/${user.username}` || location.pathname === `/${user.id}`) ? (
+                  <NavLink to="/configuracion" className={({ isActive }) => `flex-shrink-0 p-2 relative ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                    <Menu size={22} />
+                  </NavLink>
+                ) : (
+                  <NavLink to="/notificaciones" className={({ isActive }) => `flex-shrink-0 p-2 relative ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+                    <Bell size={22} />
+                    {unreadCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-purple-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">{unreadCount}</span>}
+                  </NavLink>
+                )}
               </header>
             )}
             {children}
@@ -448,9 +486,9 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
 
         {showSidebar && (
-          <aside className="w-64 sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-4 z-30">
+          <aside className="w-[18%] sticky top-0 h-[100dvh] bg-white dark:bg-[#0a0a0a] border-l border-slate-100 dark:border-zinc-900 hidden lg:flex flex-col p-4 z-30">
             {/* Search */}
-            <form onSubmit={handleSearchFormSubmit} className="mb-6 relative">
+            <form onSubmit={handleSearchFormSubmit} className="mb-3 relative">
                 <input
                   type="text"
                   value={searchQuery}
@@ -468,70 +506,98 @@ export const Layout: React.FC<LayoutProps> = ({
                 <SearchDropdown hideTrends={true} />
             </form>
             {/* Trending & Events */}
-            <div className="space-y-8 overflow-y-auto scrollbar-hide flex-1">
-              <div className="p-6 bg-slate-50 dark:bg-zinc-900/50 rounded-3xl border border-slate-100 dark:border-zinc-800">
-                <div className="flex items-center space-x-2 mb-4"><TrendingUp size={18} className="text-blue-500" /><h3 className="text-sm font-black uppercase tracking-widest">{t('trending')}</h3></div>
-                <div className="space-y-4">
-                  {trendingTags.slice(0, 3).map(({ tag, count }) => (
-                    <button key={tag} onClick={() => { 
-                      onSearchChange(`#${tag}`); 
-                      if (document.activeElement instanceof HTMLElement) {
-                        document.activeElement.blur();
-                      }
-                      onSearchSubmit?.(`#${tag}`); 
+            <div className="space-y-3 flex-1 flex flex-col min-h-0">
+              {/* Tendencias — altura fija para evitar layout shift */}
+              <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800 min-h-[132px]">
+                <div className="flex items-center space-x-2 mb-3"><TrendingUp size={16} className="text-blue-500" /><h3 className="text-xs font-black uppercase tracking-widest">{t('trending')}</h3></div>
+                <div className="space-y-2.5">
+                  {trendingTags === null ? (
+                    [0, 1, 2].map(i => (
+                      <div key={i} className="animate-pulse space-y-1">
+                        <div className="h-2.5 bg-slate-200 dark:bg-zinc-800 rounded w-3/4" />
+                        <div className="h-2 bg-slate-200 dark:bg-zinc-800 rounded w-1/3" />
+                      </div>
+                    ))
+                  ) : trendingTags.length > 0 ? trendingTags.slice(0, 3).map(({ tag, count }) => (
+                    <button key={tag} onClick={() => {
+                      onSearchChange(`#${tag}`);
+                      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                      onSearchSubmit?.(`#${tag}`);
                     }} className="w-full text-left group">
-                      <p className="text-sm font-bold group-hover:text-blue-600 transition-colors">#{tag}</p>
+                      <p className="text-xs font-bold group-hover:text-blue-600 transition-colors">#{tag}</p>
                       <p className="text-[10px] text-slate-400 font-bold">{count} posts</p>
                     </button>
-                  ))}
+                  )) : (
+                    <p className="text-xs text-slate-400 dark:text-zinc-600 font-medium">Sin tendencias esta semana</p>
+                  )}
                 </div>
               </div>
 
-              <div className="p-6 bg-white dark:bg-zinc-900/30 rounded-3xl border border-slate-100 dark:border-zinc-800">
-                <div className="mb-4">
-                  <Link to="/calendario" className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest hover:text-blue-600 dark:hover:text-blue-400 transition-colors whitespace-nowrap">
+              {/* Próximos Eventos — sólo aparece si hay eventos. Durante la carga
+                  la sección permanece oculta para no mostrar skeleton en vano. */}
+              {upcomingEvents.length > 0 && (
+              <div className="p-3 bg-white dark:bg-zinc-900/30 rounded-2xl border border-slate-100 dark:border-zinc-800 flex flex-col flex-1 min-h-0">
+                <Link to="/calendario" className="flex items-center justify-center space-x-2 mb-3 group">
+                  <Calendar size={16} className="text-blue-500" />
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors whitespace-nowrap">
                     {t('upcoming_events')}
-                  </Link>
-                </div>
-                <div className="space-y-4">
-                  {upcomingEvents.length > 0 ? upcomingEvents.map(event => {
-                    const now = new Date();
-                    now.setHours(0, 0, 0, 0);
-                    const target = new Date(event.event_date);
-                    target.setHours(0, 0, 0, 0);
-                    const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  </h3>
+                </Link>
+                <div className="flex flex-col gap-2 flex-1">
+                  {globalEventsLoading ? (
+                    [0, 1, 2].map(i => (
+                      <div key={i} className="flex items-stretch rounded-xl overflow-hidden animate-pulse h-[72px] flex-shrink-0">
+                        <div className="w-14 bg-slate-200 dark:bg-zinc-800 flex-shrink-0" />
+                        <div className="flex-1 p-2 space-y-2 flex flex-col justify-center">
+                          <div className="h-2.5 bg-slate-200 dark:bg-zinc-800 rounded w-4/5" />
+                          <div className="h-2 bg-slate-200 dark:bg-zinc-800 rounded w-2/5" />
+                        </div>
+                      </div>
+                    ))
+                  ) : upcomingEvents.length > 0 ? upcomingEvents.map(event => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const parts = event.event_date.split('-').map(Number);
+                    const targetDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                    const diffDays = Math.round((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
                     return (
                       <button
                         key={event.id}
                         onClick={() => navigate('/calendario', { state: { date: event.event_date } })}
-                        className="w-full text-left cursor-pointer group p-3 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 transition-all hover:border-blue-200 dark:hover:border-blue-900/50"
+                        className="w-full text-left cursor-pointer group bg-slate-50 dark:bg-zinc-900/50 rounded-xl border border-slate-100 dark:border-zinc-800 overflow-hidden transition-all hover:border-slate-200 dark:hover:border-zinc-700 flex flex-row items-stretch h-[72px] flex-shrink-0"
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors leading-snug">
+                        {/* Image flush left/top/bottom */}
+                        <div className="relative w-16 flex-shrink-0 overflow-hidden">
+                          <img
+                            src={event.image_url || '/img/imagen-por-defecto.png'}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover transition-all group-hover:scale-[1.03]"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                        {/* Content */}
+                        <div className="flex-1 px-2 flex flex-col justify-center min-w-0">
+                          <p className="text-[10px] font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors whitespace-nowrap overflow-hidden text-ellipsis">
                             {event.title}
                           </p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <div className="text-purple-600 dark:text-purple-400">
-                              {event.type === 'physical' ? <Pin size={12} /> : <Monitor size={12} />}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">
-                              {t(`event_${event.type}` as any) || event.type}
+                          <div className="flex gap-0.5 flex-nowrap overflow-hidden mt-1.5">
+                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-white dark:bg-zinc-800 rounded-full border border-slate-100 dark:border-zinc-700 text-purple-600 dark:text-purple-400 text-[8px] font-black uppercase whitespace-nowrap shrink-0">
+                              {event.type === 'physical' ? <Pin size={7} /> : <Monitor size={7} />}
+                              {event.type === 'physical' ? 'Presencial' : 'Online'}
+                            </span>
+                            <span className={`inline-flex items-center px-1 py-0.5 bg-white dark:bg-zinc-800 rounded-full border border-slate-100 dark:border-zinc-700 text-[8px] font-black uppercase whitespace-nowrap shrink-0 ${diffDays <= 3 ? 'text-red-500' : 'text-blue-500'}`}>
+                              {getEventTimeLabel(event.event_date)}
                             </span>
                           </div>
-                          <span className={`text-[9px] font-black uppercase whitespace-nowrap ml-2 ${diffDays <= 3 ? 'text-red-500' : 'text-slate-400'}`}>
-                            {getEventTimeLabel(event.event_date)}
-                          </span>
                         </div>
                       </button>
                     );
-                  }) : (
-                    <p className="text-xs text-slate-300 italic">{t('no_community_events')}</p>
-                  )}
+                  }) : null}
                 </div>
               </div>
+              )}
             </div>
           </aside>
         )}

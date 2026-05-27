@@ -1,21 +1,26 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ShoppingBag, Construction, Star, BookOpen, Trophy, Coffee, Award, Lock, CheckCircle2, Loader2, Clock, Building2, Crown, X, Info } from 'lucide-react';
+import { ShoppingBag, Construction, Star, BookOpen, Trophy, Coffee, Award, Lock, CheckCircle2, Loader2, Clock, Building2, Crown, X, Info, Gift, Medal, Diamond, Gem, Sparkles, Ticket, Flag, Coins, Zap, Flame, Rocket, Target, Shield, Layers, Heart, Smile, ThumbsUp, Handshake, HeartHandshake, Users, Megaphone, Bell, MessageCircle, GraduationCap, Lightbulb, Telescope, Microscope, Compass, Briefcase, Landmark, HardHat, Wrench, Hammer, ClipboardList, FileCheck, FolderOpen, Cpu, Code2, Terminal, Database, Server, Wifi, GitBranch, BarChart2, TrendingUp, Globe, Leaf, Sun, TreePine, Mountain, Waves, Cloud, Wind, Flower2, Music, Camera, Palette, PenTool, Brush, Tv, Headphones, Radio, Send, Home, School, Hospital, Store, Hotel, Tent, Hourglass, Calendar, Timer, Watch, AlarmClock, Key, Dumbbell, Footprints, Newspaper, Map, Navigation, Activity } from 'lucide-react';
 import { User, calculateNovas } from '../types';
 import { Language, useTranslation } from '../utils/translations';
 import { supabase } from '../supabaseClient';
 import { getSafeAvatar } from '../utils/avatarUtils';
 import { useScrollLock } from '../hooks/useScrollLock';
+import { REWARD_COLOR_MAP } from './AdminPanelView';
 
 // Create a mapping from string to icon components (based on rewards.icon_name)
 const IconMap: { [key: string]: React.FC<any> } = {
-    BookOpen,
-    Trophy,
-    Coffee,
-    Award,
-    Star,
-    Crown,
-    Building2,
+    Gift, Trophy, Star, Crown, Award, Medal, Diamond, Gem, Sparkles, Ticket, Flag, Coins,
+    Zap, Flame, Rocket, Target, Shield, Layers,
+    Heart, Smile, ThumbsUp, Handshake, HeartHandshake, Users, Megaphone, Bell, MessageCircle,
+    BookOpen, GraduationCap, Lightbulb, Telescope, Microscope, Compass,
+    Briefcase, Building2, Landmark, HardHat, Wrench, Hammer, ClipboardList, FileCheck, FolderOpen,
+    Cpu, Code2, Terminal, Database, Server, Wifi, GitBranch, BarChart2, TrendingUp,
+    Globe, Leaf, Sun, TreePine, Mountain, Waves, Cloud, Wind, Flower2,
+    Music, Camera, Palette, PenTool, Brush, Tv, Headphones, Radio, Send,
+    Home, School, Hospital, Store, Hotel, Tent,
+    Clock, Hourglass, Calendar, Timer, Watch, AlarmClock,
+    Key, Lock, Coffee, Dumbbell, Footprints, Newspaper, Map, Navigation, Activity,
 };
 
 interface RankingUser {
@@ -25,7 +30,7 @@ interface RankingUser {
     username?: string | null;
     avatar?: string | null;
     position?: string | null;
-    department?: string | null;
+    institution?: string | null;
     novas: number;
 }
 
@@ -37,6 +42,13 @@ const GlobalNovasRankingModal: React.FC<{
 }> = ({ users, loading, onClose, language }) => {
     useScrollLock();
     const [showInfo, setShowInfo] = React.useState(false);
+    const infoTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleInfoClick = () => {
+        if (infoTimerRef.current) clearTimeout(infoTimerRef.current);
+        setShowInfo(true);
+        infoTimerRef.current = setTimeout(() => setShowInfo(false), 5000);
+    };
 
     return createPortal(
         <div
@@ -55,7 +67,7 @@ const GlobalNovasRankingModal: React.FC<{
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setShowInfo(!showInfo)}
+                            onClick={handleInfoClick}
                             className={`p-2 rounded-full transition-colors ${showInfo ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' : 'hover:bg-slate-100 dark:hover:bg-zinc-900 text-slate-400'}`}
                         >
                             <Info size={20} />
@@ -69,7 +81,7 @@ const GlobalNovasRankingModal: React.FC<{
                     </div>
                 </div>
 
-                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto scrollbar-modal">
                     {showInfo && (
                         <div className="p-4 rounded-2xl bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 animate-in slide-in-from-top-2 duration-300">
                             <p className="text-xs font-medium text-violet-700 dark:text-violet-300 leading-relaxed">
@@ -145,7 +157,7 @@ const GlobalNovasRankingModal: React.FC<{
 interface StoreViewProps {
     user: User;
     language: Language;
-    onRedeemReward?: (rewardId: string, rewardName: string) => void;
+    onRedeemReward?: (rewardId: string, rewardName: string) => Promise<void>;
     storeRewards?: any[];
     userRedemptions?: { reward_id: string, status: string }[];
 }
@@ -154,16 +166,56 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
     const points = user.novas ?? calculateNovas(user.badges || []);
     const t = useTranslation(language);
     const [isRedeemingId, setIsRedeemingId] = React.useState<string | null>(null);
+    const [pendingRewardIds, setPendingRewardIds] = React.useState<Set<string>>(new Set());
     const [isRankingOpen, setIsRankingOpen] = React.useState(false);
     const [rankingUsers, setRankingUsers] = React.useState<RankingUser[]>([]);
     const [isLoadingRanking, setIsLoadingRanking] = React.useState(false);
+    const [localRewards, setLocalRewards] = React.useState<any[]>(storeRewards);
+    const [isLoadingRewards, setIsLoadingRewards] = React.useState(false);
+    const [topNovasUserId, setTopNovasUserId] = React.useState<string | null>(null);
+    const [topNovasCount, setTopNovasCount] = React.useState<number | null>(null);
+    const redeemingRewardIdRef = React.useRef<string | null>(null);
+
+    React.useEffect(() => {
+        supabase
+            .from('profiles')
+            .select('id, novas')
+            .not('novas', 'is', null)
+            .order('novas', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => {
+                if (data) {
+                    setTopNovasUserId(data.id);
+                    setTopNovasCount(data.novas);
+                }
+            });
+    }, []);
+
+    // Fetch rewards directly if not provided by parent yet
+    React.useEffect(() => {
+        if (storeRewards.length > 0) {
+            setLocalRewards(storeRewards);
+            return;
+        }
+        let cancelled = false;
+        setIsLoadingRewards(true);
+        supabase.from('rewards').select('id, name, cost_novas, icon_name, color').order('cost_novas', { ascending: true })
+            .then(({ data, error }) => {
+                if (!cancelled) {
+                    if (!error && data) setLocalRewards(data);
+                    setIsLoadingRewards(false);
+                }
+            });
+        return () => { cancelled = true; };
+    }, [storeRewards]);
 
     const fetchGlobalRanking = React.useCallback(async () => {
         try {
             setIsLoadingRanking(true);
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, name, last_name, username, avatar, position, department, novas')
+                .select('id, name, last_name, username, avatar, position, institution, novas')
                 .not('novas', 'is', null);
 
             if (!error && data) {
@@ -175,7 +227,7 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
                         username: u.username,
                         avatar: u.avatar,
                         position: u.position,
-                        department: u.department,
+                        institution: u.institution,
                         novas: typeof u.novas === 'number' ? u.novas : 0,
                     }) as RankingUser)
                     .filter((u) => u.novas > 0)
@@ -197,10 +249,38 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
         await fetchGlobalRanking();
     }, [fetchGlobalRanking]);
 
-    const handleRedeemClick = (rewardId: string, rewardName: string) => {
-        setIsRedeemingId(rewardId);
-        onRedeemReward?.(rewardId, rewardName);
-        setTimeout(() => setIsRedeemingId(null), 1500);
+    React.useEffect(() => {
+        if (!userRedemptions || userRedemptions.length === 0) return;
+        setPendingRewardIds(prev => {
+            const next = new Set(prev);
+            userRedemptions.forEach((r) => next.delete(String(r.reward_id)));
+            return next;
+        });
+    }, [userRedemptions]);
+
+    const handleRedeemClick = async (rewardId: string, rewardName: string) => {
+        const rewardIdString = String(rewardId);
+        setIsRedeemingId(rewardIdString);
+        redeemingRewardIdRef.current = rewardIdString;
+        setPendingRewardIds(prev => {
+            const next = new Set(prev);
+            next.add(rewardIdString);
+            return next;
+        });
+        try {
+            await onRedeemReward?.(rewardIdString, rewardName);
+            setIsRedeemingId(null);
+        } catch (error) {
+            // Si hay error, limpiamos inmediatamente
+            console.error('Error redeeming reward:', error);
+            setIsRedeemingId(null);
+            redeemingRewardIdRef.current = null;
+            setPendingRewardIds(prev => {
+                const next = new Set(prev);
+                next.delete(rewardIdString);
+                return next;
+            });
+        }
     };
 
     return (
@@ -216,17 +296,33 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 pb-20">
-                {storeRewards.map((reward) => {
-                    const isUnlocked = points >= reward.cost_novas;
-                    const userReward = userRedemptions.find(r => r.reward_id === reward.id);
-                    const isRedeemed = userReward?.status === 'aceptado';
-                    const isPending = userReward?.status === 'solicitado';
-                    const isProcessing = isRedeemingId === reward.id;
+                {isLoadingRewards ? (
+                    <div className="col-span-2 lg:col-span-4 flex flex-col items-center justify-center py-20 space-y-3">
+                        <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+                        <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">Cargando recompensas...</p>
+                    </div>
+                ) : localRewards.length === 0 ? (
+                    <div className="col-span-2 lg:col-span-4 flex flex-col items-center justify-center py-20 space-y-3">
+                        <ShoppingBag className="w-10 h-10 text-slate-300 dark:text-zinc-700" />
+                        <p className="text-sm font-bold text-slate-400 dark:text-zinc-600">No hay recompensas disponibles</p>
+                    </div>
+                ) : null}
+                {!isLoadingRewards && localRewards.map((reward) => {
                     const isSupernova = typeof reward.name === 'string' && reward.name.toLowerCase().includes('supernova');
+                    const isUnlocked = isSupernova
+                        ? topNovasUserId !== null && user.id === topNovasUserId
+                        : points >= reward.cost_novas;
+                    const rewardIdString = String(reward.id);
+                    const userReward = userRedemptions.find(r => String(r.reward_id) === rewardIdString);
+                    const rewardStatus = (userReward?.status || '').toLowerCase();
+                    const isRedeemed = rewardStatus === 'aceptado' || rewardStatus === 'accepted' || rewardStatus === 'approved' || rewardStatus === 'redeemed';
+                    const isRejected = rewardStatus === 'rechazado' || rewardStatus === 'rejected';
+                    const isPending = pendingRewardIds.has(rewardIdString) || (!!userReward && !isRedeemed && !isRejected);
+                    const isProcessing = isRedeemingId === rewardIdString;
                     const isCongress = typeof reward.name === 'string' && reward.name.toLowerCase().includes('congreso');
 
                     // Base icon coming from DB configuration
-                    let Icon = IconMap[reward.icon_name] || Award;
+                    let Icon = IconMap[reward.icon_name] || Gift;
 
                     // Override icon depending on reward type/name
                     if (isCongress) {
@@ -245,15 +341,23 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
 
                     return (
                         <div key={reward.id} className={`group relative bg-white dark:bg-[#111] rounded-[2rem] md:rounded-[2.5rem] border transition-all duration-500 p-4 md:p-6 flex flex-col items-center text-center ${isUnlocked ? 'border-slate-100 dark:border-zinc-800 hover:border-purple-500/50 hover:shadow-2xl hover:shadow-purple-500/10 hover:-translate-y-2' : 'border-slate-100 dark:border-zinc-800 opacity-75'}`}>
-                            <div className={`w-14 h-14 md:w-20 md:h-20 rounded-2xl md:rounded-[2rem] flex items-center justify-center mb-4 md:mb-6 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6 ${reward.bg_color} ${reward.text_color} shadow-sm group-hover:shadow-lg`}>
+                            <div className={`w-14 h-14 md:w-20 md:h-20 rounded-2xl md:rounded-[2rem] flex items-center justify-center mb-4 md:mb-6 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6 ${(REWARD_COLOR_MAP[reward.color] || REWARD_COLOR_MAP.purple).bg} ${(REWARD_COLOR_MAP[reward.color] || REWARD_COLOR_MAP.purple).text} shadow-sm group-hover:shadow-lg`}>
                                 <Icon size={28} className="md:size-[40px] transition-transform duration-500 group-hover:scale-110" />
                             </div>
                             <h3 className="font-black text-slate-900 dark:text-white text-xs md:text-base mb-2 transition-all duration-500 group-hover:text-purple-600 dark:group-hover:text-purple-400 group-hover:scale-105 transform-gpu">{displayName}</h3>
                             <div className="flex items-center space-x-1 mb-4">
-                                <span className={`text-[10px] md:text-sm font-black ${isUnlocked ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-zinc-600'}`}>{reward.cost_novas} Novas</span>
+                                <span className={`text-[10px] md:text-sm font-black ${isUnlocked ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-zinc-600'}`}>{isSupernova ? (topNovasCount !== null ? `${topNovasCount} Novas` : '— Novas') : `${reward.cost_novas} Novas`}</span>
                             </div>
                             <div className="mt-auto w-full">
-                                {isRedeemed ? (
+                                {isSupernova ? (
+                                    <button
+                                        onClick={handleOpenRanking}
+                                        className="w-full flex items-center justify-center space-x-2 py-2.5 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest transition-all bg-slate-900 text-white hover:bg-black"
+                                    >
+                                        <Crown size={14} className="md:size-[16px]" />
+                                        <span>{language === 'es' ? 'Ver ranking' : 'View ranking'}</span>
+                                    </button>
+                                ) : isRedeemed ? (
                                     <div className="flex items-center justify-center space-x-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 py-2.5 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest shadow-inner">
                                         <CheckCircle2 size={14} className="md:size-[16px]" />
                                         <span>{t('redeemed')}</span>
@@ -271,14 +375,6 @@ export const StoreView: React.FC<StoreViewProps> = ({ user, language, onRedeemRe
                                     >
                                         {isProcessing ? <Loader2 className="animate-spin" size={14} /> : null}
                                         <span>{t('redeem')}</span>
-                                    </button>
-                                ) : isSupernova ? (
-                                    <button
-                                        onClick={handleOpenRanking}
-                                        className="w-full flex items-center justify-center space-x-2 py-2.5 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest transition-all bg-slate-900 text-white hover:bg-black shadow-lg shadow-slate-900/30"
-                                    >
-                                        <Crown size={14} className="md:size-[16px]" />
-                                        <span>{language === 'es' ? 'Ver ranking' : 'View ranking'}</span>
                                     </button>
                                 ) : (
                                     <div className="flex items-center justify-center space-x-2 text-slate-400 dark:text-zinc-600 bg-slate-50 dark:bg-zinc-900/40 py-2.5 md:py-3 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest">

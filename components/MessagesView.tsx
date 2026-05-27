@@ -2,21 +2,21 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { Search, Send, Info, MessageSquare, Check, CheckCheck, Sparkles, X, ArrowLeft, Link as LinkIcon, Image as ImageIcon, Loader2, Calendar, Pencil, Ban, Trash2, MapPin, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
 import { User, Chat, Message, Post, CalendarEvent } from '../types';
-import { normalizeString, timeAgo, extractFirstUrl, isExternalUrl } from '../utils/stringUtils';
+import { normalizeString, timeAgo, extractFirstUrl, isExternalUrl, parseInternalAppUrl } from '../utils/stringUtils';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
-import { LinkPreview } from './LinkPreview';
+import { LinkPreview, getOrFetchPreview } from './LinkPreview';
 import { RENDER_REGEX, getUserByMention } from '../utils/mentionUtils';
 import { getSafeAvatar } from '../utils/avatarUtils';
 import { compressImage } from '../utils/imageUtils';
-
+/*  */
 interface MessagesViewProps {
   user: User;
   chats: Chat[];
   posts: Post[];
   users?: User[];
   onSendMessage: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
-  onViewPost?: (postId: string) => void;
+  onViewPost?: (postId: string, type?: 'post' | 'news') => void;
   onLike?: (id: string) => void;
   onVote?: (id: string, dir: 'up' | 'down') => void;
   onAddComment?: (postId: string, text: string) => void;
@@ -28,10 +28,15 @@ interface MessagesViewProps {
   onDeleteMessage: (recipientId: string, messageId: string) => Promise<void>;
   globalEvents: CalendarEvent[];
   language: Language;
+  onRefreshChats?: () => void;
+  onFetchChatMessages?: (recipientId: string, offset?: number) => Promise<void>;
+  chatsLoading?: boolean;
+  chatHasMore?: boolean;
+  messagesLoading?: boolean;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
-  user, chats, posts, users = [], onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents, language, onEditMessage, onDeleteMessage
+  user, chats, posts, users = [], onSendMessage, onViewPost, onLike, onVote, onAddComment, onNavigateToProfile, onMarkChatAsRead, externalActiveId, onNavigateToEvent, globalEvents, language, onEditMessage, onDeleteMessage, onRefreshChats, onFetchChatMessages, chatsLoading, chatHasMore, messagesLoading
 }) => {
   const renderContent = (content: string, isOwn: boolean, urlsToHide: string[] = []) => {
     if (!content) return null;
@@ -88,7 +93,110 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
-  const [resolvedId, setResolvedId] = useState<string | null>(null);
+
+  // Synchronous helpers — run during render, no paint delay
+  const resolveChatIdFromCache = (cid: string | undefined): string | null => {
+    if (!cid || !user.id) return null;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+    if (isUUID) return cid;
+    try {
+      const raw = localStorage.getItem(`chat_list_${user.id}`);
+      if (raw) {
+        const found = JSON.parse(raw).find((c: any) => c.participant?.username === cid || c.id === cid);
+        if (found?.id) return found.id;
+      }
+    } catch {}
+    return null;
+  };
+
+  const getParticipantFromCache = (cid: string | undefined): Partial<User> | null => {
+    if (!cid || !user.id) return null;
+    try {
+      const raw = localStorage.getItem(`chat_list_${user.id}`);
+      if (raw) {
+        const found = JSON.parse(raw).find((c: any) => c.participant?.username === cid || c.id === cid);
+        if (found?.participant) return found.participant;
+      }
+    } catch {}
+    return null;
+  };
+
+  // Lazy inits — run synchronously on first render, before any browser paint
+  const [resolvedId, setResolvedId] = useState<string | null>(() => resolveChatIdFromCache(chatId));
+  const [cachedParticipant] = useState<Partial<User> | null>(() => getParticipantFromCache(chatId));
+
+  // Helper: resolve chatId → cached messages synchronously (no async, no paint delay)
+  const readCachedMessages = (cid: string | undefined): any[] => {
+    if (!cid || !user.id) return [];
+    try {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cid);
+      let recipientId: string | null = isUUID ? cid : null;
+      if (!recipientId) {
+        const sidebarRaw = localStorage.getItem(`chat_list_${user.id}`);
+        if (sidebarRaw) {
+          const found = JSON.parse(sidebarRaw).find((c: any) => c.participant?.username === cid || c.id === cid);
+          if (found?.id) recipientId = found.id;
+        }
+      }
+      if (recipientId) {
+        const msgRaw = localStorage.getItem(`chat_msgs_${user.id}_${recipientId}`);
+        if (msgRaw) {
+          const parsed = JSON.parse(msgRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            let eventsMap: Map<string, any> | null = null;
+            let inlinePostsMap: Record<string, any> | null = null;
+            return parsed.map((m: any) => {
+              const base = { ...m, timestamp: new Date(m.timestamp) };
+              let result = base;
+              // Resolve missing sharedEvent: dedicated chat events cache first, then global
+              if (m.sharedEventId && !m.sharedEvent) {
+                if (!eventsMap) {
+                  eventsMap = new Map();
+                  try {
+                    const evRaw = localStorage.getItem('global_events_cache');
+                    const evParsed = evRaw ? JSON.parse(evRaw) : [];
+                    const evArr = Array.isArray(evParsed) ? evParsed : (Array.isArray(evParsed?.data) ? evParsed.data : []);
+                    evArr.forEach((e: any) => eventsMap!.set(e.id, e));
+                  } catch {}
+                  try {
+                    const chatEvRaw = localStorage.getItem(`chat_shared_events_${user.id}`);
+                    if (chatEvRaw) Object.values(JSON.parse(chatEvRaw)).forEach((e: any) => eventsMap!.set(e.id, e));
+                  } catch {}
+                }
+                result = { ...result, sharedEvent: eventsMap.get(m.sharedEventId) || null };
+              }
+              // Resolve missing inlineSharedPost from shared inline-posts cache
+              const postId = m.postId || m.newsId;
+              if (postId && !m.inlineSharedPost) {
+                if (!inlinePostsMap) {
+                  try {
+                    inlinePostsMap = JSON.parse(localStorage.getItem(`chat_inline_posts_${user.id}`) || '{}');
+                  } catch { inlinePostsMap = {}; }
+                }
+                if (inlinePostsMap![postId]) result = { ...result, inlineSharedPost: inlinePostsMap![postId] };
+              }
+              return result;
+            });
+          }
+        }
+      }
+    } catch {}
+    return [];
+  };
+
+  // Lazy initializer — runs synchronously during first render, before any browser paint
+  const [instantMessages, setInstantMessages] = useState<any[]>(() => readCachedMessages(chatId));
+  const [optimisticMessages, setOptimisticMessages] = useState<any[]>([]);
+
+  useEffect(() => {
+    onRefreshChats?.();
+  }, []);
+
+  // Update instantMessages when chatId changes (back/forward navigation, sidebar clicks)
+  useEffect(() => {
+    setInstantMessages(readCachedMessages(chatId));
+  }, [chatId]);
+
 
   useEffect(() => {
     if (!chatId) {
@@ -111,30 +219,89 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     const matchingUser = users.find(u => u.username === chatId || u.id === chatId);
     if (matchingUser) {
       setResolvedId(matchingUser.id);
+      if (!cachedParticipant) setTemporaryParticipant(matchingUser);
       // Redirección canónica if matchingUser has username but URL uses ID
       if (matchingUser.id === chatId && matchingUser.username && matchingUser.username !== chatId) {
         navigate(`/mensajes/${matchingUser.username}`, { replace: true });
       }
     } else {
       // Intentar una busqueda en remoto asincrona si no lo tenemos (esto pasa en recargas F5)
-      supabase.from('profiles').select('id, username').or(`username.eq.${chatId},id.eq.${chatId}`).maybeSingle()
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chatId || '');
+      const orFilter = isUUID ? `username.eq.${chatId},id.eq.${chatId}` : `username.eq.${chatId}`;
+      supabase.from('profiles').select('id, name, last_name, username, avatar, position, institution').or(orFilter).maybeSingle()
         .then(({ data }) => {
           if (data) {
             setResolvedId(data.id);
+            if (!cachedParticipant) {
+              setTemporaryParticipant({ id: data.id, name: data.name, lastName: data.last_name, username: data.username, avatar: getSafeAvatar(data.avatar), position: data.position, institution: data.institution });
+            }
             if (data.id === chatId && data.username && data.username !== chatId) {
               navigate(`/mensajes/${data.username}`, { replace: true });
             }
           }
-          else setResolvedId(chatId); // Fallback: asumimos que es un viejo ID
+          else setResolvedId(chatId);
         });
     }
   }, [chatId, users, chats, navigate]);
 
-  const selectedId = resolvedId || externalActiveId || null;
+  // When resolvedId becomes a valid UUID (including on page refresh), immediately load
+  // that conversation's messages without waiting for the full fetchChats to complete
+  const isUUIDFormat = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+  useEffect(() => {
+    if (resolvedId && isUUIDFormat(resolvedId)) {
+      // Read localStorage cache directly — same zero-latency path as handleChatClick
+      try {
+        const cacheKey = `chat_msgs_${user.id}_${resolvedId}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setInstantMessages(parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+          }
+        }
+      } catch {}
+      onFetchChatMessages?.(resolvedId);
+    }
+  }, [resolvedId]);
+
+  const selectedId = useMemo(() => {
+    if (resolvedId) return resolvedId;
+    if (chatId && isUUIDFormat(chatId)) return chatId;
+    return externalActiveId || null;
+  }, [resolvedId, chatId, externalActiveId]);
   const t = useTranslation(language);
+
+  const [messageOffset, setMessageOffset] = useState(0);
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const prevScrollHeightRef = useRef(0);
+
+  // Reset pagination when the active chat changes
+  useEffect(() => {
+    setMessageOffset(0);
+    setIsLoadingMoreMessages(false);
+    setShowScrollToBottom(false);
+  }, [selectedId]);
 
   const [msg, setMsg] = useState('');
   const [chatSearchTerm, setChatSearchTerm] = useState('');
+  const [visibleChatCount, setVisibleChatCount] = useState(15);
+
+  const handleChatClick = async (chatId: string, navigationPath: string) => {
+    // 1. Resolve UUID immediately if it's from sidebar (which always passes UUID as chatId)
+    if (isUUIDFormat(chatId)) {
+      setResolvedId(chatId);
+    }
+    
+    // 2. Set instant messages for zero-delay UI update
+    setInstantMessages(readCachedMessages(chatId));
+    
+    // 3. Trigger fetch (parent manages deduplication)
+    onFetchChatMessages?.(chatId);
+    
+    // 4. Navigate
+    navigate(navigationPath);
+  };
   const [temporaryParticipant, setTemporaryParticipant] = useState<User | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -153,6 +320,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return chatId;
   };
   const shouldAutoScrollRef = useRef(true);
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -264,7 +432,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const fetchParticipantProfile = async (uid: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+    const fromUsers = users.find(u => u.id === uid);
+    if (fromUsers) { setTemporaryParticipant(fromUsers); return; }
+    const { data } = await supabase.from('profiles').select('id, name, last_name, username, avatar, position, institution, followers_count, following_count, bio, interests').eq('id', uid).maybeSingle();
     if (data) {
       setTemporaryParticipant({
         id: data.id,
@@ -272,7 +442,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         lastName: data.last_name,
         avatar: getSafeAvatar(data.avatar),
         position: data.position,
-        department: data.department,
+        institution: data.institution,
         followers: data.followers_count,
         following: data.following_count,
         bio: data.bio || '',
@@ -283,7 +453,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const fetchScheduledCount = useCallback(async () => {
-    if (!user.id || !selectedId) {
+    const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedId || '');
+    if (!user.id || !selectedId || !isValidUUID) {
       setScheduledCount(0);
       setScheduledMessages([]);
       return;
@@ -328,15 +499,55 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   }, [user.id, selectedId, fetchScheduledCount]);
 
   const handleScroll = () => {
-    if (scrollContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-      shouldAutoScrollRef.current = isAtBottom;
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isAtBottom = distanceFromBottom < 100;
+    shouldAutoScrollRef.current = isAtBottom;
+    setShowScrollToBottom(distanceFromBottom > 300);
+
+    // Debounced save of scroll position per chat
+    if (selectedId) {
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
+      scrollSaveTimerRef.current = setTimeout(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem('chat_scroll_positions') || '{}');
+          if (isAtBottom) {
+            delete saved[selectedId];
+          } else {
+            saved[selectedId] = distanceFromBottom;
+          }
+          localStorage.setItem('chat_scroll_positions', JSON.stringify(saved));
+        } catch {}
+      }, 300);
+    }
+
+    // Load older messages when user scrolls near the top
+    if (scrollTop < 80 && chatHasMore && !isLoadingMoreMessages && selectedId) {
+      const nextOffset = messageOffset + 15;
+      setIsLoadingMoreMessages(true);
+      prevScrollHeightRef.current = scrollHeight;
+      setMessageOffset(nextOffset);
+      onFetchChatMessages?.(selectedId, nextOffset).finally(() => {
+        setIsLoadingMoreMessages(false);
+        // Restore scroll after the DOM has painted the new messages.
+        // requestAnimationFrame guarantees the render cycle is complete before we measure.
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current && prevScrollHeightRef.current > 0) {
+            const newScrollHeight = scrollContainerRef.current.scrollHeight;
+            if (newScrollHeight > prevScrollHeightRef.current) {
+              scrollContainerRef.current.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+            }
+            prevScrollHeightRef.current = 0;
+          }
+        });
+      });
     }
   };
 
   useEffect(() => {
-    if (selectedId) {
+    const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedId || '');
+    if (selectedId && isValidUUID) {
       const existingChat = chats.find(c => c.id === selectedId);
       if (existingChat) {
         setTemporaryParticipant(null);
@@ -348,23 +559,51 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   }, [selectedId, chats]);
 
+  // Track previous selectedId to distinguish chat-entry (instant) from new-message (smooth)
+  const prevSelectedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (shouldAutoScrollRef.current && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+    shouldAutoScrollRef.current = true;
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    if (shouldAutoScrollRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-    if (selectedId) {
-      const chat = chats.find(c => c.id === selectedId);
-      const hasUnread = chat?.messages.some(m => m.senderId === selectedId && !m.isRead);
-      if (hasUnread) {
-        onMarkChatAsRead?.(selectedId);
-      }
+    prevSelectedIdRef.current = selectedId;
+  }, [selectedId, chats, onMarkChatAsRead]);
+
+  // Mark chat as read whenever: the active chat changes OR new messages arrive while the chat is open
+  useEffect(() => {
+    if (!selectedId) return;
+    const chat = chats.find(c => c.id === selectedId);
+    const hasUnread = chat?.messages.some(m => m.senderId === selectedId && !m.isRead);
+    if (hasUnread) {
+      onMarkChatAsRead?.(selectedId);
     }
   }, [selectedId, chats, onMarkChatAsRead]);
 
   const [hiddenMessageIds, setHiddenMessageIds] = useState<Set<string>>(new Set());
+
+  // Local preview cache — pre-seeded from localStorage so first render already has data.
+  const [localPreviews, setLocalPreviews] = useState<Map<string, any>>(() => {
+    const map = new Map<string, any>();
+    try {
+      const posts = JSON.parse(localStorage.getItem('chat_inline_posts_seed') || 'null');
+      if (posts) Object.entries(posts).forEach(([k, v]) => map.set(k, v));
+    } catch {}
+    try {
+      const evts = JSON.parse(localStorage.getItem('chat_shared_events_seed') || 'null');
+      if (evts) Object.entries(evts).forEach(([k, v]) => map.set(k, v));
+    } catch {}
+    try {
+      const profs = JSON.parse(localStorage.getItem('chat_shared_profiles_seed') || 'null');
+      if (profs) Object.entries(profs).forEach(([k, v]) => map.set(k, v));
+    } catch {}
+    return map;
+  });
+  const fetchingPreviewIds = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -402,6 +641,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   }, [editingMessageId, contextMenu, sendButtonContextMenu, showScheduler]);
 
   const filteredChats = useMemo(() => {
+    setVisibleChatCount(15);
     const query = normalizeString(chatSearchTerm);
     if (!query) return chats;
     return chats.filter(chat => {
@@ -418,11 +658,96 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return null;
   }, [chats, selectedId]);
 
+  // Fallback: fetch preview data directly when inlineSharedPost/sharedEvent/sharedProfile is null.
+  // Runs after selectedChat or instantMessages change; only fetches IDs not yet resolved.
+  useEffect(() => {
+    const msgs: any[] = selectedChat?.messages?.length ? selectedChat.messages : instantMessages;
+    if (!msgs.length) return;
+
+    const needPost  = msgs.filter((m: any) => m.postId        && !m.inlineSharedPost && !localPreviews.has(m.postId)        && !fetchingPreviewIds.current.has(m.postId));
+    const needNews  = msgs.filter((m: any) => m.newsId        && !m.inlineSharedPost && !localPreviews.has(m.newsId)        && !fetchingPreviewIds.current.has(m.newsId));
+    const needEvent = msgs.filter((m: any) => m.sharedEventId   && !m.sharedEvent      && !localPreviews.has(m.sharedEventId)   && !fetchingPreviewIds.current.has(m.sharedEventId));
+    const needProf  = msgs.filter((m: any) => m.sharedProfileId && !m.sharedProfile     && !localPreviews.has(m.sharedProfileId) && !fetchingPreviewIds.current.has(m.sharedProfileId));
+
+    if (!needPost.length && !needNews.length && !needEvent.length && !needProf.length) return;
+
+    const postIds  = [...new Set<string>(needPost.map((m: any)  => m.postId as string))];
+    const newsIds  = [...new Set<string>(needNews.map((m: any)  => m.newsId as string))];
+    const eventIds = [...new Set<string>(needEvent.map((m: any) => m.sharedEventId as string))];
+    const profIds  = [...new Set<string>(needProf.map((m: any)  => m.sharedProfileId as string))];
+    [...postIds, ...newsIds, ...eventIds, ...profIds].forEach(id => fetchingPreviewIds.current.add(id));
+
+    (async () => {
+      const [postsRes, newsRes, eventsRes, profsRes] = await Promise.all([
+        postIds.length  ? supabase.from('posts').select('id, content, image_url, author_id, type, created_at').in('id', postIds)                                        : Promise.resolve({ data: [] as any[] }),
+        newsIds.length  ? supabase.from('news').select('id, titulo, content, image_url, author_id, created_at').in('id', newsIds)                                       : Promise.resolve({ data: [] as any[] }),
+        eventIds.length ? supabase.from('user_events').select('id, title, event_date, event_time, location, image_url, description, creator_id').in('id', eventIds)     : Promise.resolve({ data: [] as any[] }),
+        profIds.length  ? supabase.from('profiles').select('id, name, last_name, avatar, username, position, institution').in('id', profIds)                             : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const rawItems = [...(postsRes.data || []), ...(newsRes.data || [])];
+      const authorIds = [...new Set<string>(rawItems.map((p: any) => p.author_id).filter(Boolean))];
+      const authorMap = new Map<string, any>();
+      if (authorIds.length) {
+        const { data: authData } = await supabase.from('profiles').select('id, name, last_name, avatar, username, position, is_organization').in('id', authorIds);
+        (authData || []).forEach((a: any) => authorMap.set(a.id, a));
+      }
+
+      const toImgUrls = (raw: any) => !raw ? null : Array.isArray(raw) ? (raw.length > 0 ? raw : null) : [raw];
+      const next = new Map(localPreviews);
+
+      (postsRes.data || []).forEach((p: any) => {
+        const a = authorMap.get(p.author_id);
+        next.set(p.id, { id: p.id, type: p.type || 'post', content: p.content || '', imageUrl: toImgUrls(p.image_url), title: null, authorId: p.author_id, authorName: a ? `${a.name || ''} ${a.last_name || ''}`.trim() : '', authorAvatar: a?.avatar || null, authorUsername: a?.username || null, authorPosition: a?.position || '', authorIsOrganization: a?.is_organization || false, timestamp: p.created_at ? new Date(p.created_at) : new Date() });
+      });
+      (newsRes.data || []).forEach((n: any) => {
+        const a = authorMap.get(n.author_id);
+        next.set(n.id, { id: n.id, type: 'news', content: n.content || '', imageUrl: toImgUrls(n.image_url), title: n.titulo || '', authorId: n.author_id || null, authorName: a ? `${a.name || ''} ${a.last_name || ''}`.trim() : '', authorAvatar: a?.avatar || null, authorUsername: a?.username || null, authorPosition: a?.position || '', authorIsOrganization: a?.is_organization || false, timestamp: n.created_at ? new Date(n.created_at) : new Date() });
+      });
+      (eventsRes.data || []).forEach((e: any) => next.set(e.id, e));
+      (profsRes.data || []).forEach((p: any) => next.set(p.id, { id: p.id, name: p.name || '', lastName: p.last_name || '', username: p.username || '', avatar: p.avatar || null, position: p.position || '', institution: p.institution || '' }));
+
+      if (next.size > localPreviews.size) {
+        setLocalPreviews(next);
+        // Persist to seed caches so next page load reads them instantly
+        try {
+          const postsObj: Record<string, any> = {};
+          const evtsObj: Record<string, any> = {};
+          const profsObj: Record<string, any> = {};
+          next.forEach((v, k) => {
+            if (v?.type === 'post' || v?.type === 'news') postsObj[k] = v;
+            else if (v?.event_date !== undefined || v?.event_time !== undefined) evtsObj[k] = v;
+            else if (v?.username !== undefined) profsObj[k] = v;
+          });
+          localStorage.setItem('chat_inline_posts_seed', JSON.stringify(postsObj));
+          localStorage.setItem('chat_shared_events_seed', JSON.stringify(evtsObj));
+          localStorage.setItem('chat_shared_profiles_seed', JSON.stringify(profsObj));
+        } catch {}
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.messages, instantMessages]);
+
+  // Prefetch external link previews as soon as chat messages load
+  useEffect(() => {
+    const msgs = selectedChat?.messages || [];
+    if (!msgs.length) return;
+
+    msgs.forEach((m) => {
+      if (m.text && !m.is_deleted) {
+        const firstUrl = extractFirstUrl(m.text);
+        if (firstUrl && isExternalUrl(firstUrl)) {
+          getOrFetchPreview(firstUrl);
+        }
+      }
+    });
+  }, [selectedChat?.messages]);
+
   const handleSend = async (e: React.FormEvent, isScheduled: boolean = false) => {
     e.preventDefault();
     if (sendButtonContextMenu) return;
     if ((!msg.trim() && pendingImages.length === 0) || !selectedId) return;
-    
+
     if (isScheduled && !scheduledAt) {
       setShowScheduler(true);
       return;
@@ -433,7 +758,22 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     const currentImages = [...pendingImages];
     setMsg('');
     setPendingImages([]);
-    
+
+    if (!isScheduled) {
+      // Optimistic: show message immediately before server round-trip
+      const optimistic = {
+        id: `optimistic-${Date.now()}`,
+        senderId: user.id,
+        recipientId: selectedId,
+        text: currentMsg,
+        timestamp: new Date(),
+        imageUrl: currentImages,
+        isRead: false,
+        _optimistic: true,
+      };
+      setOptimisticMessages(prev => [...prev, optimistic]);
+    }
+
     if (isScheduled) {
       const scheduledDate = new Date(scheduledAt);
       setShowScheduler(false);
@@ -515,41 +855,52 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   const chatInfoData = useMemo(() => {
     if (!selectedChat) return { media: [], sharedItems: [], searchResults: [] };
-    const media: string[] = [];
+    const infoMessages = selectedChat.messages.length > 0 ? selectedChat.messages : instantMessages;
+    const media: { url: string; timestamp: string }[] = [];
     const sharedItems: { type: 'post' | 'profile' | 'event' | 'link', data: any, timestamp: string, id: string }[] = [];
     const searchResults = infoSearch.trim()
-      ? selectedChat.messages.filter(m => normalizeString(m.text).includes(normalizeString(infoSearch)))
+      ? infoMessages.filter(m => normalizeString(m.text).includes(normalizeString(infoSearch)))
       : [];
 
-    selectedChat.messages.forEach(m => {
+    infoMessages.forEach(m => {
+      const tsStr: string = m.timestamp instanceof Date ? m.timestamp.toISOString() : String(m.timestamp);
+
+      // Images attached to the message (imageUrl array field)
+      if (m.imageUrl && m.imageUrl.length > 0) {
+        m.imageUrl.forEach(url => media.push({ url, timestamp: tsStr }));
+      }
+
+      // Images embedded in text
       const trimmedText = m.text.trim();
       const isImage = trimmedText.startsWith('data:image') ||
         !!trimmedText.match(/^https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp)(?:\?.*)?$/i);
 
       if (isImage) {
-        media.push(trimmedText);
+        media.push({ url: trimmedText, timestamp: tsStr });
       } else {
         const imgRegex = /https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|svg|webp)(?:\?.*)?/gi;
         let match;
         while ((match = imgRegex.exec(m.text)) !== null) {
-          media.push(match[0]);
+          media.push({ url: match[0], timestamp: tsStr });
         }
       }
 
       let sharedUrl = '';
+      // Normalize timestamp to ISO string (m.timestamp may be Date or string from DB)
       if (m.postId || m.newsId) {
-        const post = posts.find(p => p.id === (m.postId || m.newsId));
+        const post = posts.find(p => p.id === (m.postId || m.newsId)) || (m as any).inlineSharedPost;
         if (post) {
-          sharedItems.push({ type: 'post', data: post, timestamp: m.timestamp, id: `post-${post.id}-${m.id}` });
+          sharedItems.push({ type: 'post', data: post, timestamp: tsStr, id: `post-${post.id}-${m.id}` });
         }
       }
-      if (m.sharedProfile) {
-        sharedItems.push({ type: 'profile', data: m.sharedProfile, timestamp: m.timestamp, id: `profile-${m.sharedProfile.id}-${m.id}` });
+      const profileData = m.sharedProfile || (m as any).inlineSharedProfile || (m.sharedProfileId ? users.find(u => u.id === m.sharedProfileId) : null);
+      if (profileData) {
+        sharedItems.push({ type: 'profile', data: profileData, timestamp: tsStr, id: `profile-${profileData.id}-${m.id}` });
       }
       if (m.sharedEvent || m.sharedEventId) {
         const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
         if (event) {
-          sharedItems.push({ type: 'event', data: event, timestamp: m.timestamp, id: `event-${event.id}-${m.id}` });
+          sharedItems.push({ type: 'event', data: event, timestamp: tsStr, id: `event-${event.id}-${m.id}` });
         }
       }
 
@@ -560,13 +911,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         if (!foundUrl.match(/\.(?:jpg|jpeg|png|gif|svg|webp)$/i) &&
           !foundUrl.includes('redsocial.app') &&
           !foundUrl.includes('red.novagob.org')) {
-          sharedItems.push({ type: 'link', data: { url: foundUrl, text: m.text }, timestamp: m.timestamp, id: `link-${m.id}-${lMatch.index}` });
+          sharedItems.push({ type: 'link', data: { url: foundUrl, text: m.text }, timestamp: tsStr, id: `link-${m.id}-${lMatch.index}` });
         }
       }
     });
     sharedItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    media.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return { media, sharedItems, searchResults };
-  }, [selectedChat, infoSearch, posts, globalEvents]);
+  }, [selectedChat, infoSearch, posts, globalEvents, instantMessages, selectedId]);
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
@@ -592,7 +944,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }, 100);
   };
 
-  const participant = selectedChat?.participant || temporaryParticipant;
+  const participant = selectedChat?.participant || temporaryParticipant || cachedParticipant || null;
 
   return (
     <div className="h-full w-full bg-white dark:bg-black overflow-hidden flex flex-row">
@@ -610,10 +962,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={(e) => {
+          const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+          if (scrollHeight - scrollTop - clientHeight < 80) {
+            setVisibleChatCount(prev => prev + 15);
+          }
+        }}>
           {temporaryParticipant && !chats.find(c => c.id === temporaryParticipant.id) && (
             <button
-              onClick={() => navigate(`/mensajes/${getChatNavigationIdentifier(temporaryParticipant, temporaryParticipant.id)}`)}
+              onClick={() => handleChatClick(temporaryParticipant.id, `/mensajes/${getChatNavigationIdentifier(temporaryParticipant, temporaryParticipant.id)}`)}
               className="w-full max-w-full p-4 flex items-center space-x-3 bg-blue-50/30 dark:bg-zinc-800/30 border-r-4 border-blue-600 transition-all overflow-hidden"
             >
               <img src={getSafeAvatar(temporaryParticipant.avatar)} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
@@ -624,15 +981,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               </div>
             </button>
           )}
-          {filteredChats.map(chat => {
-            const lastMsg = chat.messages[chat.messages.length - 1];
-            const isMe = lastMsg?.senderId === user.id;
-            const isUnread = !isMe && !lastMsg?.isRead;
+          {filteredChats.slice(0, visibleChatCount).map(chat => {
+            // Use dedicated last-message fields from fetchChats (messages[] is lazy-loaded)
+            const lastMsg = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null;
+            const isMe = (chat.lastMessageSenderId ?? lastMsg?.senderId) === user.id;
+            const isRead = chat.lastMessageIsRead ?? lastMsg?.isRead;
+            const isUnread = !isMe && !isRead;
 
             return (
               <button
                 key={chat.id}
-                onClick={() => navigate(`/mensajes/${getChatNavigationIdentifier(chat.participant, chat.id)}`)}
+                onClick={() => handleChatClick(chat.id, `/mensajes/${getChatNavigationIdentifier(chat.participant, chat.id)}`)}
                 className={`w-full max-w-full p-4 flex items-center space-x-3 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all overflow-hidden ${selectedId === chat.id ? 'bg-blue-50/50 dark:bg-zinc-800/50 border-r-4 border-blue-600' : ''}`}
               >
                 <img src={getSafeAvatar(chat.participant.avatar)} className="w-12 h-12 rounded-2xl object-cover shrink-0" alt="" />
@@ -650,11 +1009,16 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   <div className="flex items-center justify-between gap-2">
                     <div className={`text-xs min-w-0 flex-1 flex items-center gap-1.5 ${(!isMe && isUnread && selectedId !== chat.id) ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 font-medium'}`}>
                       {isMe ? (
-                        <span className="shrink-0 text-gray-500 font-medium lowercase first-letter:uppercase">
-                          {lastMsg?.isRead && (chat.participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')}
+                        <span className="shrink-0 text-blue-500/70 font-black text-[9px] uppercase tracking-widest">
+                          {isRead && (chat.participant?.chatSettings?.readReceipts !== false) ? t('visto') : t('enviado')}
                         </span>
                       ) : (
-                        <span className="truncate flex-1">{chat.lastMessage}</span>
+                        <span className={`truncate flex-1 ${isUnread && selectedId !== chat.id ? 'font-bold' : 'font-medium'}`}>{(() => {
+                            const msg = chat.lastMessage || '';
+                            if (msg === 'Imagen' || /\.(jpg|jpeg|png|gif|webp|heic|avif)(\?.*)?$/i.test(msg)) return language === 'es' ? 'Te ha enviado una imagen' : 'They sent you an image';
+                            if (isExternalUrl(msg)) return language === 'es' ? 'Te ha enviado un enlace' : 'They sent you a link';
+                            return msg;
+                          })()}</span>
                       )}
                     </div>
                     {isUnread && selectedId !== chat.id && <div className="w-2 h-2 bg-blue-600 rounded-full shrink-0" />}
@@ -665,7 +1029,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           })}
           {chats.length === 0 && !temporaryParticipant && (
             <div className="p-4 md:p-8 text-center">
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{t('no_conversations')}</p>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
+                {chatsLoading ? 'Cargando conversaciones...' : t('no_conversations')}
+              </p>
             </div>
           )}
         </div>
@@ -709,14 +1075,68 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             </div>
 
             <div className="relative flex-1 min-h-0 flex flex-col">
+              {showScrollToBottom && (
+                <button
+                  onClick={() => {
+                    if (scrollContainerRef.current) {
+                      scrollContainerRef.current.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' });
+                    }
+                  }}
+                  className="absolute bottom-4 right-4 z-20 w-10 h-10 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-700 transition-all"
+                  aria-label="Ir al final"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              )}
               <div
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 scroll-smooth overscroll-contain relative"
+                className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 overscroll-contain relative"
                 style={{ backgroundColor: user.chatSettings?.backgroundColor || undefined }}
               >
+                {isLoadingMoreMessages && (
+                  <div className="flex justify-center py-3">
+                    <Loader2 size={16} className="animate-spin text-gray-400" />
+                  </div>
+                )}
                 {(() => {
-                  const messagesArray = selectedChat?.messages || [];
+                  // Use real messages when loaded, otherwise show instant cache for zero-delay display
+                  const realMessages = selectedChat?.messages || [];
+                  // If real messages are empty but we are fetching, base is empty to show loader below
+                  const base = realMessages.length > 0 ? realMessages : (messagesLoading ? [] : instantMessages);
+                  // Augment base with preview data from instantMessages when phase-1 has nulls.
+                  // instantMessages always carries full preview data (from MSG_CACHE localStorage).
+                  const instantMap = new Map(instantMessages.map((m: any) => [m.id, m]));
+                  const augmented = base.map((m: any) => {
+                    const inst = instantMap.get(m.id);
+                    if (!inst) return m;
+                    const needsAugment = (!m.inlineSharedPost && inst.inlineSharedPost)
+                      || (!m.sharedEvent && inst.sharedEvent)
+                      || (!m.sharedProfile && inst.sharedProfile)
+                      || (!m.inlineSharedProfile && inst.inlineSharedProfile);
+                    if (!needsAugment) return m;
+                    return {
+                      ...m,
+                      inlineSharedPost: m.inlineSharedPost ?? inst.inlineSharedPost ?? null,
+                      sharedEvent: m.sharedEvent ?? inst.sharedEvent ?? null,
+                      sharedProfile: m.sharedProfile ?? inst.sharedProfile ?? null,
+                      inlineSharedProfile: m.inlineSharedProfile ?? inst.inlineSharedProfile ?? null,
+                    };
+                  });
+                  // Append optimistic messages not yet confirmed in real messages.
+                  // Scope by recipientId so optimistics from other chats don't leak here.
+                  // Match only by sender + timestamp proximity (not text) so that
+                  // editing the message right after sending doesn't break the dedup.
+                  const pendingOptimistic = optimisticMessages.filter(om =>
+                    om.recipientId === selectedId &&
+                    !realMessages.some(rm =>
+                      rm.senderId === om.senderId &&
+                      Math.abs(new Date(rm.timestamp).getTime() - new Date(om.timestamp).getTime()) < 30000
+                    )
+                  );
+                  const messagesArray = [...augmented, ...pendingOptimistic];
                   let lastReadIndex = -1;
                   let lastSentIndex = -1;
                   let latestSentMessageIndex = -1;
@@ -739,6 +1159,26 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       }
                     }
                     if (latestSentMessageIndex !== -1 && (lastReadIndex !== -1 || !receiptsEnabled) && lastSentIndex !== -1) break;
+                  }
+
+                  if (messagesLoading && messagesArray.length === 0) {
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-60">
+                        <Loader2 className="animate-spin text-blue-600" size={32} />
+                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cargando mensajes...</p>
+                      </div>
+                    );
+                  }
+
+                  if (messagesArray.length === 0) {
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-40">
+                        <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-800 rounded-3xl flex items-center justify-center mb-4">
+                          <MessageSquare size={32} className="text-slate-400" />
+                        </div>
+                        <p className="text-sm font-bold text-slate-400 italic">No hay mensajes todavía</p>
+                      </div>
+                    );
                   }
 
                   return messagesArray
@@ -833,13 +1273,28 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             <div className={`max-w-[85%] md:max-w-[75%] space-y-1 flex flex-col ${m.senderId === user.id ? 'items-end ml-auto' : 'items-start mr-auto'} w-fit`}>
                               {(m.postId || m.newsId) ? (
                                 (() => {
-                                  const sharedPost = posts.find(p => p.id === (m.postId || m.newsId));
-                                  if (!sharedPost) return null;
+                                  const sharedPost = posts.find(p => p.id === (m.postId || m.newsId)) || (m as any).inlineSharedPost || localPreviews.get(m.postId || m.newsId);
+                                  if (!sharedPost) return (
+                                    <div className={`p-0.5 rounded-2xl overflow-hidden ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                      style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}>
+                                      <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl animate-pulse min-w-[180px]">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-zinc-700 shrink-0" />
+                                          <div className="flex-1 space-y-1.5">
+                                            <div className="h-2.5 bg-gray-200 dark:bg-zinc-700 rounded w-3/4" />
+                                            <div className="h-2 bg-gray-200 dark:bg-zinc-700 rounded w-1/2" />
+                                          </div>
+                                        </div>
+                                        <div className="h-2.5 bg-gray-200 dark:bg-zinc-700 rounded w-full mb-1.5" />
+                                        <div className="h-2.5 bg-gray-200 dark:bg-zinc-700 rounded w-5/6" />
+                                      </div>
+                                    </div>
+                                  );
                                   return (
                                     <div
                                       className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
                                       style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
-                                      onClick={() => onViewPost?.(sharedPost.id)}
+                                      onClick={() => onViewPost?.(sharedPost.id, sharedPost.type as 'post' | 'news')}
                                     >
                                       <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl">
                                         {sharedPost.type === 'news' ? (
@@ -854,17 +1309,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                                 />
                                                 <div className="min-w-0">
                                                   <div className="flex items-center space-x-1.5 flex-wrap">
-                                                    <span className="font-bold text-slate-900 dark:text-white text-[11px] md:text-xs truncate">{sharedPost.authorName}</span>
+                                                    <span className="font-bold text-slate-900 dark:text-white text-xs md:text-[11px] truncate">{sharedPost.authorName}</span>
                                                   </div>
-                                                  <p className="text-[8px] md:text-[9px] font-black text-orange-600 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>
+                                                  {!sharedPost.authorIsOrganization && !users?.find(u => u.id === sharedPost.authorId)?.isOrganization && <p className="text-[10px] md:text-[8px] font-black text-orange-600 uppercase tracking-widest leading-none mt-1">{sharedPost.authorPosition}</p>}
                                                 </div>
                                               </div>
-                                              <span className="text-slate-400 text-[8px] font-bold lowercase whitespace-nowrap ml-2">
+                                              <span className="text-slate-400 text-[11px] font-bold lowercase whitespace-nowrap ml-2">
                                                 {timeAgo(sharedPost.timestamp, language)}
                                               </span>
                                             </div>
 
-                                            {/* Main Section: (Title + Content) | Image */}
+                                            {/* Main Section */}
                                             <div className="flex gap-3 items-start">
                                               <div className="flex-1 min-w-0 space-y-1">
                                                 {sharedPost.title && (
@@ -872,12 +1327,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                                     {sharedPost.title}
                                                   </h4>
                                                 )}
-                                                <p className="text-slate-600 dark:text-gray-400 text-[10px] md:text-xs leading-relaxed line-clamp-3">
+                                                <p className="text-slate-600 dark:text-gray-400 text-xs md:text-[10px] leading-relaxed line-clamp-3">
                                                   {sharedPost.content}
                                                 </p>
                                               </div>
                                               {sharedPost.imageUrl && sharedPost.imageUrl.length > 0 && (
-                                                <div className="w-16 h-16 md:w-20 md:h-20 shrink-0 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
+                                                <div className="w-20 h-20 md:w-28 md:h-28 shrink-0 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm">
                                                   <img 
                                                     src={Array.isArray(sharedPost.imageUrl) ? sharedPost.imageUrl[0] : sharedPost.imageUrl} 
                                                     className="w-full h-full object-cover" 
@@ -899,12 +1354,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                                 />
                                                 <div className="min-w-0">
                                                   <div className="flex items-center space-x-1.5 flex-wrap">
-                                                    <span className="font-bold text-slate-900 dark:text-white text-[11px] md:text-xs truncate">{sharedPost.authorName}</span>
+                                                    <span className="font-bold text-slate-900 dark:text-white text-xs md:text-[11px] truncate">{sharedPost.authorName}</span>
                                                   </div>
-                                                  <p className="text-[8px] md:text-[9px] font-black text-blue-700 dark:text-blue-500 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>
+                                                  {!sharedPost.authorIsOrganization && !users?.find(u => u.id === sharedPost.authorId)?.isOrganization && <p className="text-[10px] md:text-[8px] font-black text-blue-700 dark:text-blue-500 uppercase tracking-widest leading-none mt-1">{sharedPost.authorPosition}</p>}
                                                 </div>
                                               </div>
-                                              <span className="text-slate-400 text-[8px] font-bold lowercase whitespace-nowrap ml-2">
+                                              <span className="text-slate-400 text-[11px] font-bold lowercase whitespace-nowrap ml-2">
                                                 {timeAgo(sharedPost.timestamp, language)}
                                               </span>
                                             </div>
@@ -913,91 +1368,202 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                             <div className="text-slate-800 dark:text-gray-200 text-xs md:text-sm leading-relaxed">
                                               <p className="line-clamp-3">{sharedPost.content}</p>
                                             </div>
+
+                                            {/* Post Images */}
+                                            {sharedPost.imageUrl && sharedPost.imageUrl.length > 0 && (
+                                              <div className="mt-2 w-full">
+                                                {sharedPost.imageUrl.length === 1 && (
+                                                  <div className="relative w-full aspect-[2/1] rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                                                    <img
+                                                      src={sharedPost.imageUrl[0]}
+                                                      alt=""
+                                                      loading="lazy"
+                                                      className="w-full h-full object-cover"
+                                                    />
+                                                  </div>
+                                                )}
+                                                {sharedPost.imageUrl.length === 2 && (
+                                                  <div className="grid grid-cols-2 gap-1 w-full aspect-[2/1] rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                                                    {sharedPost.imageUrl.map((url: string, i: number) => (
+                                                      <img
+                                                        key={i}
+                                                        src={url}
+                                                        alt=""
+                                                        loading="lazy"
+                                                        className="w-full h-full object-cover"
+                                                      />
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                {sharedPost.imageUrl.length === 3 && (
+                                                  <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full aspect-[2/1] rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                                                    <div className="relative row-span-2">
+                                                      <img src={sharedPost.imageUrl[0]} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                                    </div>
+                                                    <div className="relative h-full">
+                                                      <img src={sharedPost.imageUrl[1]} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                                    </div>
+                                                    <div className="relative h-full">
+                                                      <img src={sharedPost.imageUrl[2]} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {sharedPost.imageUrl.length >= 4 && (
+                                                  <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full aspect-[2/1] rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+                                                    {sharedPost.imageUrl.slice(0, 4).map((url: string, i: number) => (
+                                                      <div key={i} className="relative h-full">
+                                                        <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                                        {i === 3 && sharedPost.imageUrl.length > 4 && (
+                                                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center pointer-events-none">
+                                                            <span className="text-white font-black text-xs">+{sharedPost.imageUrl.length - 4}</span>
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
                                         )}
+                                        {/* Unified Timestamp */}
+                                        <div className="flex items-center space-x-1.5 mt-0 mb-0.5 text-[10px] font-black uppercase tracking-widest justify-end ml-auto pr-0 -mr-2 text-gray-400">
+                                          <span className="font-medium">
+                                            {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {m.text && <div className={`px-4 py-2 text-sm font-medium ${m.senderId === user.id ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>{m.text}</div>}
+                                    </div>
+                                  )
+                                })()
+                              ) : m.sharedProfileId ? (
+                                (() => {
+                                  const profile = m.sharedProfile || (m as any).inlineSharedProfile || localPreviews.get(m.sharedProfileId) || users.find(u => u.id === m.sharedProfileId);
+                                  if (!profile) return (
+                                    <div className={`p-0.5 rounded-2xl overflow-hidden ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                      style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}>
+                                      <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl animate-pulse min-w-[180px]">
+                                        <div className="flex items-center space-x-3">
+                                          <div className="w-14 h-14 rounded-xl bg-gray-200 dark:bg-zinc-700 shrink-0" />
+                                          <div className="flex-1 space-y-2">
+                                            <div className="h-3 bg-gray-200 dark:bg-zinc-700 rounded w-3/4" />
+                                            <div className="h-2.5 bg-gray-200 dark:bg-zinc-700 rounded w-1/2" />
+                                            <div className="h-2 bg-gray-200 dark:bg-zinc-700 rounded w-1/3" />
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
                                   );
-                                })()
-                              ) : (m.sharedProfile || (m.sharedProfileId && users.find(u => u.id === m.sharedProfileId))) ? (
-                                (() => {
-                                  const profile = m.sharedProfile || users.find(u => u.id === m.sharedProfileId);
-                                  if (!profile) return null;
                                   return (
                                     <div
                                       className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
                                       style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
                                       onClick={() => profile.id && onNavigateToProfile?.(profile.id)}
                                     >
-                                      <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
-                                        <img src={getSafeAvatar(profile.avatar)} className="w-12 h-12 rounded-xl object-cover" alt="" />
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-black text-gray-900 dark:text-white truncate">
-                                            {getDisplayName(profile.name, profile.username, profile.lastName)}
-                                          </p>
-                                          <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{profile.position}</p>
-                                          <p className="text-[9px] text-blue-600 font-bold mt-1">{t('view_profile')}</p>
+                                      <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl">
+                                        <div className="flex items-center space-x-3 md:space-x-4">
+                                          <img src={getSafeAvatar(profile.avatar)} className="w-14 h-14 md:w-20 md:h-20 rounded-xl object-cover shadow-sm" alt="" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-black text-gray-900 dark:text-white truncate">
+                                              {getDisplayName(profile.name, profile.username, profile.lastName)}
+                                            </p>
+                                            <p className="text-[11px] md:text-[10px] text-slate-500 font-bold uppercase truncate tracking-wide">{profile.position}</p>
+                                            <p className="text-[10px] md:text-[9px] text-blue-600 font-black mt-1.5 uppercase tracking-widest">{t('view_profile')}</p>
+                                          </div>
+                                        </div>
+                                        {/* Unified Timestamp */}
+                                        <div className="flex items-center space-x-1.5 mt-0 mb-0.5 text-[10px] font-black uppercase tracking-widest justify-end ml-auto pr-0 -mr-2 text-gray-400">
+                                          <span className="font-medium">
+                                            {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
                                         </div>
                                       </div>
-                                      {m.text && <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 font-medium">{m.text}</div>}
+
+                                      {m.text && <div className={`px-4 py-2 text-sm font-medium ${m.senderId === user.id ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>{m.text}</div>}
+                                    </div>
+                                  )
+                                })()
+                              ) : m.sharedEventId ? (
+                                (() => {
+                                  const event = m.sharedEvent || localPreviews.get(m.sharedEventId) || globalEvents.find(e => e.id === m.sharedEventId);
+                                  if (!event) return (
+                                    <div className={`p-0.5 rounded-2xl overflow-hidden ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                      style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}>
+                                      <div className="p-0 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden animate-pulse min-w-[200px]">
+                                        <div className="w-full h-24 bg-gray-200 dark:bg-zinc-700" />
+                                        <div className="p-3 space-y-2">
+                                          <div className="h-2 bg-gray-200 dark:bg-zinc-700 rounded w-1/3" />
+                                          <div className="h-3 bg-gray-200 dark:bg-zinc-700 rounded w-4/5" />
+                                          <div className="flex gap-1.5">
+                                            <div className="h-5 bg-gray-200 dark:bg-zinc-700 rounded w-20" />
+                                            <div className="h-5 bg-gray-200 dark:bg-zinc-700 rounded w-16" />
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   );
-                                })()
-                              ) : (m.sharedEvent || (m.sharedEventId && globalEvents.find(e => e.id === m.sharedEventId))) ? (
-                                (() => {
-                                  const event = m.sharedEvent || globalEvents.find(e => e.id === m.sharedEventId);
-                                  if (!event) return <div className="p-4 bg-slate-100 dark:bg-zinc-800 rounded-2xl text-xs text-slate-500 italic">{t('event_not_available')}</div>;
+                                  const creatorId = event.creator_id || globalEvents.find(e => e.id === event.id)?.creator_id || '';
                                   return (
                                     <div
                                       className={`p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
                                       style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
-                                      onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                                      onClick={() => creatorId && onNavigateToEvent?.(creatorId, event.id)}
                                     >
-                                      <div className="p-0 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex flex-col md:flex-row shadow-sm min-h-[120px] overflow-hidden">
-                                        {/* Image Section */}
-                                        <div className="relative w-full md:w-32 h-32 md:h-full shrink-0 overflow-hidden">
-                                          <img
-                                            src={event.image_url || '/img/novagob.brand_isotipo_black.svg'}
-                                            className="w-full h-full object-cover"
-                                            alt={event.title}
-                                          />
-                                          {/* Gradient Overlays */}
-                                          <div className="hidden md:block absolute inset-y-0 -right-px w-16 bg-gradient-to-r from-transparent to-white dark:to-[#111] pointer-events-none z-[5]"></div>
-                                          <div className="md:hidden absolute inset-x-0 -bottom-px h-12 bg-gradient-to-b from-transparent to-white dark:to-[#111] pointer-events-none z-[5]"></div>
-                                        </div>
-                                        {/* Content Section */}
-                                        <div className="flex-1 p-3 md:p-4 flex flex-col justify-between min-w-0 relative z-10 border-l border-gray-50/50 dark:border-zinc-900/50">
-                                          <div className="space-y-1.5">
-                                            <p className="text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-widest">{t('linked_event') || 'EVENTO VINCULADO'}</p>
-                                            <h4 className="text-gray-900 dark:text-white font-black text-sm leading-tight truncate pr-2">
-                                              {event.title}
-                                            </h4>
-                                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                              <div className="flex items-center text-[9px] text-gray-400 font-bold uppercase tracking-wider bg-slate-50 dark:bg-zinc-900/50 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-800/50">
-                                                <Calendar size={10} className="mr-1 text-blue-500" strokeWidth={3} />
-                                                <span>{new Date(event.event_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                              </div>
-                                              <div className="flex items-center text-[9px] text-gray-400 font-bold uppercase tracking-wider bg-slate-50 dark:bg-zinc-900/50 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-800/50">
-                                                <MapPin size={10} className="mr-1 text-emerald-500" strokeWidth={3} />
-                                                <span className="truncate max-w-[80px]">{event.location}</span>
+                                      <div className="p-0 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden">
+                                        <div className="flex flex-col md:flex-row shadow-sm min-h-[140px]">
+                                          {/* Image Section */}
+                                          <div className="relative w-full md:w-40 h-36 md:h-full shrink-0 overflow-hidden">
+                                            <img
+                                              src={event.image_url || '/img/novagob.brand_isotipo_black.svg'}
+                                              className="w-full h-full object-contain bg-gray-50 dark:bg-zinc-900"
+                                              alt={event.title}
+                                            />
+                                            {/* Gradient Overlays */}
+                                            <div className="hidden md:block absolute inset-y-0 -right-px w-16 bg-gradient-to-r from-transparent to-white dark:to-[#111] pointer-events-none z-[5]"></div>
+                                            <div className="md:hidden absolute inset-x-0 -bottom-px h-12 bg-gradient-to-b from-transparent to-white dark:to-[#111] pointer-events-none z-[5]"></div>
+                                          </div>
+                                          {/* Content Section */}
+                                          <div className="flex-1 p-3 md:p-4 flex flex-col justify-between min-w-0 relative z-10 border-l border-gray-50/50 dark:border-zinc-900/50">
+                                            <div className="space-y-1.5">
+                                              <h4 className="text-gray-900 dark:text-white font-black text-sm leading-tight truncate pr-2">
+                                                {event.title}
+                                              </h4>
+                                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                                <div className="flex items-center text-[10px] md:text-[11px] text-gray-400 font-bold uppercase tracking-wider bg-slate-50 dark:bg-zinc-900/50 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-800/50">
+                                                  <Calendar size={10} className="mr-1 text-blue-500" strokeWidth={3} />
+                                                  <span>{new Date(event.event_date).toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                </div>
+                                                <div className="flex items-center text-[10px] md:text-[11px] text-gray-400 font-bold uppercase tracking-wider bg-slate-50 dark:bg-zinc-900/50 px-1.5 py-0.5 rounded-md border border-slate-100 dark:border-zinc-800/50">
+                                                  <MapPin size={10} className="mr-1 text-emerald-500" strokeWidth={3} />
+                                                  <span className="truncate max-w-[80px]">{event.location}</span>
+                                                </div>
                                               </div>
                                             </div>
-                                          </div>
-                                          <div className="mt-2 pt-1">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center">
-                                              {t('view_event_details') || t('view_event') || 'VER EVENTO'}
-                                              <ChevronRight size={10} className="ml-0.5" />
-                                            </span>
+                                            <div className="mt-2 pt-1">
+                                              <span className="text-[10px] md:text-[11px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 flex items-center">
+                                                {t('view_event_details') || t('view_event') || 'VER EVENTO'}
+                                                <ChevronRight size={10} className="ml-0.5" />
+                                              </span>
+                                            </div>
+                                            {/* Unified Timestamp */}
+                                            <div className="flex items-center space-x-1.5 mt-0 mb-0.5 text-[10px] font-black uppercase tracking-widest justify-end ml-auto pr-0 -mr-2 text-gray-400">
+                                              <span className="font-medium">
+                                                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
+
+                                        {m.text && <div className={`px-4 py-2 text-sm font-medium ${m.senderId === user.id ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>{m.text}</div>}
                                       </div>
-                                      {m.text && <div className="px-4 py-2 text-sm text-gray-100 dark:text-gray-200 font-medium">{m.text}</div>}
                                     </div>
-                                  );
+                                  )
                                 })()
                               ) : (
                                 (() => {
-                                  const trimmedText = m.text.trim();
+                                  const trimmedText = (m.text || '').trim();
                                   const imageRegex = /https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|webp|svg)(?:\?.*)?/i;
                                   const isBase64 = trimmedText.includes('data:image') || trimmedText.includes(';base64,');
                                   const isDirectUrl = !!trimmedText.match(/^https?:\/\/[^\s]+?\.(?:jpg|jpeg|png|gif|webp|svg)(?:\?.*)?/i);
@@ -1013,11 +1579,37 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                     return <div className="p-3 text-xs italic text-slate-400 bg-slate-100 dark:bg-zinc-800 rounded-lg">Adjunto o dato de sistema</div>;
                                   }
 
+                                  if (m.is_deleted) {
+                                    return (
+                                      <div className={`px-4 py-2.5 rounded-2xl flex items-center gap-2 ${m.senderId === user.id ? 'rounded-tr-none' : 'bg-white dark:bg-[#111] shadow-sm border border-gray-100 dark:border-zinc-900 rounded-tl-none'}`}
+                                        style={m.senderId === user.id ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${m.senderId === user.id ? 'text-white/50' : 'text-gray-400'}`}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                        <span className={`text-[13px] italic ${m.senderId === user.id ? 'text-white/60' : 'text-gray-400 dark:text-zinc-500'}`}>
+                                          {language === 'es' ? 'Mensaje eliminado' : 'Message deleted'}
+                                        </span>
+                                        <span className={`text-[9px] font-medium ml-auto pl-2 ${m.senderId === user.id ? 'text-white/40' : 'text-gray-300 dark:text-zinc-600'}`}>
+                                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
                                   const firstUrl = extractFirstUrl(m.text);
                                   const hasPreview = firstUrl && isExternalUrl(firstUrl) && !isImage;
+                                  // Resolve internal app URLs to profile/post previews
+                                  const internalParsed = (firstUrl && !isExternalUrl(firstUrl)) ? parseInternalAppUrl(firstUrl) : null;
+                                  const internalId = internalParsed?.identifier ?? '';
+                                  const internalProfile: User | undefined = internalParsed?.type === 'profile'
+                                    ? (users ?? [] as User[]).find((u: User) => u.username?.toLowerCase() === internalId.toLowerCase() || u.id === internalId)
+                                    : undefined;
+                                  const internalPost: Post | undefined = (internalParsed?.type === 'post' || internalParsed?.type === 'news')
+                                    ? posts.find(p => p.id === internalId)
+                                    : undefined;
                                   const isOwnMessage = m.senderId === user.id;
 
                                   const hasImageColumn = m.imageUrl && m.imageUrl.length > 0;
+                                  const hasNoOuterBubble = hasImageColumn || hasPreview;
 
                                   return (
                                       <div
@@ -1028,13 +1620,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                         className={`relative group ${m.senderId === user.id ? 'items-end' : 'items-start'} ${hasImageColumn ? 'w-fit' : ''}`}
                                       >
                                         <div
-                                          className={`${hasImageColumn ? 'p-0 bg-transparent shadow-none border-none' : 'px-4 py-2.5 rounded-2xl'} text-[13px] md:text-[15px] font-medium leading-relaxed transition-all relative ${m.senderId === user.id
-                                            ? (hasImageColumn ? '' : 'text-white')
-                                            : (hasImageColumn ? '' : 'bg-white dark:bg-[#111] text-gray-800 dark:text-gray-200 shadow-sm border border-gray-100 dark:border-zinc-900')
-                                            } ${isFirstInGroup && m.senderId === user.id && !hasImageColumn ? 'rounded-tr-none' : ''}
-                                            ${isFirstInGroup && m.senderId !== user.id && !hasImageColumn ? 'rounded-tl-none' : ''}
+                                          className={`${hasNoOuterBubble ? 'p-0 bg-transparent shadow-none border-none' : 'px-4 py-2.5 rounded-2xl'} text-[13px] md:text-[15px] font-medium leading-relaxed transition-all relative ${m.senderId === user.id
+                                            ? (hasNoOuterBubble ? '' : 'text-white')
+                                            : (hasNoOuterBubble ? '' : 'bg-white dark:bg-[#111] text-gray-800 dark:text-gray-200 shadow-sm border border-gray-100 dark:border-zinc-900')
+                                            } ${isFirstInGroup && m.senderId === user.id && !hasNoOuterBubble ? 'rounded-tr-none' : ''}
+                                            ${isFirstInGroup && m.senderId !== user.id && !hasNoOuterBubble ? 'rounded-tl-none' : ''}
                                             ${highlightedMessageId === m.id ? 'ring-4 ring-blue-500/30' : ''}`}
-                                          style={(m.senderId === user.id && !hasImageColumn) ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                          style={(m.senderId === user.id && !hasNoOuterBubble) ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
                                         >
                                           {/* Render Image Collection if present in imageUrl property */}
                                           {hasImageColumn && m.imageUrl && m.imageUrl.length > 0 && (
@@ -1086,7 +1678,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                           )}
 
                                           {/* Text content */}
-                                          {m.text && (
+                                          {m.text && !hasPreview && (
                                             <div className={`relative break-words linkify whitespace-pre-wrap ${hasImageColumn ? 'mt-2 px-4 py-2.5 rounded-2xl' : ''}`}
                                               style={(m.senderId === user.id && hasImageColumn) ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6', color: 'white' } : (m.senderId !== user.id && hasImageColumn ? { backgroundColor: 'white', color: '#1f2937' } : {})}
                                             >
@@ -1128,24 +1720,78 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                           </div>
                                         )}
 
-                                        {hasPreview && <LinkPreview url={firstUrl!} language={language} />}
-                                        
-                                        {/* Timestamp and seen indicator */}
-                                        <div className={`flex items-center space-x-1.5 mt-1.5 opacity-60 text-[9px] font-black uppercase tracking-widest ${m.senderId === user.id ? 'justify-end' : 'justify-start'}`}>
-                                          {(() => {
-                                            const isDeleted = m.is_deleted || m.text.includes('eliminado por el administrador');
-                                            const showEdited = !isDeleted && m.updated_at && (new Date(m.updated_at).getTime() - new Date(m.timestamp).getTime() > 3000);
+                                        {hasPreview && (
+                                          <div
+                                            className={`pt-2 px-2 pb-0 rounded-2xl overflow-hidden max-w-[280px] sm:max-w-[420px] ${isOwnMessage ? (isFirstInGroup ? 'rounded-tr-none' : '') : 'bg-gray-200 dark:bg-zinc-700 rounded-tl-none'}`}
+                                            style={isOwnMessage ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                          >
+                                            <LinkPreview url={firstUrl!} language={language} />
+                                            <div className={`flex items-center gap-1 justify-end px-1 py-1.5 -mt-1 text-[9px] font-medium ${isOwnMessage ? 'text-white/70' : 'text-gray-500 dark:text-zinc-400'}`}>
+                                              {(() => {
+                                                const showEdited = m.updated_at && (new Date(m.updated_at).getTime() - new Date(m.timestamp).getTime() > 3000);
+                                                return showEdited && <span className="font-bold uppercase tracking-widest">{t('editado') || 'Editado'}</span>;
+                                              })()}
+                                              <span>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                          </div>
+                                        )}
 
-                                            return showEdited && (
-                                              <span className="font-bold">
-                                                {t('editado') || 'Editado'}
-                                              </span>
-                                            );
-                                          })()}
-                                          <span className="font-medium">
-                                            {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                          </span>
-                                        </div>
+                                        {/* Internal profile preview */}
+                                        {internalProfile && (
+                                          <div
+                                            className={`mt-1 p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all ${isOwnMessage ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                            style={isOwnMessage ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                            onClick={() => onNavigateToProfile?.(internalProfile.id)}
+                                          >
+                                            <div className="p-4 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex items-center space-x-3">
+                                              <img src={getSafeAvatar(internalProfile.avatar)} className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0" alt="" />
+                                              <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-black text-gray-900 dark:text-white truncate">{internalProfile.name} {internalProfile.lastName || ''}</p>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase truncate tracking-wide">{internalProfile.position}</p>
+                                                <p className="text-[10px] text-blue-600 font-black mt-1 uppercase tracking-widest">{language === 'es' ? 'Ver perfil' : 'View profile'}</p>
+                                              </div>
+                                            </div>
+                                            <div className="flex justify-end px-3 py-1.5">
+                                              <span className="text-[9px] font-medium opacity-70">{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Internal post/news preview */}
+                                        {internalPost && (
+                                          <div
+                                            className={`mt-1 p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all ${isOwnMessage ? 'rounded-tr-none' : 'bg-gray-100 dark:bg-zinc-800 rounded-tl-none border-[0.5px] border-gray-200 dark:border-zinc-700'}`}
+                                            style={isOwnMessage ? { backgroundColor: user.chatSettings?.senderColor || '#8b5cf6' } : {}}
+                                            onClick={() => onViewPost?.(internalPost.id, internalPost.type as 'post' | 'news')}
+                                          >
+                                            <div className="p-3 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex flex-col gap-2">
+                                              <div className="flex items-center space-x-2">
+                                                <img src={getSafeAvatar(internalPost.authorAvatar)} className="w-8 h-8 rounded-lg object-cover shrink-0" alt="" />
+                                                <div className="min-w-0">
+                                                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{internalPost.authorName}</p>
+                                                  {!internalPost.authorIsOrganization && !users?.find(u => u.id === internalPost.authorId)?.isOrganization && <p className={`text-[9px] font-black uppercase tracking-widest ${internalPost.type === 'news' ? 'text-orange-600' : 'text-blue-600'}`}>{internalPost.authorPosition}</p>}
+                                                </div>
+                                              </div>
+                                              {internalPost.title && <p className="text-sm font-black text-slate-900 dark:text-white leading-tight">{internalPost.title}</p>}
+                                              <p className="text-xs text-slate-600 dark:text-gray-400 line-clamp-2">{internalPost.content}</p>
+                                              <div className="flex justify-end">
+                                                <span className="text-[9px] font-medium text-slate-400">{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Timestamp — only shown for plain text / image / link messages (not for structured previews above) */}
+                                        {!internalProfile && !internalPost && !hasPreview && (
+                                          <div className={`flex items-center gap-1 justify-end mt-1 text-[9px] font-medium ${isOwnMessage && !hasImageColumn ? 'text-white/60' : 'text-gray-400 dark:text-zinc-500'}`}>
+                                            {(() => {
+                                              const isDeleted = m.is_deleted || (m.text?.includes('eliminado por el administrador') ?? false);
+                                              const showEdited = !isDeleted && m.updated_at && (new Date(m.updated_at).getTime() - new Date(m.timestamp).getTime() > 3000);
+                                              return showEdited && <span className="font-bold uppercase tracking-widest">{t('editado') || 'Editado'}</span>;
+                                            })()}
+                                            <span>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -1186,7 +1832,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               )}
 
               {pendingImages.length > 0 && (
-                <div className="md:relative absolute bottom-full left-0 right-0 flex flex-nowrap gap-2 mb-0 md:mb-3 p-3 md:p-0 bg-white/90 dark:bg-[#111]/90 backdrop-blur-md md:bg-transparent md:backdrop-blur-none border-t md:border-t-0 border-gray-100 dark:border-zinc-900 md:animate-in md:fade-in md:slide-in-from-bottom-2 duration-300 z-[60] shadow-lg md:shadow-none max-h-48 overflow-x-auto overflow-y-hidden scrollbar-hide">
+                <div className="flex flex-nowrap gap-2 mb-2 px-2 pt-2 pb-1 max-h-48 overflow-x-auto overflow-y-hidden scrollbar-hide animate-in fade-in slide-in-from-bottom-2 duration-200">
                   {pendingImages.map((url, i) => (
                     <div key={i} className="relative group w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-800 shadow-sm shrink-0">
                       <img src={url} alt="" className="w-full h-full object-cover" />
@@ -1344,7 +1990,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 mb-2">
                     {scheduledMessages.length > 0 ? scheduledMessages.map((sm) => (
                       <div key={sm.id} className="p-4 bg-gray-50 dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 group relative shadow-sm hover:border-purple-500/50 transition-all">
                         {sm.image_url && sm.image_url.length > 0 && (
@@ -1406,34 +2052,34 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
       {
         isInfoOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2.5rem] overflow-hidden border border-white/20 dark:border-zinc-800 animate-in zoom-in-95 duration-300 flex flex-col max-h-[70vh] md:max-h-[85vh]">
-              <div className="p-6 border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
-                <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">{t('chat_info')}</h3>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pb-20 md:pb-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-[#111] w-full max-w-md rounded-[2rem] overflow-hidden border border-white/20 dark:border-zinc-800 animate-in zoom-in-95 duration-300 flex flex-col max-h-[80vh]">
+              <div className="px-5 py-3 border-b border-gray-50 dark:border-zinc-900 flex items-center justify-between">
+                <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">{t('chat_info')}</h3>
                 <button
                   onClick={() => { setIsInfoOpen(false); setInfoSearch(''); }}
-                  className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-xl text-gray-400 hover:text-red-500 transition-all"
+                  className="p-1.5 bg-gray-50 dark:bg-zinc-800 rounded-xl text-gray-400 hover:text-red-500 transition-all"
                 >
-                  <X size={20} />
+                  <X size={16} />
                 </button>
               </div>
 
-              <div className="p-6 border-b border-gray-50 dark:border-zinc-900">
+              <div className="px-5 py-3 border-b border-gray-50 dark:border-zinc-900">
                 <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
                   <input
                     type="text"
                     placeholder={t('search_messages')}
                     value={infoSearch}
                     onChange={(e) => setInfoSearch(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-zinc-900 dark:text-white border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
+              <div className="flex-1 overflow-y-auto p-2 mb-2 scrollbar-hide">
                 {infoSearch.trim() ? (
-                  <div className="p-4 space-y-4">
+                  <div className="p-3 space-y-3">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">{t('search_messages')}</h4>
                     {chatInfoData.searchResults.length > 0 ? chatInfoData.searchResults.map((m, i) => (
                       <button
@@ -1450,7 +2096,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 ) : (
                   <div className="flex flex-col h-full">
-                    <div className="flex p-2 gap-2 mb-4 bg-gray-50 dark:bg-zinc-900/50 rounded-2xl mx-4 mt-4">
+                    <div className="flex p-1.5 gap-1.5 mb-3 bg-gray-50 dark:bg-zinc-900/50 rounded-xl mx-3">
                       <button
                         onClick={() => setInfoTab('multimedia')}
                         className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${infoTab === 'multimedia' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-blue-600'}`}
@@ -1465,12 +2111,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       </button>
                     </div>
 
-                    <div className="px-6 flex-1">
+                    <div className="px-3 flex-1">
                       {infoTab === 'multimedia' ? (
                         <div className="grid grid-cols-3 gap-2 pb-6">
-                          {chatInfoData.media.length > 0 ? [...chatInfoData.media].reverse().map((url, i) => (
-                            <div key={i} className="aspect-square rounded-xl overflow-hidden border border-slate-100 dark:border-zinc-800 group relative cursor-pointer" onClick={() => setSelectedImageGallery({ urls: [url], index: 0 })}>
-                              <img src={url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
+                          {chatInfoData.media.length > 0 ? chatInfoData.media.map((item, i) => (
+                            <div key={i} className="aspect-square rounded-xl overflow-hidden border border-slate-100 dark:border-zinc-800 group relative cursor-pointer" onClick={() => setSelectedImageGallery({ urls: chatInfoData.media.map(m => m.url), index: i })}>
+                              <img src={item.url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" loading="lazy" />
                             </div>
                           )) : (
                             <div className="col-span-3 text-center py-20">
@@ -1497,7 +2143,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                             <img src={getSafeAvatar(sharedPost.authorAvatar)} className="w-6 h-6 rounded-lg object-cover shrink-0 shadow-sm" alt="" />
                                             <div className="min-w-0">
                                               <span className="font-bold text-slate-900 dark:text-white text-[10px] truncate">{sharedPost.authorName}</span>
-                                              <p className="text-[7px] font-black text-orange-600 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>
+                                              {!sharedPost.authorIsOrganization && !users?.find(u => u.id === sharedPost.authorId)?.isOrganization && <p className="text-[7px] font-black text-orange-600 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>}
                                             </div>
                                           </div>
                                           <span className="text-slate-400 text-[8px] font-bold whitespace-nowrap">{new Date(item.timestamp).toLocaleDateString()}</span>
@@ -1521,7 +2167,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                             <img src={getSafeAvatar(sharedPost.authorAvatar)} className="w-6 h-6 rounded-lg object-cover shrink-0 shadow-sm" alt="" />
                                             <div className="min-w-0">
                                               <span className="font-bold text-slate-900 dark:text-white text-[10px] truncate">{sharedPost.authorName}</span>
-                                              <p className="text-[7px] font-black text-blue-700 dark:text-blue-500 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>
+                                              {!sharedPost.authorIsOrganization && !users?.find(u => u.id === sharedPost.authorId)?.isOrganization && <p className="text-[7px] font-black text-blue-700 dark:text-blue-500 uppercase tracking-widest leading-none mt-0.5">{sharedPost.authorPosition}</p>}
                                             </div>
                                           </div>
                                           <span className="text-slate-400 text-[8px] font-bold whitespace-nowrap">{new Date(item.timestamp).toLocaleDateString()}</span>
@@ -1555,10 +2201,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               );
                             } else if (item.type === 'event') {
                               const event = item.data as CalendarEvent;
+                              const creatorId = event.creator_id || globalEvents.find(e => e.id === event.id)?.creator_id || '';
                               return (
                                 <div
                                   key={item.id}
-                                  onClick={() => onNavigateToEvent?.(event.creator_id, event.id)}
+                                  onClick={() => creatorId && onNavigateToEvent?.(creatorId, event.id)}
                                   className="p-0.5 rounded-2xl overflow-hidden cursor-pointer transition-all bg-gray-100 dark:bg-zinc-800 border-[0.5px] border-gray-200 dark:border-zinc-700 mb-4 last:mb-0"
                                 >
                                   <div className="p-0 bg-white dark:bg-[#111] border-[0.5px] border-gray-100 dark:border-zinc-800 rounded-xl flex flex-col shadow-sm overflow-hidden min-h-[100px]">
@@ -1582,7 +2229,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             } else if (item.type === 'link') {
                               const link = item.data as { url: string, text: string };
                               return (
-                                <div key={item.id} className="relative group/link bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-zinc-800 mb-4 last:mb-0">
+                                <div key={item.id} className="relative group/link [&>a]:mb-0">
                                   <LinkPreview url={link.url} language={language} />
                                   <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/50 backdrop-blur-sm rounded-full text-[9px] text-white font-bold pointer-events-none">
                                     {new Date(item.timestamp).toLocaleDateString()}
@@ -1650,7 +2297,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           {selectedImageGallery.urls.length > 1 && !isZoomed && (
             <div className="absolute top-8 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 text-white font-black text-xs tracking-[0.2em] uppercase z-[160] shadow-xl">
               <div className="flex items-center space-x-3">
-                <span className="text-blue-400">{selectedImageGallery.index + 1}</span>
+                <span className="text-white">{selectedImageGallery.index + 1}</span>
                 <span className="opacity-30">/</span>
                 <span>{selectedImageGallery.urls.length}</span>
               </div>
@@ -1677,6 +2324,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
 
       {contextMenu && (() => {
+        const isOptimistic = contextMenu.messageId?.startsWith('optimistic-') ?? false;
         const msg = chats.find(c => c.id === selectedId)?.messages.find(m => m.id === contextMenu.messageId);
         const trimmedText = msg?.text.trim() || '';
         const isImage = trimmedText.includes('data:image') ||
@@ -1688,7 +2336,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
         // Only allow editing if sent within the last 15 minutes and it's not a deleted message
         const canEditTime = msg ? (Date.now() - new Date(msg.timestamp).getTime() <= 15 * 60 * 1000) : false;
-        const showEdit = !isImage && !msg?.is_deleted && canEditTime;
+        const showEdit = !isImage && !msg?.is_deleted && canEditTime && !isOptimistic;
+        const showDelete = !isOptimistic;
+        if (!showEdit && !showDelete) return null;
 
         return (
           <div
@@ -1711,18 +2361,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 <span>{t('edit') || 'Editar'}</span>
               </button>
             )}
-            <button
-              onClick={() => {
-                if (contextMenu.messageId && selectedId) {
-                  onDeleteMessage(selectedId, contextMenu.messageId);
-                }
-                setContextMenu(null);
-              }}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 flex items-center space-x-2 transition-colors"
-            >
-              <Ban size={14} />
-              <span>Eliminar</span>
-            </button>
+            {showDelete && (
+              <button
+                onClick={() => {
+                  if (contextMenu.messageId && selectedId) {
+                    onDeleteMessage(selectedId, contextMenu.messageId);
+                  }
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 flex items-center space-x-2 transition-colors"
+              >
+                <Ban size={14} />
+                <span>Eliminar</span>
+              </button>
+            )}
           </div>
         );
       })()}

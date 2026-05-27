@@ -9,7 +9,10 @@ import { CreatePostModal } from './CreatePostModal';
 import { Language, useTranslation } from '../utils/translations';
 import { getSafeAvatar } from '../utils/avatarUtils';
 import { compressImage } from '../utils/imageUtils';
+import { safeLocalStorageSet } from '../utils/cacheUtils';
 import { EventPreview } from './EventPreview';
+import { LinkPreview } from './LinkPreview';
+import { extractAllExternalUrls, isExternalUrl } from '../utils/stringUtils';
 
 interface SelectedImage {
     id: string;
@@ -18,7 +21,7 @@ interface SelectedImage {
     status: 'uploading' | 'done' | 'error';
 }
 
-type FeedTab = 'for-you' | 'following';
+type FeedTab = 'for-you' | 'following' | 'admin';
 
 import { useScrollDirection } from '../hooks/useScrollDirection';
 
@@ -28,7 +31,7 @@ interface SocialFeedProps {
   onLike: (postId: string) => void;
   onVote: (postId: string, optionId: string) => void;
   onRepost: (postId: string) => void;
-  onAddPost: (content: string, type: 'post' | 'news', tags?: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string) => Promise<void>;
+  onAddPost: (content: string, type: 'post' | 'news', tags?: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string, showLinkPreview?: boolean, linkPreviewUrl?: string | null) => Promise<void>;
   onAddComment: (postId: string, content: string) => void;
   onLikeComment?: (commentId: string) => void;
   onLikeReply?: (replyId: string) => void;
@@ -52,39 +55,73 @@ interface SocialFeedProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   language: Language;
+  likedIds?: Set<string>;
+  votedUpIds?: Set<string>;
+  votedDownIds?: Set<string>;
+  repostedIds?: Set<string>;
   hasNewContent?: boolean;
   onRefresh?: () => void;
   pinnedPosts?: Set<string>;
   onTogglePin?: (postId: string) => void;
   chats?: Chat[];
+  chatsLoading?: boolean;
+  activeTab: FeedTab;
+  onTabChange: (tab: FeedTab) => void;
+  isLoading?: boolean;
+  feedFetched?: boolean;
 }
 
 export const SocialFeed: React.FC<SocialFeedProps> = ({
   posts, user, onLike, onVote, onRepost, onAddPost, onAddComment, onLikeComment, onLikeReply, onDeletePost, onSearchHashtag, onSharePost, onNavigateToProfile, onNavigateToPost, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, users = [], initialContent, prefilledEvent, onClearInitialContent, onViewCalendar, onNavigateToEvent, onShareViaChat, globalEvents = [],
-  onLoadMore, hasMore = false, isLoadingMore = false, language, hasNewContent = false, onRefresh,
-  pinnedPosts = new Set(), onTogglePin, chats = []
+  onLoadMore, hasMore = false, isLoadingMore = false, language, likedIds = new Set(), votedUpIds = new Set(), votedDownIds = new Set(), repostedIds = new Set(), hasNewContent = false, onRefresh,
+  pinnedPosts = new Set(), onTogglePin, chats = [], chatsLoading = false,
+  activeTab, onTabChange, isLoading = false, feedFetched = false
 }) => {
-  const [activeTab, setActiveTab] = useState<FeedTab>(() => {
-    const saved = sessionStorage.getItem('social_feed_tab') as FeedTab;
-    return saved || 'for-you';
-  });
+  const handleTabChange = (tab: FeedTab) => {
+    // 1. Save current scroll position before switching
+    scrollPositions.current[activeTab] = window.scrollY;
+    
+    // 2. Perform the switch
+    onTabChange(tab);
+    sessionStorage.setItem('social_feed_tab', tab);
+  };
+
+  // 3. Restore scroll position when activeTab changes
+  useEffect(() => {
+    const savedPos = scrollPositions.current[activeTab];
+    // We use a small timeout to let the new posts render before scrolling
+    // This provides a much smoother transition
+    const timer = setTimeout(() => {
+      window.scrollTo(0, savedPos);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
   const t = useTranslation(language);
   const scrollDirection = useScrollDirection();
 
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const hasMoreRef = useRef(hasMore);
+  const isLoadingMoreRef = useRef(isLoadingMore);
+  const isLoadingRef = useRef(isLoading);
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+  useEffect(() => { isLoadingMoreRef.current = isLoadingMore; }, [isLoadingMore]);
+  useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
+  useEffect(() => { onLoadMoreRef.current = onLoadMore; }, [onLoadMore]);
+
   useEffect(() => {
-    if (!onLoadMore) return;
-    const handleScroll = () => {
-      const scrollPos = window.innerHeight + window.scrollY;
-      const threshold = document.documentElement.scrollHeight - 800;
-      
-      if (scrollPos >= threshold && !isLoadingMore && hasMore) {
-        console.log(`[SocialFeed] Threshold reached! Loading more... (Scroll: ${scrollPos}, Threshold: ${threshold})`);
-        onLoadMore();
-      }
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [onLoadMore, isLoadingMore, hasMore]);
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMoreRef.current && !isLoadingMoreRef.current && !isLoadingRef.current) {
+          onLoadMoreRef.current?.();
+        }
+      },
+      { rootMargin: '300px' }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const [content, setContent] = useState('');
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -97,6 +134,47 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
   const [showEventDropdown, setShowEventDropdown] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [dismissedUrls, setDismissedUrls] = useState<Set<string>>(new Set());
+
+  const detectedUrls = useMemo(() => {
+    return extractAllExternalUrls(content, isExternalUrl);
+  }, [content]);
+
+  // Si una URL desaparece del texto, la quitamos de dismissedUrls; así al volver a
+  // pegarla se mostrará la preview de nuevo.
+  useEffect(() => {
+    setDismissedUrls(prev => {
+      const detectedSet = new Set(detectedUrls);
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach(u => { if (detectedSet.has(u)) next.add(u); else changed = true; });
+      return changed ? next : prev;
+    });
+  }, [detectedUrls]);
+
+  // Sólo se muestra UNA preview a la vez: la primera URL detectada que no esté cerrada.
+  // Si ya hay una visible, pegar otra URL no añade otra preview.
+  // La preview es mutuamente excluyente con imágenes y con eventos enlazados.
+  const activePreviewUrl = useMemo(() => {
+    if (selectedImages.length > 0 || linkedEvent) return null;
+    return detectedUrls.find(u => !dismissedUrls.has(u)) || null;
+  }, [detectedUrls, dismissedUrls, selectedImages.length, linkedEvent]);
+
+  const canShowLinkPreview = !!activePreviewUrl;
+
+  // Only show "No hay publicaciones" after the first fetch has completed and confirmed no posts
+  useEffect(() => {
+    if (posts.length > 0 || pinnedPosts.size > 0 || isLoading || !feedFetched) {
+      setShowEmpty(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowEmpty(true), 500);
+    return () => clearTimeout(timer);
+  }, [posts.length, pinnedPosts.size, isLoading, feedFetched]);
+
+  // INDEPENDENT SCROLL MEMORY
+  const scrollPositions = useRef<Record<string, number>>({ 'for-you': 0, 'following': 0 });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -105,15 +183,18 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
 
   useEffect(() => {
     const fetchUserEvents = async () => {
+      // "Tus eventos" del composer: todos los eventos creados por el usuario con
+      // fecha futura, sin importar el número de apoyos (attendees_count). El filtro
+      // de ≥50 apoyos sólo aplica a la vista del calendario público.
       const { data } = await supabase
         .from('user_events')
-        .select('*')
+        .select('id, creator_id, title, type, event_date, event_time, location, description, attendees_count, image_url')
         .eq('creator_id', user.id)
         .gte('event_date', new Date().toISOString().split('T')[0])
         .order('event_date', { ascending: true });
 
       if (data) {
-        setUserEvents(data.map(ev => ({
+        const mappedEvents = data.map(ev => ({
           id: ev.id,
           creator_id: ev.creator_id,
           title: ev.title,
@@ -122,8 +203,21 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
           event_time: ev.event_time,
           location: ev.location,
           description: ev.description,
-          attendees: ev.attendees_count
-        })));
+          attendees: ev.attendees_count,
+          image_url: ev.image_url
+        }));
+        setUserEvents(mappedEvents);
+        
+        // WARM THE CACHE: Store these events in the manifest so they load instantly if shared
+        try {
+          const manifest = JSON.parse(localStorage.getItem('event_manifest') || '{}');
+          mappedEvents.forEach(e => {
+            manifest[e.id] = e;
+          });
+          safeLocalStorageSet('event_manifest', JSON.stringify(manifest));
+        } catch (e) {
+          // Ignore — manifest warming is best-effort
+        }
       }
     };
     fetchUserEvents();
@@ -181,21 +275,11 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
   }, [initialContent, prefilledEvent]);
 
   const filteredPosts = useMemo(() => {
-    if (activeTab === 'following') {
-      return posts.filter(post => followedUserIds.has(post.authorId));
-    }
-    const myInterests = user.interests || [];
-    // If the user has no interests defined, show all posts (fallback)
-    if (myInterests.length === 0) return posts;
-    return posts.filter(post => {
-      if (post.authorId === user.id) return true;
-      const author = users.find(u => u.id === post.authorId);
-      if (!author) return true; // show post even if author data is missing
-      const authorInterests = author.interests || [];
-      if (authorInterests.length === 0) return true; // show posts from users with no interests set
-      return authorInterests.some(interest => myInterests.includes(interest));
-    });
-  }, [posts, activeTab, followedUserIds, users, user]);
+    // Sorting by timestamp: newest first
+    return posts
+      .filter(p => p.type === 'post' || p.type === 'repost')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [posts]);
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -267,13 +351,16 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
         .map(img => img.url as string);
 
       const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
-      await onAddPost(content, 'post', tags, uploadedImageUrls, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id);
-      
+      const showLinkPreview = canShowLinkPreview;
+      const linkPreviewUrl = activePreviewUrl;
+      await onAddPost(content, 'post', tags, uploadedImageUrls, selectedDoc?.url, selectedDoc?.name, linkedEvent?.id, undefined, showLinkPreview, linkPreviewUrl);
+
       setMentionQuery(null);
-      setContent(''); 
-      setSelectedImages([]); 
-      setSelectedDoc(null); 
+      setContent('');
+      setSelectedImages([]);
+      setSelectedDoc(null);
       setLinkedEvent(null);
+      setDismissedUrls(new Set());
       if (textareaRef.current) textareaRef.current.style.height = '';
     } catch (error) {
       console.error('Error publishing post:', error);
@@ -364,6 +451,7 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
           onShare={onShareViaChat} 
           post={sharingPost} 
           chats={chats}
+          chatsLoading={chatsLoading}
           language={language}
           currentUser={user}
           users={users}
@@ -375,8 +463,8 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
       <CreatePostModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onPost={async (content, type, tags, imageUrls, docUrl, docName, eventId, title) => {
-          await onAddPost(content, type, tags, imageUrls, docUrl, docName, eventId);
+        onPost={async (content, type, tags, imageUrls, docUrl, docName, eventId, title, showLinkPreview, linkPreviewUrl) => {
+          await onAddPost(content, type, tags, imageUrls, docUrl, docName, eventId, title, showLinkPreview, linkPreviewUrl);
         }}
         user={user}
         language={language}
@@ -394,12 +482,12 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
         ${scrollDirection === 'down' ? '-translate-y-[calc(100%+64px)] md:translate-y-0' : 'translate-y-0'}
       `}>
         <div className="w-full h-full max-w-4xl mx-auto flex items-center justify-between px-2 md:px-0">
-          <button onClick={() => setActiveTab('for-you')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+          <button onClick={() => handleTabChange('for-you')} className="flex-1 h-full text-xs font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'for-you' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('for_you')}</span>
             {activeTab === 'for-you' && <div className="absolute bottom-0 left-0 h-1 bg-blue-600 w-full rounded-t-lg md:left-1/2 md:-translate-x-1/2 md:w-1/2" />}
           </button>
           <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-          <button onClick={() => setActiveTab('following')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+          <button onClick={() => handleTabChange('following')} className="flex-1 h-full text-xs font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'following' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('following')}</span>
             {activeTab === 'following' && <div className="absolute bottom-0 left-0 h-1 bg-blue-600 w-full rounded-t-lg md:left-1/2 md:-translate-x-1/2 md:w-1/2" />}
           </button>
@@ -424,7 +512,6 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                     onPaste={handlePaste}
                     placeholder={t('post_placeholder')}
                     className="w-full bg-transparent border-none text-xl text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[50px] p-0"
-                    maxLength={500}
                   />
                   
                   {mentionQuery !== null && (
@@ -451,6 +538,21 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                         isCompact={false}
                         onRemove={() => setLinkedEvent(null)}
                       />
+                    </div>
+                  )}
+
+                  {/* Link preview: sólo una a la vez — la primera URL no cerrada */}
+                  {activePreviewUrl && (
+                    <div className="mt-4 max-w-lg relative group/linkprev">
+                      <LinkPreview url={activePreviewUrl} language={language} />
+                      <button
+                        type="button"
+                        onClick={() => setDismissedUrls(prev => new Set(prev).add(activePreviewUrl))}
+                        className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/linkprev:opacity-100"
+                        title="Quitar previsualización"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -533,13 +635,15 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
                       <input type="file" ref={fileInputRef} hidden accept="image/*" multiple onChange={handleImageUpload} />
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors" disabled={selectedImages.length >= 4}><ImageIcon size={20} /></button>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled={selectedImages.length >= 4 || canShowLinkPreview || !!linkedEvent} title={canShowLinkPreview ? 'Quita la previsualización del enlace para adjuntar imágenes' : linkedEvent ? 'Quita el evento para adjuntar imágenes' : ''}><ImageIcon size={20} /></button>
                       <div className="relative">
                         <button
                           ref={eventButtonRef}
                           type="button"
                           onClick={() => setShowEventDropdown(!showEventDropdown)}
-                          className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
+                          disabled={canShowLinkPreview || selectedImages.length > 0}
+                          title={canShowLinkPreview ? 'Quita la previsualización del enlace para adjuntar un evento' : selectedImages.length > 0 ? 'Quita las imágenes para adjuntar un evento' : ''}
+                          className={`p-2 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
                         >
                           <Calendar size={20} />
                         </button>
@@ -616,25 +720,29 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                       onLike={onLike}
                       onVote={onVote}
                       onRepost={onRepost}
-                      onComment={(content) => onAddComment(post.id, content)}
+                      onAddComment={onAddComment}
                       onLikeComment={onLikeComment}
                       onLikeReply={onLikeReply}
-                      onDelete={onDeletePost}
-                      onTagClick={onSearchHashtag}
-                      currentUserId={user.id}
+                      onDeletePost={onDeletePost}
+                      onSearchHashtag={onSearchHashtag}
+                      currentUser={user}
                       onOpenShare={setSharingPost}
                       onNavigateToProfile={onNavigateToProfile}
                       onNavigateToPost={onNavigateToPost}
-                      isFollowed={followedUserIds.has(post.authorId)}
-                      isFollowingMe={followerUserIds.has(post.authorId)}
-                      onToggleFollow={() => onToggleFollow(post.authorId)}
+                      followedUserIds={followedUserIds}
+                      followerUserIds={followerUserIds}
+                      onToggleFollow={onToggleFollow}
                       users={users}
                       language={language}
                       onNavigateToEvent={onNavigateToEvent}
-                      onShareViaChat={onShareViaChat}
                       chats={chats}
+                      showMenu={false}
                       isPinned={pinnedPosts.has(post.id)}
                       onTogglePin={onTogglePin}
+                      likedIds={likedIds}
+                      votedUpIds={votedUpIds}
+                      votedDownIds={votedDownIds}
+                      repostedIds={repostedIds}
                     />
                   </div>
                 );
@@ -643,16 +751,41 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
                 return null;
               }
             })
-          ) : (
-            <div className="bg-white dark:bg-[#111] rounded-[2rem] p-12 text-center border border-gray-100 dark:border-zinc-800 shadow-sm">
+          ) : (isLoading || !feedFetched) ? (
+            // Skeleton Loader for Instant Feel — shown while loading OR before first fetch completes
+            [1, 2, 3].map(i => (
+              <div key={i} className="bg-white dark:bg-[#111] rounded-[2rem] p-6 border border-gray-100 dark:border-zinc-800 animate-pulse">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="w-12 h-12 bg-gray-200 dark:bg-zinc-800 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-1/4" />
+                    <div className="h-3 bg-gray-200 dark:bg-zinc-800 rounded w-1/6" />
+                  </div>
+                </div>
+                <div className="space-y-3 px-16">
+                  <div className="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-full" />
+                  <div className="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-5/6" />
+                  <div className="h-4 bg-gray-200 dark:bg-zinc-800 rounded w-4/6" />
+                </div>
+                <div className="mt-6 flex items-center justify-between px-16">
+                   <div className="h-8 w-16 bg-gray-100 dark:bg-zinc-900 rounded-xl" />
+                   <div className="h-8 w-16 bg-gray-100 dark:bg-zinc-900 rounded-xl" />
+                   <div className="h-8 w-16 bg-gray-100 dark:bg-zinc-900 rounded-xl" />
+                </div>
+              </div>
+            ))
+          ) : showEmpty ? (
+            <div className="bg-white dark:bg-[#111] rounded-[2rem] p-12 text-center border border-gray-100 dark:border-zinc-800 shadow-sm animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-gray-50 dark:bg-zinc-900 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Sparkles size={40} className="text-gray-300" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No hay publicaciones aún</h3>
               <p className="text-gray-500 max-w-sm mx-auto">Sigue a otros usuarios o publica algo para empezar a ver contenido en tu feed.</p>
             </div>
-          )}
+          ) : null}
           
+          <div ref={sentinelRef} className="h-1" />
+
           {isLoadingMore && (
             <div className="flex justify-center py-8">
               <div className="relative w-12 h-12">
@@ -672,16 +805,6 @@ export const SocialFeed: React.FC<SocialFeedProps> = ({
             </div>
           )}
 
-          {(hasMore && !isLoadingMore) && (
-        <div className="py-8 hidden sm:flex justify-center">
-          <button 
-            onClick={(e) => { e.stopPropagation(); onLoadMore?.(); }}
-            className="px-8 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl font-black text-sm hover:bg-blue-100 transition-all active:scale-95 shadow-sm border border-blue-100 dark:border-blue-900/30"
-          >
-            {t('load_more_posts')}
-          </button>
-        </div>
-      )}
       </div>
     </div>
   </div>

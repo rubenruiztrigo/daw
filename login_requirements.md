@@ -83,7 +83,7 @@ Al continuar, se acepta implícitamente la Política de Privacidad (con enlace p
 | 1 | Datos básicos | nombre, apellidos, username, fecha nacimiento, email, contraseña, confirmar contraseña |
 | 2 | Tipo de puesto | jobCategory: Directivo / Técnico / Administrativo / Otro |
 | 3 | Tipo de organización | administrationType: AGE / CCAA / Local / Otra |
-| 4 | Cargo y departamento | position, department |
+| 4 | Cargo e institución | position, institution |
 | 5 | Ubicación geográfica | country (default: España), region |
 | 6 | Intereses | Mínimo 1 interés seleccionado |
 | 7 | Foto de perfil | Opcional (tiene imagen por defecto) |

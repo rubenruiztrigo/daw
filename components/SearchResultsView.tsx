@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Post, User } from '../types';
+import { Post, User, CalendarEvent } from '../types';
 import { sortUsersByRelevance } from '../utils/mentionUtils';
 import { supabase } from '../supabaseClient';
-import { Search, ArrowLeft, Users, Zap, Clock, Filter, Check, X, Loader2, UserPlus, UserMinus, ChevronDown, Sparkles } from 'lucide-react';
+import { Search, ArrowLeft, Users, Zap, Clock, Filter, Check, X, Loader2, UserPlus, UserMinus, ChevronDown, Sparkles, CalendarDays } from 'lucide-react';
 import { PostCard } from './PostCard';
 import { NewsCard } from './NewsCard';
+import { EventPreview } from './EventPreview';
 import { normalizeString } from '../utils/stringUtils';
 import { Language, useTranslation } from '../utils/translations';
 import { getSafeAvatar } from '../utils/avatarUtils';
@@ -34,12 +35,17 @@ interface SearchResultsViewProps {
   onToggleFollow?: (userId: string) => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   globalEvents?: any[];
-  language: Language;
+  language?: Language;
   chats?: any[];
+  likedIds?: Set<string>;
+  votedUpIds?: Set<string>;
+  votedDownIds?: Set<string>;
+  repostedIds?: Set<string>;
 }
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
-  query, posts, users, onLike, onVote, onRepost, onAddComment, onLikeComment, onLikeReply, onDeletePost, onViewChange, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent, globalEvents = [], language, chats = []
+  query, posts, users, onLike, onVote, onRepost, onAddComment, onLikeComment, onLikeReply, onDeletePost, onViewChange, onSearchHashtag, onShareViaChat, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, followedUserIds = new Set(), followerUserIds = new Set(), onToggleFollow, onNavigateToEvent, globalEvents = [], language, chats = [],
+  likedIds = new Set(), votedUpIds = new Set(), votedDownIds = new Set(), repostedIds = new Set()
 }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'featured' | 'latest' | 'people'>(() => {
@@ -101,7 +107,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       (user.lastName && normalizeString(user.lastName).includes(normalizedQuery)) ||
       (user.username && normalizeString(user.username).includes(normalizedQuery)) ||
       (user.position && normalizeString(user.position).includes(normalizedQuery)) ||
-      (user.department && normalizeString(user.department).includes(normalizedQuery))
+      (user.institution && normalizeString(user.institution).includes(normalizedQuery))
     );
     return sortUsersByRelevance(filtered, query);
   }, [users, normalizedQuery, query]);
@@ -157,21 +163,23 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         return;
       }
 
-      let postsQuery = supabase.from('posts').select('*');
-      let newsQuery = supabase.from('news').select('*');
+      // Sin joins: enriquecemos con autores/eventos en cliente usando el estado local.
+      // Los joins con profiles y user_events añadían latencia considerable por fila.
+      let postsQuery = supabase.from('posts').select('id, author_id, content, created_at, likes_count, comments_count, reposts_count, image_url, tags, event_id, is_pinned, pinned_at, show_link_preview, link_preview_url, doc_url, doc_name');
+      let newsQuery = supabase.from('news').select('id, author_id, content, titulo, created_at, likes_count, comments_count, reposts_count, up_votes_count, down_votes_count, image_url, tags, linked_event_id, is_pinned, pinned_at, show_link_preview, link_preview_url');
 
+      // Usamos ilike en ambos casos: mucho más rápido que imatch (regex POSIX).
+      // Si hace falta excluir coincidencias precedidas por '#' (búsqueda plana
+      // que no debe encontrar hashtags), lo filtramos en cliente tras recibir.
+      const likeTerm = `%${searchTerm}%`;
+      
       if (isHashtagSearch) {
-        // Búsqueda explícita de hashtag: usar ilike normal
-        const likeTerm = `%${searchTerm}%`;
-        postsQuery = postsQuery.or(`content.ilike.${likeTerm}`);
-        newsQuery = newsQuery.or(`content.ilike.${likeTerm}`);
+        const tag = searchTerm.startsWith('#') ? searchTerm.slice(1) : searchTerm;
+        postsQuery = postsQuery.or(`content.ilike.${likeTerm},tags.cs.{${tag}}`);
+        newsQuery = newsQuery.or(`content.ilike.${likeTerm},titulo.ilike.${likeTerm},tags.cs.{${tag}}`);
       } else {
-        // Búsqueda de texto plano: excluir si está precedido por #
-        // Usamos regex POSIX de Postgres: (^|[^#]) para asegurar que no hay un # justo antes
-        // Nota: usamos imatch (~) para case-insensitive regex
-        const regexTerm = `(^|[^#])${searchTerm}`;
-        postsQuery = postsQuery.filter('content', 'imatch', regexTerm);
-        newsQuery = newsQuery.filter('content', 'imatch', regexTerm);
+        postsQuery = postsQuery.ilike('content', likeTerm);
+        newsQuery = newsQuery.or(`content.ilike.${likeTerm},titulo.ilike.${likeTerm}`);
       }
 
       if (filterType === 'post') {
@@ -185,60 +193,91 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
       const [postsRes, newsRes] = await Promise.all([
         (filterType !== 'news') ? postsQuery.range(offset, offset + limit - 1) : Promise.resolve({ data: [] }),
-        (filterType !== 'post') ? newsQuery.range(offset, offset + limit - 1) : Promise.resolve({ data: [] })
+        (filterType !== 'post') ? newsQuery.range(offset, offset + limit - 1) : Promise.resolve({ data: [] }),
       ]);
 
-      const newPosts = (postsRes.data || []).map((p: any) => ({ ...p, type: 'post' as const }));
-      const newNews = (newsRes.data || []).map((n: any) => ({ ...n, type: 'news' as const }));
+      // Si no es búsqueda de hashtag, filtramos las coincidencias que sólo
+      // aparecen precedidas por '#' (para que "evento" no traiga sólo "#evento").
+      const excludeHashtagOnly = (item: any) => {
+        if (isHashtagSearch) return true;
+        const content = (item.content || '').toLowerCase();
+        const needle = searchTerm.toLowerCase();
+        let idx = content.indexOf(needle);
+        while (idx !== -1) {
+          if (idx === 0 || content[idx - 1] !== '#') return true;
+          idx = content.indexOf(needle, idx + 1);
+        }
+        return false;
+      };
+
+      const newPosts = (postsRes.data || []).filter(excludeHashtagOnly).map((p: any) => ({ ...p, type: 'post' as const }));
+      const newNews = (newsRes.data || []).filter(excludeHashtagOnly).map((n: any) => ({ ...n, type: 'news' as const }));
 
       const usersMap = new Map<string, User>(users.map(u => [u.id, u]));
 
       const enrich = (item: any): Post => {
-        const author = usersMap.get(item.author_id);
-        const enrichedAuthor = {
-          authorName: author ? `${author.name} ${author.lastName || ''}`.trim() : 'Usuario',
-          authorUsername: author?.username,
-          authorAvatar: getSafeAvatar(author?.avatar),
-          authorPosition: author?.position || '',
-        };
+        // Prefer joined author data, fall back to local users array
+        const joinedAuthor = item.author;
+        const localAuthor = usersMap.get(item.author_id);
+        const authorSource = joinedAuthor || localAuthor;
+        const authorName = authorSource
+          ? `${authorSource.name} ${authorSource.last_name || authorSource.lastName || ''}`.trim()
+          : 'Usuario';
 
         return {
-          ...item,
-          ...enrichedAuthor,
-          title: item.title || item.titulo,
-          imageUrl: item.imageUrl || item.image_url || [],
+          id: item.id,
+          authorId: item.author_id,
+          authorName,
+          authorUsername: authorSource?.username,
+          authorAvatar: getSafeAvatar(authorSource?.avatar),
+          authorPosition: authorSource?.position || '',
+          title: item.titulo || item.title || '',
+          content: item.content || '',
+          imageUrl: item.image_url || [],
+          docUrl: item.doc_url,
+          docName: item.doc_name,
+          timestamp: item.created_at,
+          type: item.type,
+          tags: item.tags || [],
           likes: item.likes_count || 0,
+          upvotes: item.up_votes_count ?? 0,
+          downvotes: item.down_votes_count ?? 0,
           comments: item.comments_count || 0,
           reposts: item.reposts_count || 0,
-          userLiked: false,
-          userDownvoted: false,
-          userReposted: false,
+          userLiked: likedIds.has(item.id) || votedUpIds.has(item.id),
+          userDownvoted: votedDownIds.has(item.id),
+          userReposted: repostedIds.has(item.id),
           commentsList: [],
-          tags: item.tags || [],
-          timestamp: item.created_at,
+          isPinned: item.is_pinned,
+          pinnedAt: item.pinned_at,
+          linkedEventId: item.event_id || item.linked_event_id,
+          linkedEvent: item.linked_event || undefined,
+          showLinkPreview: item.show_link_preview !== false,
+          linkPreviewUrl: item.link_preview_url ?? null,
+          authorIsOrganization: !!(authorSource?.isOrganization || authorSource?.is_organization || authorSource?.authorIsOrganization || false),
         };
       };
 
+      // No ordenamos aquí — la UI ordena mediante useMemo según activeTab
+      // para que cambiar de pestaña sea instantáneo y no re-consulte.
       const combined = [...newPosts, ...newNews].map(enrich);
 
-      if (activeTab === 'featured') {
-        combined.sort((a, b) => ((b.likes || 0) + (b.comments || 0)) - ((a.likes || 0) + (a.comments || 0)));
-      } else {
-        combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      }
+      const safeSessionSet = (key: string, value: string) => {
+        try { sessionStorage.setItem(key, value); } catch { sessionStorage.removeItem('last_search_results'); }
+      };
 
       if (offset === 0) {
         setSearchResults(combined);
-        sessionStorage.setItem('last_search_results', JSON.stringify(combined));
-        sessionStorage.setItem('last_search_query', query);
-        sessionStorage.setItem('last_search_offset', '0');
+        safeSessionSet('last_search_results', JSON.stringify(combined.slice(0, 30)));
+        safeSessionSet('last_search_query', query);
+        safeSessionSet('last_search_offset', '0');
       } else {
         setSearchResults(prev => {
           const existingIds = new Set(prev.map(p => p.id));
           const filtered = combined.filter(p => !existingIds.has(p.id));
           const updated = [...prev, ...filtered];
-          sessionStorage.setItem('last_search_results', JSON.stringify(updated));
-          sessionStorage.setItem('last_search_offset', offset.toString());
+          safeSessionSet('last_search_results', JSON.stringify(updated.slice(0, 30)));
+          safeSessionSet('last_search_offset', offset.toString());
           return updated;
         });
       }
@@ -255,21 +294,33 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       setIsSearching(false);
       setIsLoadingMore(false);
     }
-  }, [normalizedQuery, filterType, activeTab, users]);
+  }, [normalizedQuery, filterType, users]);
 
   const isInitialMount = useRef(true);
   const lastSearchKey = useRef("");
 
+  // Orden derivado de activeTab sobre los mismos resultados — sin refetch al cambiar tab
+  const sortedResults = useMemo(() => {
+    const copy = [...searchResults];
+    if (activeTab === 'featured') {
+      copy.sort((a, b) => ((b.likes || 0) + (b.comments || 0)) - ((a.likes || 0) + (a.comments || 0)));
+    } else {
+      copy.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+    return copy;
+  }, [searchResults, activeTab]);
+
   useEffect(() => {
     const trimmedQuery = normalizedQuery.trim();
-    if (trimmedQuery.length < 3) {
+    const isHashtag = trimmedQuery.startsWith('#');
+    if (trimmedQuery.length < (isHashtag ? 2 : 3)) {
       setSearchResults([]);
       setHasMoreResults(false);
       lastSearchKey.current = "";
       return;
     }
 
-    const currentSearchKey = `${normalizedQuery}-${filterType}-${activeTab}`;
+    const currentSearchKey = `${normalizedQuery}-${filterType}`;
 
     // Si acabamos de montar y ya tenemos resultados restaurados de cache,
     // o si el "key" de la búsqueda no ha cambiado realmente (evitar re-fetch por actualización de 'users'),
@@ -287,7 +338,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     setVisiblePeopleLimit(10);
     fetchSearchResults(0, 10, false);
     isInitialMount.current = false;
-  }, [normalizedQuery, filterType, activeTab, fetchSearchResults, searchResults.length]);
+  }, [normalizedQuery, filterType, fetchSearchResults, searchResults.length]);
 
   const handleLocalVote = useCallback((id: string, dir: 'up' | 'down') => {
     setSearchResults(prev => prev.map(p => {
@@ -372,12 +423,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   const handleLocalSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!localQuery.trim()) return;
+    const trimmed = localQuery.trim();
+    if (!trimmed) return;
 
-    const url = new URL(window.location.href);
-    url.searchParams.set('q', localQuery);
+    // Formato ultra-limpio ?=valor o ?=#hashtag
+    navigate(`/buscar?=${trimmed}`);
     searchInputRef.current?.blur();
-    navigate(`/buscar${url.search}`);
   };
 
   return (
@@ -462,13 +513,13 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       <div className="space-y-3">
         {(activeTab === 'featured' || activeTab === 'latest') && (
           <>
-            {searchResults.length === 0 && !isSearching ? (
+            {sortedResults.length === 0 && !isSearching ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[32px] border border-dashed border-gray-200 dark:border-zinc-800 w-full">
                 <Zap className="mx-auto text-gray-200 dark:text-zinc-800 mb-4" size={48} />
                 <p className="text-gray-400 dark:text-zinc-600 font-bold italic">{t('no_posts_found')}</p>
               </div>
             ) : (
-              searchResults.map(post => {
+              sortedResults.map(post => {
                 if (post.type === 'news') {
                   return (
                     <NewsCard
@@ -477,6 +528,8 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                       onVote={handleLocalVote}
                       onRepost={handleLocalRepost}
                       onAddComment={onAddComment}
+                      onLikeComment={onLikeComment}
+                      onLikeReply={onLikeReply}
                       currentUser={currentUser}
                       followedUserIds={followedUserIds}
                       users={users}
@@ -485,6 +538,9 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                       onSearchHashtag={onSearchHashtag}
                       onPreviewImage={onPreviewImage}
                       onOpenShare={(p) => setSharingPost(p)}
+                      onNavigateToEvent={onNavigateToEvent}
+                      onViewCalendar={() => onViewChange('calendar')}
+                      globalEvents={globalEvents}
                       language={language}
                     />
                   );
@@ -515,6 +571,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                     users={users}
                     onNavigateToEvent={onNavigateToEvent}
                     globalEvents={globalEvents}
+                    onViewCalendar={() => onViewChange('calendar')}
                     language={language}
                   />
                 );
@@ -555,7 +612,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                     <div className="min-w-0">
                       <h4 className="font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors truncate">{person.name} {person.lastName || ''}</h4>
                       <p className="text-xs text-blue-600 dark:text-blue-400 font-bold truncate">{person.position}</p>
-                      <p className="text-[10px] text-gray-400 dark:text-zinc-500 font-black uppercase tracking-widest mt-1 truncate">{person.department}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-zinc-500 font-black uppercase tracking-widest mt-1 truncate">{person.institution}</p>
                     </div>
                   </div>
                   {person.id !== currentUser.id && (

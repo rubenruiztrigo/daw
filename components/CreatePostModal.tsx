@@ -6,9 +6,11 @@ import { Language, useTranslation } from '../utils/translations';
 import { CalendarEvent, User as UserType } from '../types';
 import { MENTION_REGEX, getMentionSuggestions } from '../utils/mentionUtils';
 import { EventPreview } from './EventPreview';
+import { LinkPreview } from './LinkPreview';
 import { getSafeAvatar } from '../utils/avatarUtils';
 import { supabase } from '../supabaseClient';
 import { compressImage } from '../utils/imageUtils';
+import { extractAllExternalUrls, isExternalUrl } from '../utils/stringUtils';
 
 interface SelectedImage {
     id: string;
@@ -20,7 +22,7 @@ interface SelectedImage {
 interface CreatePostModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
+    onPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string, showLinkPreview?: boolean, linkPreviewUrl?: string | null) => Promise<void>;
     user: UserType;
     type?: 'post' | 'news';
     language: Language;
@@ -50,6 +52,34 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const [showEventDropdown, setShowEventDropdown] = useState(false);
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+    // URLs que el usuario cerró con la X.
+    const [dismissedUrls, setDismissedUrls] = useState<Set<string>>(new Set());
+
+    // Todas las URLs externas detectadas en el texto.
+    const detectedUrls = useMemo(() => {
+        return extractAllExternalUrls(content, isExternalUrl);
+    }, [content]);
+
+    // Si una URL desaparece del texto, la quitamos de dismissedUrls; al pegarla
+    // de nuevo volverá a mostrarse la preview.
+    useEffect(() => {
+        setDismissedUrls(prev => {
+            const detectedSet = new Set(detectedUrls);
+            let changed = false;
+            const next = new Set<string>();
+            prev.forEach(u => { if (detectedSet.has(u)) next.add(u); else changed = true; });
+            return changed ? next : prev;
+        });
+    }, [detectedUrls]);
+
+    // Sólo UNA preview a la vez: la primera URL detectada que no esté cerrada.
+    // Mutuamente excluyente con imágenes y con eventos enlazados.
+    const activePreviewUrl = useMemo(() => {
+        if (selectedImages.length > 0 || linkedEvent) return null;
+        return detectedUrls.find(u => !dismissedUrls.has(u)) || null;
+    }, [detectedUrls, dismissedUrls, selectedImages.length, linkedEvent]);
+
+    const canShowLinkPreview = !!activePreviewUrl;
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -75,6 +105,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         if (isOpen) {
             if (initialContent) setContent(initialContent);
             if (prefilledEvent) setLinkedEvent(prefilledEvent);
+            setDismissedUrls(new Set());
             setTimeout(() => {
                 textareaRef.current?.focus();
             }, 100);
@@ -185,13 +216,18 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 .map(img => img.url as string);
 
             const tags = content.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
-            await onPost(content, type, tags, uploadedImageUrls, undefined, undefined, linkedEvent?.id, title);
+            // showLinkPreview: sólo cuando hay URL externa visible (no hay imágenes ni
+            // está cerrada). linkPreviewUrl guarda CUÁL URL se muestra.
+            const showLinkPreview = canShowLinkPreview;
+            const linkPreviewUrl = activePreviewUrl;
+            await onPost(content, type, tags, uploadedImageUrls, undefined, undefined, linkedEvent?.id, title, showLinkPreview, linkPreviewUrl);
 
             setMentionQuery(null);
             setTitle('');
             setContent('');
             setSelectedImages([]);
             setLinkedEvent(null);
+            setDismissedUrls(new Set());
             if (textareaRef.current) textareaRef.current.style.height = '';
             onClose();
         } catch (error) {
@@ -348,7 +384,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                     }}
                                     onPaste={handlePaste}
                                     placeholder={`${type === 'post' ? t('post_placeholder') : t('share_your_news')}`}
-                                    maxLength={1000}
+                                    maxLength={type === 'post' ? undefined : 1000}
                                     className={`w-full bg-transparent border-none text-lg text-slate-900 dark:text-white placeholder-slate-400 focus:ring-0 focus:outline-none resize-none min-h-[40px] max-h-[400px] p-0 transition-all duration-200 pr-4 overflow-hidden`}
                                 />
 
@@ -379,6 +415,21 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                             isCompact={false}
                                             onRemove={() => setLinkedEvent(null)}
                                         />
+                                    </div>
+                                )}
+
+                                {/* Link preview — sólo una a la vez */}
+                                {activePreviewUrl && (
+                                    <div className="mt-4 relative group/linkprev">
+                                        <LinkPreview url={activePreviewUrl} language={language} />
+                                        <button
+                                            type="button"
+                                            onClick={() => setDismissedUrls(prev => new Set(prev).add(activePreviewUrl))}
+                                            className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/linkprev:opacity-100"
+                                            title="Quitar previsualización"
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -477,7 +528,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
-                                className={`p-2 ${type === 'post' ? 'text-blue-500 hover:bg-blue-50' : 'text-orange-500 hover:bg-orange-50'} dark:hover:bg-zinc-800 rounded-full transition-colors`}
+                                disabled={canShowLinkPreview || !!linkedEvent}
+                                title={canShowLinkPreview ? 'Quita la previsualización del enlace para adjuntar imágenes' : linkedEvent ? 'Quita el evento para adjuntar imágenes' : ''}
+                                className={`p-2 ${type === 'post' ? 'text-blue-500 hover:bg-blue-50' : 'text-orange-500 hover:bg-orange-50'} dark:hover:bg-zinc-800 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent`}
                             >
                                 <ImageIcon size={24} />
                             </button>
@@ -487,7 +540,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                                         ref={eventButtonRef}
                                         type="button"
                                         onClick={() => setShowEventDropdown(!showEventDropdown)}
-                                        className={`p-2 rounded-full transition-colors ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
+                                        disabled={canShowLinkPreview || selectedImages.length > 0}
+                                        title={canShowLinkPreview ? 'Quita la previsualización del enlace para adjuntar un evento' : selectedImages.length > 0 ? 'Quita las imágenes para adjuntar un evento' : ''}
+                                        className={`p-2 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${showEventDropdown || linkedEvent ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'text-blue-500 hover:bg-blue-50 dark:hover:bg-zinc-800'}`}
                                     >
                                         <Calendar size={24} />
                                     </button>

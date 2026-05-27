@@ -50,7 +50,7 @@ export const UserInfoDropdown: React.FC<UserInfoDropdownProps> = ({
         <div className="space-y-1 mb-4">
           <h4 className="font-black text-slate-900 dark:text-white leading-tight">{userInfo.name} {userInfo.lastName || ''}</h4>
           <p className="text-[10px] text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest">{userInfo.position}</p>
-          <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold truncate">{userInfo.department}</p>
+          <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold truncate">{userInfo.institution}</p>
         </div>
 
         <p className="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 mb-4 font-medium leading-relaxed">

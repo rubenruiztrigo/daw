@@ -1,10 +1,10 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Post, CalendarEvent, Chat, BADGE_CATALOG, Badge, calculateNovas } from '../types';
-import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck, Mic, GraduationCap, Info } from 'lucide-react';
+import { Briefcase, MapPin, Share2, Edit3, Calendar, LayoutGrid, Newspaper, UserPlus, UserMinus, Camera, MessageCircle, Plus, Award, Maximize2, X, Check, Palette, Repeat, Clock, Users, ChevronRight, Sparkles, AlignLeft, Save, Loader2, Heart, CheckCircle2, Megaphone, Trophy, Target, Zap, Crown, Star, Medal, BadgeCheck, Mic, GraduationCap, Info, Trash2 } from 'lucide-react';
 import { RankingHistoryModal } from './RankingHistoryModal';
 import { PreferencesModal } from './PreferencesModal';
 import { ShareModal } from './ShareModal';
@@ -16,9 +16,12 @@ import { LevelsListModal } from './LevelsListModal';
 import { getLevelInfo, getBannerStyle } from '../utils/gamificationUtils';
 import { supabase } from '../supabaseClient';
 import { Language, useTranslation } from '../utils/translations';
-import { getSafeAvatar } from '../utils/avatarUtils';
+import { getSafeAvatar, DEFAULT_AVATAR } from '../utils/avatarUtils';
 import { EventPreview } from './EventPreview';
 import { generateDefaultEventImage } from '../utils/eventImageUtils';
+import { PersonalDataModal } from './PersonalDataModal';
+
+
 
 const BADGE_IMAGES: Record<string, string> = {
   'congress_2024': '/img/insignias/Congreso_2024.png',
@@ -42,9 +45,13 @@ const BADGE_IMAGES: Record<string, string> = {
   'award_digital_transformation': '/img/insignias/Excelencia_2025.png',
   'award_people_management': '/img/insignias/Excelencia_2025.png',
   'award_good_government': '/img/insignias/Excelencia_2025.png',
+  'ranking_top1': '/img/insignias/top-1.png',
+  'ranking_top2': '/img/insignias/top-2.png',
+  'ranking_top3': '/img/insignias/top-3.png',
 };
 
 const getBadgeImage = (b: any) => {
+  if (b.image_url) return b.image_url;
   const id = (b.id || '').toLowerCase();
   const label = (b.label || '').toLowerCase();
   if (BADGE_IMAGES[id]) return BADGE_IMAGES[id];
@@ -54,7 +61,7 @@ const getBadgeImage = (b: any) => {
   if (id.includes('2024') && (id.includes('congres') || label.includes('congres'))) return '/img/insignias/Congreso_2024.png';
   if (id.includes('2025') && (id.includes('congres') || label.includes('congres'))) return '/img/insignias/Congreso_2025.png';
   if (b.category === 'premios_excelencia' || id.startsWith('award_') || label.includes('excelencia')) return '/img/insignias/Excelencia_2025.png';
-  return '/img/novagob.brand_isotipo_black.svg';
+  return '/img/insignias/insignia-degradado.png';
 };
 
 type ProfileTab = 'posts' | 'news' | 'reposts' | 'events' | 'badges';
@@ -79,12 +86,15 @@ interface ProfileViewProps {
   onVote?: (id: string, dir: 'up' | 'down') => void;
   onRepost: (id: string) => void;
   onAddComment?: (postId: string, text: string) => void;
+  onAddReply?: (commentId: string, text: string, parentReplyId?: string) => void;
+  onVoteComment?: (commentId: string, dir: 'up' | 'down') => void;
+  onSupportEvent?: (event: any) => void;
   users: User[];
   onSearchHashtag?: (tag: string) => void;
   onNavigateToEvent?: (userId: string, eventId: string) => void;
   focusedEventId?: string | null;
   onClearFocusedEvent?: () => void;
-  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void;
+  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
   onPromoteEvent?: (event: CalendarEvent) => void;
   chats?: Chat[];
   followerUserIds?: Set<string>;
@@ -97,6 +107,13 @@ interface ProfileViewProps {
   onLoadMore?: (authorId: string) => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
+  likedIds?: Set<string>;
+  votedUpIds?: Set<string>;
+  votedDownIds?: Set<string>;
+  repostedIds?: Set<string>;
+  hasMoreNews?: boolean;
+  isLoadingMoreNews?: boolean;
+  isLoadingProfileFeed?: boolean;
 }
 
 
@@ -179,7 +196,7 @@ const CreateEventModal: React.FC<{
   userId: string,
   onClose: () => void,
   onSave: () => void,
-  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void,
+  onAddPost?: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>,
   language: Language
 }> = ({ userId, onClose, onSave, onAddPost, language }) => {
   const [loading, setLoading] = useState(false);
@@ -242,21 +259,23 @@ const CreateEventModal: React.FC<{
         description: formData.description,
         image_url: finalImageUrl
       })
-      .select()
+      .select('id')
       .maybeSingle();
 
     if (!error && data) {
       if (shouldPromote && onAddPost) {
-        const typeTag = formData.type === 'online'
-          ? (language === 'es' ? 'Online' : 'Online')
-          : (language === 'es' ? 'Presencial' : 'Physical');
+        const eventTag = (formData.title || '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join('');
 
-        const promoText = `¡Mira este nuevo evento! #Evento #${typeTag}`;
+        const promoText = `¡Mira este nuevo evento! #${eventTag}`;
 
         await onAddPost(
           promoText,
           'post',
-          ['Evento', typeTag],
+          [eventTag],
           undefined,
           undefined,
           undefined,
@@ -510,12 +529,21 @@ const EventDetailsModal: React.FC<{
   const t = useTranslation(language);
   const eventDate = new Date(event.event_date);
   const formattedDate = eventDate.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  const [isClosing, setIsClosing] = useState(false);
   useScrollLock();
 
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 250);
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}>
-      <div 
-        className="bg-white dark:bg-[#111] w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-zinc-800 animate-in zoom-in-95 duration-300 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+    <div
+      className={`fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-250 ${isClosing ? 'opacity-0' : 'animate-in fade-in duration-300'}`}
+      onClick={handleClose}
+    >
+      <div
+        className={`bg-white dark:bg-[#111] w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-[2.5rem] shadow-2xl border border-gray-100 dark:border-zinc-800 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden transition-all duration-250 ${isClosing ? 'opacity-0 scale-95' : 'animate-in zoom-in-95 duration-300'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative h-48 md:h-64 bg-slate-50 dark:bg-zinc-900/30 overflow-hidden">
@@ -543,8 +571,8 @@ const EventDetailsModal: React.FC<{
             </button>
           </div>
 
-          <button 
-            onClick={onClose}
+          <button
+            onClick={handleClose}
             className="absolute top-6 right-6 p-2 bg-black/20 backdrop-blur-md text-white rounded-full hover:bg-black/40 transition-all z-10 border border-white/10"
           >
             <X size={20} />
@@ -584,7 +612,12 @@ const EventDetailsModal: React.FC<{
 
           <div className="flex gap-3 pt-1">
             <button
-              onClick={() => onSupport(event.id)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSupport(event.id);
+              }}
               className={`flex-1 h-14 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center space-x-2 border shadow-sm ${isSupported
                 ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-200 dark:border-blue-800'
                 : 'bg-white dark:bg-zinc-900 text-slate-400 border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:text-slate-600'
@@ -610,27 +643,40 @@ const EventDetailsModal: React.FC<{
     document.body
   );
 };
-
 export const ProfileView: React.FC<ProfileViewProps> = ({
   user, isCurrentUser, isFollowed, isFollower, onToggleFollow, onStartChat, posts,
   onUpdateUser, onDeletePost, onNavigateToProfile, onNavigateToPost, onPreviewImage, currentUser, onLike, onLikeComment, onLikeReply, onVote, onRepost, onAddComment, users, onSearchHashtag, onNavigateToEvent, focusedEventId, onClearFocusedEvent, onAddPost, onPromoteEvent, chats = [], followerUserIds = new Set(), followedUserIds = new Set(), onShareViaChat, globalEvents = [], language,
   pinnedPosts = new Set(), onTogglePin,
+  repostedIds = new Set(),
+  hasMoreNews = false,
+  isLoadingMoreNews = false,
+  isLoadingProfileFeed = false,
   onLoadMore, hasMore = false, isLoadingMore = false
 }) => {
-  console.log('ProfileView Rendering. onTogglePin defined:', !!onTogglePin);
   const navigate = useNavigate();
+  const lastAutoOpenedId = React.useRef<string | null>(null);
   const t = useTranslation(language);
   const canViewLists = isCurrentUser || (isFollowed && isFollower);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
+
 
   const [isCreateEventModalOpen, setIsCreateEventModalOpen] = useState(false);
   const [isShowStatusModalOpen, setIsShowStatusModalOpen] = useState(false);
   const [viewingUsersList, setViewingUsersList] = useState<'followers' | 'following' | 'event-supporters' | null>(null);
   const [viewingListId, setViewingListId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>(() => {
-    return (sessionStorage.getItem('profile_active_tab') as ProfileTab) || 'posts';
+    // 1. Prioritize user-specific tab from session storage
+    const userSpecific = sessionStorage.getItem(`profile_tab_${user.id}`);
+    if (userSpecific) return userSpecific as ProfileTab;
+    
+    // 2. Fallback to generic last active tab
+    const generic = sessionStorage.getItem('profile_active_tab');
+    if (generic) return generic as ProfileTab;
+    
+    return 'posts';
   });
 
   useEffect(() => {
@@ -639,7 +685,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const scrollPos = window.innerHeight + window.scrollY;
       const threshold = document.documentElement.scrollHeight - 800;
       if (scrollPos >= threshold && !isLoadingMore && hasMore) {
-        console.log(`[ProfileView] Threshold reached! Loading more for ${user.id}...`);
         onLoadMore(user.id);
       }
     };
@@ -663,8 +708,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [selectedEventForDetails, setSelectedEventForDetails] = useState<CalendarEvent | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Estado local para que la foto de perfil se actualice al instante en este componente
+  const avatarRef = useRef<HTMLDivElement>(null);
   const [localAvatar, setLocalAvatar] = useState<string>(user.avatar);
 
   // Si el usuario cambia (por ejemplo, se visita otro perfil), sincronizamos el avatar local
@@ -692,17 +736,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   useEffect(() => {
     const tabKey = `profile_tab_${user.id}`;
 
-    // If we have location state, skip session storage restoration for tab
-    if (!location.state?.tab) {
-      const savedTab = sessionStorage.getItem(tabKey) as ProfileTab;
-      if (savedTab) setActiveTab(savedTab);
+    // If we have location state, prioritize it
+    if (location.state?.tab) {
+      if (location.state.tab !== activeTab) {
+        setActiveTab(location.state.tab);
+      }
+      return;
+    }
+
+    // Otherwise restore from session storage if different
+    const savedTab = sessionStorage.getItem(tabKey) as ProfileTab;
+    if (savedTab && savedTab !== activeTab) {
+      setActiveTab(savedTab);
     }
   }, [user.id, location.state]);
 
 
 
   useEffect(() => {
-    sessionStorage.setItem(`profile_tab_${user.id}`, activeTab);
+    if (user.id) {
+      sessionStorage.setItem(`profile_tab_${user.id}`, activeTab);
+      sessionStorage.setItem('profile_active_tab', activeTab);
+    }
   }, [activeTab, user.id]);
 
   // Switch to events tab immediately when we have a focusedEventId
@@ -712,9 +767,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   }, [focusedEventId]);
 
+  // Pre-populate userEvents from globalEvents cache so the focused event
+  // opens instantly without waiting for the Supabase fetch to complete
+  useEffect(() => {
+    if (userEvents.length === 0 && globalEvents.length > 0) {
+      const cached = globalEvents.filter(e => e.creator_id === user.id);
+      if (cached.length > 0) setUserEvents(cached);
+    }
+  }, [globalEvents, user.id]);
+
   // Scroll to event card then open the modal once events have loaded
   useEffect(() => {
     if (!focusedEventId || userEvents.length === 0) return;
+
+    // PERFORMANCE OPTIMIZATION: If the event was just opened via handleOpenEventInstant,
+    // we SKIP the scroll animation and delays to feel direct and fast.
+    if (focusedEventId === lastAutoOpenedId.current) return;
 
     const event = userEvents.find(e => e.id === focusedEventId);
     if (!event) return;
@@ -728,9 +796,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       // Then open the modal after the scroll animation finishes
       setTimeout(() => {
         setSelectedEventForDetails(event);
-      }, 600);
-    }, 300);
+      }, 150);
+    }, 50);
   }, [focusedEventId, userEvents]);
+
+  const handleOpenEventInstant = useCallback((event: CalendarEvent) => {
+    // 1. Open instantly
+    setSelectedEventForDetails(event);
+    // 2. Mark as already handled so the useEffect doesn't trigger scroll/delays
+    lastAutoOpenedId.current = event.id;
+    // 3. Update URL using the current profile's username to avoid reloading the profile
+    if (onNavigateToEvent) {
+      onNavigateToEvent(user.username || user.id, event.id);
+    }
+  }, [onNavigateToEvent, user.username, user.id]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -751,7 +830,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       // 1. Fetch ALL badge definitions
       const { data: allDbBadges } = await supabase
         .from('badges')
-        .select('*')
+        .select('id, label, category, nova_reward, image_url')
         .order('label');
 
       const merged = [...BADGE_CATALOG];
@@ -759,21 +838,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         allDbBadges.forEach(dbB => {
           const badgeIdLower = dbB.id.toLowerCase();
           const existingIdx = merged.findIndex(m => m.id.toLowerCase() === badgeIdLower);
-          
+
           if (existingIdx !== -1) {
             merged[existingIdx] = {
               ...merged[existingIdx],
               label: dbB.label || merged[existingIdx].label,
-              color: dbB.color || merged[existingIdx].color,
-              nova_reward: dbB.nova_reward ?? merged[existingIdx].nova_reward
+              nova_reward: dbB.nova_reward ?? merged[existingIdx].nova_reward,
+              image_url: dbB.image_url || undefined,
             };
           } else {
             merged.push({
               id: dbB.id,
               label: dbB.label || dbB.id,
-              color: dbB.color || 'bg-slate-100 text-slate-500 border-slate-200',
-              category: 'general',
-              nova_reward: dbB.nova_reward
+              color: 'bg-slate-100 text-slate-500 border-slate-200',
+              category: (dbB.category || 'congreso') as Badge['category'],
+              nova_reward: dbB.nova_reward,
+              image_url: dbB.image_url || undefined,
             } as Badge);
           }
         });
@@ -797,7 +877,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       const { data: rankHistory } = await supabase
         .from('ranking_history')
-        .select('*')
+        .select('id, badge_id, created_at')
         .eq('user_id', user.id);
 
       if (rankHistory) {
@@ -828,26 +908,42 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     // 1. Convert followedUserIds Set to an array for the query
     const myFollowedIds = Array.from(followedUserIds);
 
-    // 2. Fetch users who follow THIS profile AND are followed by ME (Mutuals)
-    const { data } = await supabase
+    // 2. Fetch follower_ids who follow THIS profile AND are followed by ME (mutuals)
+    const { data: followRows, error: followRowsError } = await supabase
       .from('follows')
-      .select('follower_id, profiles!follower_id(id, avatar)')
+      .select('follower_id')
       .eq('followed_id', user.id)
       .in('follower_id', myFollowedIds)
-      .limit(50); // We only need 3 but fetch more for safety
+      .limit(50);
 
-    if (data) {
-      const mutuals = data
-        .filter((d: any) => d.profiles)
-        .map((d: any) => ({
-          id: d.profiles.id,
-          avatar: getSafeAvatar(d.profiles.avatar)
-        }));
-
-      setCommonFollowers(mutuals);
-    } else {
+    if (followRowsError || !followRows) {
       setCommonFollowers([]);
+      return;
     }
+
+    const mutualFollowerIds = followRows.map((row: any) => row.follower_id).filter(Boolean);
+    if (mutualFollowerIds.length === 0) {
+      setCommonFollowers([]);
+      return;
+    }
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, avatar')
+      .in('id', mutualFollowerIds)
+      .limit(50);
+
+    if (profilesError || !profiles) {
+      setCommonFollowers([]);
+      return;
+    }
+
+    const mutuals = profiles.map((profile: any) => ({
+      id: profile.id,
+      avatar: getSafeAvatar(profile.avatar)
+    }));
+
+    setCommonFollowers(mutuals);
   };
 
 
@@ -856,7 +952,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setLoadingEvents(true);
     const { data, error } = await supabase
       .from('user_events')
-      .select('*')
+      .select('id, creator_id, title, type, event_date, event_time, location, description, attendees_count, image_url')
       .eq('creator_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -877,6 +973,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setLoadingEvents(false);
   };
 
+  const getSupporterId = async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) {
+        return data.user.id;
+      }
+    } catch (error) {
+      console.error('[ProfileView] Error getting auth user for event support:', error);
+    }
+
+    return currentUser.id || null;
+  };
+
   const categories = [
     { id: 'congresos', label: 'Congreso', icon: Calendar },
     { id: 'premios_excelencia', label: 'Premios', icon: Medal },
@@ -885,6 +994,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   ];
 
   const handleSupportEvent = async (eventId: string) => {
+    const supporterId = await getSupporterId();
+
+    if (!supporterId) {
+      console.error('[ProfileView] No se pudo obtener el usuario autenticado para apoyar el evento');
+      return;
+    }
+
     const isSupported = supportedEventIds.has(eventId);
     const targetEvent = userEvents.find(ev => ev.id === eventId);
 
@@ -892,7 +1008,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const { error } = await supabase
         .from('event_supports')
         .delete()
-        .eq('user_id', currentUser.id)
+        .eq('user_id', supporterId)
         .eq('event_id', eventId);
 
       if (!error) {
@@ -905,26 +1021,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           ev.id === eventId ? { ...ev, attendees: Math.max(0, (ev.attendees || 0) - 1) } : ev
         ));
         setSelectedEventForDetails(prev => prev && prev.id === eventId ? { ...prev, attendees: Math.max(0, (prev.attendees || 0) - 1) } : prev);
+        return;
       }
-    } else {
-      const { error } = await supabase
-        .from('event_supports')
-        .insert({
-          user_id: currentUser.id,
-          event_id: eventId
+
+      console.error('[ProfileView] Error al quitar apoyo del evento:', error);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('event_supports')
+      .insert({
+        user_id: supporterId,
+        event_id: eventId,
+      });
+
+    // If insert succeeded, proceed; if it failed due to duplicate, treat as already supported
+    if (!error) {
+      if (targetEvent && targetEvent.creator_id !== supporterId) {
+        await supabase.from('notifications').insert({
+          user_id: targetEvent.creator_id,
+          sender_id: supporterId,
+          type: 'event_support',
+          content: `ha apoyado tu evento`
         });
+      }
 
-      if (!error) {
-        // Enviar notificación al creador del evento
-        if (targetEvent && targetEvent.creator_id !== currentUser.id) {
-          await supabase.from('notifications').insert({
-            user_id: targetEvent.creator_id,
-            sender_id: currentUser.id,
-            type: 'event_support',
-            content: `ha apoyado tu evento`
-          });
-        }
+      setSupportedEventIds(prev => {
+        const next = new Set(prev);
+        next.add(eventId);
+        return next;
+      });
+      setUserEvents(prev => prev.map(ev =>
+        ev.id === eventId ? { ...ev, attendees: (ev.attendees || 0) + 1 } : ev
+      ));
+      setSelectedEventForDetails(prev => prev && prev.id === eventId ? { ...prev, attendees: (prev.attendees || 0) + 1 } : prev);
+      return;
+    }
 
+    // Handle duplicate key (already supported) gracefully by updating local state
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      if (error.code === '23505' || msg.includes('duplicate') || msg.includes('unique')) {
+        // already exists in DB — reflect in UI
         setSupportedEventIds(prev => {
           const next = new Set(prev);
           next.add(eventId);
@@ -934,12 +1072,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           ev.id === eventId ? { ...ev, attendees: (ev.attendees || 0) + 1 } : ev
         ));
         setSelectedEventForDetails(prev => prev && prev.id === eventId ? { ...prev, attendees: (prev.attendees || 0) + 1 } : prev);
+        return;
       }
+
+      console.error('[ProfileView] Error al apoyar el evento:', error);
     }
   };
 
   const novas = useMemo(() => {
-    if (user.novas !== undefined && user.novas !== null) return user.novas;
+    if (user.novas !== undefined && user.novas !== null) return Math.max(0, user.novas);
 
     const earnedBadges = allBadges
       .filter(b => userBadgeIds.has(b.id.toLowerCase()))
@@ -977,28 +1118,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }, [posts, user.id, pinnedPosts]);
 
   const userPosts = useMemo(() => {
-    const filtered = posts.filter(p => p.authorId === user.id && p.type === 'post');
+    const filtered = posts.filter(p => {
+      const isAuthor = p.authorId === user.id || (p.authorUsername && user.username && p.authorUsername.toLowerCase() === user.username.toLowerCase());
+      return isAuthor && p.type === 'post';
+    });
+    // Only show loader if we have absolutely no content to show yet
+    if (isLoadingProfileFeed && filtered.length === 0) return null;
     return filtered.sort((a, b) => {
       // 1. Pinned status first
       const aPinned = allPinnedPostIds.has(a.id);
       const bPinned = allPinnedPostIds.has(b.id);
-
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-
-      // 2. If both are pinned, sort by pinnedAt (newest first)
-      if (aPinned && bPinned) {
-        const aPinTime = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
-        const bPinTime = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
-        if (aPinTime !== bPinTime) return bPinTime - aPinTime;
-      }
-
-      // 3. Otherwise, sort by timestamp (newest first)
+      // 2. Then by timestamp
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [posts, user.id, allPinnedPostIds]);
+  }, [posts, user.id, user.username, allPinnedPostIds, isLoadingProfileFeed]);
 
-  const userNews = useMemo(() => posts.filter(p => p.authorId === user.id && p.type === 'news'), [posts, user.id]);
+  const userNews = useMemo(() => {
+    const filtered = posts.filter(p => {
+      const isAuthor = p.authorId === user.id || (p.authorUsername && user.username && p.authorUsername.toLowerCase() === user.username.toLowerCase());
+      return isAuthor && p.type === 'news';
+    });
+    if (isLoadingProfileFeed && filtered.length === 0) return null;
+    return filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [posts, user.id, user.username, isLoadingProfileFeed]);
 
   const userRepostsList = useMemo(() => {
     const filtered = posts.filter(p => repostedPostIds.includes(p.id));
@@ -1040,6 +1184,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
+  const handleRemovePhoto = () => {
+    setLocalAvatar('');
+    onUpdateUser({ ...user, avatar: '' });
+    setShowPhotoOptions(false);
+  };
+
   const handleCropComplete = (croppedImage: string) => {
     // Actualizamos primero el estado local para ver el cambio al instante en el perfil
     setLocalAvatar(croppedImage);
@@ -1058,10 +1208,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1400px] mx-auto px-2 md:px-6 lg:px-8 overflow-x-hidden md:overflow-visible space-y-4 md:space-y-6 pb-12 pt-[88px] md:pt-0 animate-in fade-in duration-500" onClick={() => { setShowPhotoOptions(false); }}>
-      <div className="bg-white dark:bg-[#111] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-zinc-800 relative z-0 w-full">
+    <div className="w-full max-w-[1400px] mx-auto px-2 md:px-6 lg:px-8 overflow-x-hidden md:overflow-visible space-y-4 md:space-y-6 pb-12 pt-[88px] md:pt-0 animate-in fade-in duration-500" onClick={() => { if (showPhotoOptions) setShowPhotoOptions(false); }}>
+      <div className="bg-white dark:bg-[#111] rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 dark:border-zinc-800 relative z-0 w-full overflow-visible">
         <div
-          className="h-20 md:h-48 relative overflow-hidden group/banner transition-all duration-700 cursor-pointer"
+          className="h-20 md:h-48 relative overflow-hidden rounded-t-[2rem] md:rounded-t-[2.5rem] group/banner transition-all duration-700 cursor-pointer"
           style={bannerStyle}
           onClick={() => setShowLevelsModal(true)}
         >
@@ -1079,8 +1229,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         <div className="md:px-10 pb-6 md:pb-10">
-          <div className="relative flex flex-col items-center text-center md:flex-row md:justify-between md:items-end md:text-left -mt-6 md:-mt-4 mb-4 md:mb-8 gap-3 md:gap-6">
-            <div className="relative flex-shrink-0">
+          <div className="relative flex flex-col items-center text-center md:flex-row md:justify-between md:items-center md:text-left -mt-6 md:-mt-4 mb-4 md:mb-8 gap-3 md:gap-6">
+            <div ref={avatarRef} className="relative flex-shrink-0">
               <div className="group relative">
                 <img
                   src={getSafeAvatar(localAvatar)}
@@ -1096,38 +1246,49 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
 
               {showPhotoOptions && (
-                <>
-                  <div
-                    className="absolute top-full left-0 mt-3 w-64 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 z-[130] animate-in slide-in-from-top-2 duration-200 overflow-hidden"
-                    onClick={(e) => e.stopPropagation()}
+                <div
+                  className="absolute top-full left-0 mt-2 bg-white dark:bg-[#111] rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-2xl shadow-black/40 z-[100] animate-in slide-in-from-top-2 duration-200 w-64 overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      setFullScreenImage(localAvatar);
+                      setShowPhotoOptions(false);
+                    }}
+                    className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all border-b border-gray-50 dark:border-zinc-900"
                   >
-                    <button
-                      onClick={() => {
-                        setFullScreenImage(localAvatar);
-                        setShowPhotoOptions(false);
-                      }}
-                      className={`w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all ${isCurrentUser ? 'border-b border-gray-50 dark:border-zinc-900' : ''}`}
-                    >
-                      <Maximize2 size={18} className="text-blue-600" />
-                      <span>{t('view_full_image')}</span>
-                    </button>
+                    <Maximize2 size={18} className="text-blue-600" />
+                    <span>{t('view_full_image')}</span>
+                  </button>
 
-                    {isCurrentUser && (
+                  {isCurrentUser && (
+                    <>
                       <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all"
+                        onClick={() => {
+                          fileInputRef.current?.click();
+                          setShowPhotoOptions(false);
+                        }}
+                        className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-all border-b border-gray-50 dark:border-zinc-900"
                       >
                         <Camera size={18} className="text-indigo-600" />
                         <span>{t('change_profile_photo')}</span>
                       </button>
-                    )}
-                  </div>
-                </>
+
+                      <button
+                        onClick={handleRemovePhoto}
+                        className="w-full flex items-center space-x-3 px-5 py-4 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
+                      >
+                        <Trash2 size={18} className="text-red-600" />
+                        <span>{t('remove_photo')}</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
             {isCurrentUser && <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />}
 
-            <div className="flex-1 pt-1 md:pt-0 w-full min-w-0 text-center md:text-left relative z-20">
+            <div className="flex-1 pt-1 md:pt-0 md:translate-y-5 w-full min-w-0 text-center md:text-left relative z-20">
               <div className="flex flex-col md:flex-row items-center gap-1 md:gap-3 mb-0.5 md:mb-2 justify-center md:justify-start">
                 <h1 className="text-lg md:text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-tight flex flex-wrap items-center gap-1.5 relative z-20 justify-center md:justify-start text-center md:text-left">
                   {user.name} {user.lastName}
@@ -1143,10 +1304,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           onClick={() => onNavigateToProfile?.(user.linkedOrganizationId!)}
                           className="text-blue-700 dark:text-blue-300 font-extrabold cursor-pointer inline-flex items-center"
                         >
-                          {user.department}
+                          {user.institution}
                         </button>
                       ) : (
-                        <span>{user.department}</span>
+                        <span>{user.institution}</span>
                       )}
                     </span>
                   </div>
@@ -1185,7 +1346,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {isCurrentUser ? (
                   <>
                     <button onClick={() => setIsShareModalOpen(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center min-w-fit whitespace-nowrap"><Share2 size={12} className="md:w-[14px] md:h-[14px]" /></button>
-                    <button onClick={() => navigate('/configuracion', { state: { openPersonalData: true } })} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
+                    <button onClick={() => setShowEditModal(true)} className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-700 px-3 py-2 md:px-4 md:py-2 rounded-xl md:rounded-2xl font-black text-[10px] md:text-xs hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all transform active:scale-95 flex items-center justify-center space-x-2 min-w-fit md:min-w-[120px] whitespace-nowrap"><Edit3 size={12} className="md:w-[14px] md:h-[14px]" /><span>{t('edit_profile')}</span></button>
+
                   </>
                 ) : (
                   <>
@@ -1214,27 +1376,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-medium text-sm md:text-lg max-w-full whitespace-pre-wrap break-words">{user.bio || t('no_bio')}</p>
             </div>
 
-            {!isCurrentUser && (
+            {!isCurrentUser && commonFollowers.length > 0 && (
               <div
                 className={`pt-4 border-t border-gray-50 dark:border-zinc-900 ${canViewLists ? 'cursor-pointer group' : 'cursor-default'}`}
                 onClick={() => canViewLists && setViewingUsersList('followers')}
               >
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center justify-center md:justify-start space-x-3">
                   <div className="flex -space-x-3 overflow-hidden">
-                    {commonFollowers.length > 0 ? (
-                      commonFollowers.slice(0, 3).map((follower) => (
-                        <img
-                          key={follower.id}
-                          src={follower.avatar || `/img/imagen-por-defecto.png`}
-                          className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-white dark:border-[#111] object-cover ring-2 ring-transparent group-hover:ring-blue-500/30 transition-all"
-                          alt=""
-                        />
-                      ))
-                    ) : (
-                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex items-center justify-center">
-                        <Users size={12} className="text-slate-300" />
-                      </div>
-                    )}
+                    {commonFollowers.slice(0, 3).map((follower) => (
+                      <img
+                        key={follower.id}
+                        src={follower.avatar || `/img/imagen-por-defecto.png`}
+                        className="w-7 h-7 md:w-8 md:h-8 rounded-full border-2 border-white dark:border-[#111] object-cover ring-2 ring-transparent group-hover:ring-blue-500/30 transition-all"
+                        alt=""
+                      />
+                    ))}
                   </div>
                   {commonFollowers.length > 0 && (
                     <p className="text-xs md:text-sm text-gray-500 dark:text-zinc-500 font-bold group-hover:text-blue-600 transition-colors">
@@ -1283,37 +1439,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         <div className="flex flex-col gap-3 w-full max-w-full">
           {activeTab === 'posts' && (
-            userPosts.length === 0 ? (
+            userPosts === null ? (
+              <div className="flex flex-col items-center justify-center py-20 animate-pulse">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
+                <p className="text-slate-400 font-bold">{t('loading_posts') || 'Cargando publicaciones...'}</p>
+              </div>
+            ) : userPosts.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                 <LayoutGrid className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                 <p className="text-slate-400 font-bold italic">{t('no_posts')}</p>
               </div>
             ) : userPosts.map(post => (
-              <PostCard key={post.id} post={post} onLike={onLike!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={setSharingPost} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} />
+              <PostCard key={post.id} post={post} onLike={onLike!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={setSharingPost} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} language={language} />
             ))
           )}
           
-          {activeTab === 'posts' && userPosts.length > 0 && (
+          {activeTab === 'posts' && userPosts !== null && userPosts.length > 0 && hasMore && !isLoadingMore && (
             <div className="py-6 flex flex-col items-center justify-center space-y-3">
-              {!hasMore && !isLoadingMore && (
-                <>
-                  <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-                  <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-                    {t('end_of_results')}
-                  </p>
-                  <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-                </>
-              )}
-              {hasMore && !isLoadingMore && (
-                <div className="hidden sm:block">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onLoadMore?.(user.id); }}
-                    className="mt-4 px-8 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl font-black text-sm hover:bg-blue-100 transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30 shadow-sm"
-                  >
-                    {t('load_more_posts')}
-                  </button>
-                </div>
-              )}
+              <div className="hidden sm:block">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onLoadMore?.(user.id); }}
+                  className="mt-4 px-8 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl font-black text-sm hover:bg-blue-100 transition-all active:scale-95 border border-blue-100 dark:border-blue-900/30 shadow-sm"
+                >
+                  {t('load_more_posts')}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1346,29 +1496,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               )}
 
-              {userNews.length === 0 ? (
+              {userNews === null ? (
+                <div className="flex flex-col items-center justify-center py-20 animate-pulse">
+                  <Loader2 className="w-10 h-10 text-orange-500 animate-spin mb-4" />
+                  <p className="text-slate-400 font-bold">{t('loading_news') || 'Cargando noticias...'}</p>
+                </div>
+              ) : userNews.length === 0 ? (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
                   <Newspaper className="mx-auto text-slate-100 dark:text-zinc-900 mb-4" size={48} />
                   <p className="text-slate-400 font-bold italic">{t('no_news_registered')}</p>
                 </div>
               ) : (
                 userNews.map(news => (
-                  <NewsCard key={news.id} post={news} onVote={onVote!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} language={language} />
+                  <NewsCard key={news.id} post={news} onVote={onVote!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} onOpenShare={setSharingPost} language={language} />
                 ))
               )}
               
-              {activeTab === 'news' && userNews.length > 0 && (
+              {activeTab === 'news' && userNews !== null && userNews.length > 0 && (
                 <div className="py-6 flex flex-col items-center justify-center space-y-3">
-                  {!hasMore && !isLoadingMore && (
-                    <>
-                      <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-                      <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-                        {t('end_of_results')}
-                      </p>
-                      <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-                    </>
-                  )}
-                  {hasMore && !isLoadingMore && (
+                  {hasMoreNews && !isLoadingMoreNews && (
                     <div className="hidden sm:block">
                       <button 
                         onClick={(e) => { e.stopPropagation(); onLoadMore?.(user.id); }}
@@ -1394,32 +1540,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 return <NewsCard key={`repost-${post.id}`} post={post} onVote={onVote!} onRepost={onRepost} onAddComment={onAddComment!} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onSearchHashtag={onSearchHashtag} onOpenShare={setSharingPost} language={language} />;
               }
               return (
-                <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={setSharingPost} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser && activeTab === 'posts'} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} />
+                <PostCard key={`repost-${post.id}`} post={post} onLike={onLike!} onLikeComment={onLikeComment} onLikeReply={onLikeReply} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment!} onDeletePost={onDeletePost} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onPreviewImage={onPreviewImage} onOpenShare={setSharingPost} currentUser={currentUser} followedUserIds={new Set(isFollowed ? [user.id] : [])} followerUserIds={new Set(isFollower ? [user.id] : [])} onToggleFollow={onToggleFollow} users={users} onSearchHashtag={onSearchHashtag} onNavigateToEvent={onNavigateToEvent} showMenu={isCurrentUser} globalEvents={globalEvents} isPinned={allPinnedPostIds.has(post.id)} onTogglePin={onTogglePin} language={language} />
               );
             })
           )}
 
-          {activeTab === 'reposts' && userRepostsList.length > 0 && (
+          {activeTab === 'reposts' && userRepostsList.length > 0 && hasMore && !isLoadingMore && (
             <div className="py-6 flex flex-col items-center justify-center space-y-3">
-              {!hasMore && !isLoadingMore && (
-                <>
-                  <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-                  <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-                    {t('end_of_results')}
-                  </p>
-                  <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-                </>
-              )}
-              {hasMore && !isLoadingMore && (
-                <div className="hidden sm:block">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onLoadMore?.(user.id); }}
-                    className="mt-4 px-8 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 dark:text-emerald-400 rounded-2xl font-black text-sm hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100 dark:border-emerald-900/30 shadow-sm"
-                  >
-                    {t('load_more_reposts')}
-                  </button>
-                </div>
-              )}
+              <div className="hidden sm:block">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onLoadMore?.(user.id); }}
+                  className="mt-4 px-8 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 dark:text-emerald-400 rounded-2xl font-black text-sm hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100 dark:border-emerald-900/30 shadow-sm"
+                >
+                  {t('load_more_reposts')}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1472,12 +1607,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         event={event}
                         language={language}
                         isFocused={focusedEventId === event.id}
-                        onNavigateToEvent={() => onNavigateToEvent?.(event.creator_id, event.id)}
-                        onNavigateToProfile={onNavigateToProfile}
+                        onNavigateToEvent={() => handleOpenEventInstant(event)}
                         renderActions={() => (
                           <div className="flex flex-wrap items-center gap-2 mt-4 w-full">
                             <button
+                              type="button"
                               onClick={(e) => {
+                                e.preventDefault();
                                 e.stopPropagation();
                                 handleSupportEvent(event.id);
                               }}
@@ -1496,19 +1632,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handlePromoteEventInternal(event);
-                              }}
-                              className="flex-1 min-w-[90px] h-9 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center space-x-2 shadow-md shadow-blue-500/10 transform active:scale-95"
-                            >
-                              <Megaphone size={12} strokeWidth={3} />
-                              <span>{t('promote')}</span>
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
                                 setSharingEvent(event);
-                                setIsShareModalOpen(true);
                               }}
                               className="h-9 px-3 bg-slate-50 dark:bg-zinc-800/80 text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-700 hover:text-blue-600 transition-all flex items-center justify-center border border-slate-200/50 dark:border-zinc-700/50"
                               title={t('share')}
@@ -1522,16 +1646,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     );
                   })}
                 </div>
-
-                {activeTab === 'events' && userEvents.length > 0 && (
-                  <div className="py-6 flex flex-col items-center justify-center space-y-3">
-                    <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-                    <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-                      {t('end_of_results')}
-                    </p>
-                    <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-                  </div>
-                )}
               </div>
             )
           )}
@@ -1558,15 +1672,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 return (
                   <>
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-5 gap-2">
                       {earnedBadges.map(badge => {
                         const isSpeaker = (badge.label || '').toLowerCase().includes('ponente');
-                        const isAward = badge.category === 'premios' || badge.category === 'premios_excelencia';
+                        const isAward = badge.category === 'premio';
                         const isNovas = badge.category?.toLowerCase() === 'novas';
                         const isVerified = badge.id === 'verified';
                         const isPioneer = badge.id === 'pioneer';
                         const isTraining = badge.category?.toLowerCase() === 'formacion';
                         const isEvent = badge.category?.toLowerCase() === 'eventos';
+                        const isTopRanking = ['ranking_top1', 'ranking_top2', 'ranking_top3'].includes((badge.id || '').toLowerCase());
 
                         let gradient = 'from-blue-500 to-indigo-600';
                         let IconComponent = Award;
@@ -1600,53 +1715,41 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         const frameGradient = 'from-purple-500 via-indigo-500 to-purple-600';
 
                         return (
-                          <div key={badge.id} className="group p-5 rounded-[2rem] border transition-all relative flex flex-col items-center text-center h-full bg-white dark:bg-[#111] border-slate-100 dark:border-zinc-800 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2">
-                            <div className={`w-full h-28 md:h-32 mb-4 rounded-[1.8rem] bg-gradient-to-br ${frameGradient} p-0.5 relative overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-700 perspective-1000 group/badge-container`}>
-                              <div className="w-full h-full relative preserve-3d group-hover/badge-container:rotate-y-180 transition-transform duration-700 cursor-pointer will-change-transform transform-gpu">
-                                <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.7rem] flex items-center justify-center overflow-hidden backface-hidden border-2 border-purple-500/20 dark:border-purple-400/20">
-                                  <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-10`}></div>
-                                  {(() => {
-                                    const badgeImg = getBadgeImage(badge);
-                                    return badgeImg ? (
-                                      <img src={badgeImg} className="w-full h-full object-cover relative z-10" alt={badge.label} />
-                                    ) : (
-                                      <div className={`p-4 rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg transform rotate-6 group-hover:rotate-0 transition-transform duration-500`}>
-                                        <IconComponent size={32} strokeWidth={2.5} />
-                                      </div>
-                                    );
-                                  })()}
-                                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 z-20 pointer-events-none"></div>
+                          <div key={badge.id} className="group relative aspect-square rounded-full transition-all duration-500 perspective-1000">
+                            <div className="w-full h-full relative preserve-3d group-hover:rotate-y-180 transition-transform duration-700 cursor-pointer will-change-transform transform-gpu">
+                              {/* Front Side: Image + Blurred Title Overlay */}
+                              <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-full flex items-center justify-center overflow-hidden backface-hidden border-2 border-slate-100 dark:border-zinc-800">
+                                <img src={getBadgeImage(badge)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={badge.label} />
+                                
+                                {/* Overlay: Legible Title */}
+                                <div className={`absolute inset-0 flex items-center justify-center p-3 rounded-full ${isTopRanking ? '' : 'bg-slate-900/18 backdrop-blur-[1px] ring-inset ring-1 ring-white/10'}`}>
+                                  <h4 className="text-xs md:text-sm font-black text-white leading-tight text-center uppercase tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-2">
+                                    {badge.label}
+                                  </h4>
                                 </div>
-                                <div className="absolute inset-0 bg-white dark:bg-[#0a0a0a] rounded-[1.7rem] flex flex-col items-center justify-center overflow-hidden backface-hidden rotate-y-180 border-2 border-purple-500/20 dark:border-purple-400/20">
-                                  <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-20`}></div>
-                                  <div className="relative z-10 flex flex-col items-center justify-center h-full w-full">
-                                    <img src="/img/novagob.brand_isotipo_black.svg" className="w-1/3 h-1/3 object-contain opacity-20 dark:invert mb-2" alt="NovaGob" />
-                                    {badge.nova_reward !== undefined && badge.nova_reward !== null && badge.nova_reward > 0 && (
-                                      <div className="flex items-center animate-in zoom-in-50 duration-500 delay-300 mt-2">
-                                        <span className="text-[9px] group-hover/badge-container:text-[11px] font-black text-blue-600 dark:text-blue-400 leading-none transition-all duration-300">{badge.nova_reward} Novas</span>
-                                      </div>
-                                    )}
-                                  </div>
+
+                                {/* Shine Effect */}
+                                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none"></div>
+                              </div>
+
+                              {/* Back Side: Nova Rewards / Branding */}
+                              <div className="absolute inset-0 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md rounded-full flex flex-col items-center justify-center overflow-hidden backface-hidden rotate-y-180 border-2 border-blue-500 dark:border-blue-400">
+                                <div className={`absolute inset-0 bg-gradient-to-br ${frameGradient} opacity-20`}></div>
+                                <div className="relative z-10 flex flex-col items-center justify-center">
+                                  <img src="/img/novagob.brand_isotipo_black.svg" className="w-12 h-12 md:w-14 md:h-14 object-contain opacity-20 dark:invert mb-1" alt="NovaGob" />
+                                  {badge.nova_reward !== undefined && badge.nova_reward !== null && badge.nova_reward > 0 && (
+                                    <div className="flex items-baseline gap-1 mt-1">
+                                      <span className="text-[14px] md:text-base font-black text-blue-600 dark:text-blue-400 leading-none">{badge.nova_reward}</span>
+                                      <span className="text-[14px] md:text-base font-black text-slate-400 uppercase tracking-widest">novas</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            </div>
-                            <div className="space-y-2">
-                              <h4 className="text-[13px] font-black text-slate-900 dark:text-white leading-tight break-words px-2">{badge.label}</h4>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-
-                    {activeTab === 'badges' && earnedBadges.length > 0 && (
-                      <div className="py-6 flex flex-col items-center justify-center space-y-3">
-                        <div className="h-px w-12 bg-gray-100 dark:bg-zinc-800" />
-                        <p className="text-[10px] font-black text-gray-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-                          {t('end_of_results')}
-                        </p>
-                        <Sparkles size={16} className="text-gray-200 dark:text-zinc-800" />
-                      </div>
-                    )}
                   </>
                 );
               })()}
@@ -1751,7 +1854,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {selectedEventForDetails && (
         <EventDetailsModal
           event={selectedEventForDetails}
-          onClose={() => setSelectedEventForDetails(null)}
+          onClose={() => {
+            setSelectedEventForDetails(null);
+            onClearFocusedEvent();
+          }}
           language={language}
           onSupport={handleSupportEvent}
           isSupported={supportedEventIds.has(selectedEventForDetails.id)}
@@ -1759,7 +1865,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onShare={setSharingEvent}
         />
       )}
+      {showEditModal && (
+        <PersonalDataModal
+          user={user}
+          onClose={() => setShowEditModal(false)}
+          onSave={onUpdateUser}
+          language={language}
+        />
+      )}
+
     </div>
+
   );
 };
 

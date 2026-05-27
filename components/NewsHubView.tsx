@@ -11,6 +11,8 @@ import { useScrollDirection } from '../hooks/useScrollDirection';
 import { supabase } from '../supabaseClient';
 import { BADGE_CATALOG } from '../types';
 import { getSafeAvatar } from '../utils/avatarUtils';
+import { LinkPreview } from './LinkPreview';
+import { extractAllExternalUrls, isExternalUrl } from '../utils/stringUtils';
 
 interface NewsHubViewProps {
   posts: Post[];
@@ -34,16 +36,26 @@ interface NewsHubViewProps {
   chats?: any[];
   onShareViaChat?: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
   followerUserIds?: Set<string>;
+  onNavigateToEvent?: (userId: string, eventId: string) => void;
+  globalEvents?: any[];
   language: Language;
   hasNewContent?: boolean;
   onRefresh?: () => void;
+  likedIds?: Set<string>;
+  votedUpIds?: Set<string>;
+  votedDownIds?: Set<string>;
+  repostedIds?: Set<string>;
+  feedFetched?: boolean;
+  newsFeedFetched?: boolean;
+  onFetchNews?: () => Promise<void>;
 }
 
 type NewsTab = 'latest' | 'popular' | 'ranking';
 
 export const NewsHubView: React.FC<NewsHubViewProps> = ({
   posts, user, onVote, onRepost, onAddPost, onAddComment, onLikeComment, onLikeReply, onNavigateToProfile, onNavigateToPost, onSearchHashtag, currentUser, followedUserIds = new Set(), users = [],
-  onLoadMore, hasMore = false, isLoadingMore = false, chats, onShareViaChat, followerUserIds = new Set(), language, hasNewContent = false, onRefresh
+  onLoadMore, hasMore = false, isLoadingMore = false, chats, onShareViaChat, followerUserIds = new Set(), onNavigateToEvent, globalEvents = [], language, hasNewContent = false, onRefresh,
+  likedIds = new Set(), votedUpIds = new Set(), votedDownIds = new Set(), repostedIds = new Set(), feedFetched = false, newsFeedFetched = false, onFetchNews
 }) => {
   // ... inside component ...
   const navigate = useNavigate();
@@ -52,7 +64,23 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     return saved || 'latest';
   });
   const [sharingPost, setSharingPost] = useState<Post | null>(null);
+  const [showEmpty, setShowEmpty] = useState(false);
   const t = useTranslation(language);
+
+  // Trigger news fetch on mount if not already fetched; always refresh in background if already cached
+  useEffect(() => {
+    if (onFetchNews) onFetchNews();
+  }, []);
+
+  // showEmpty only after a real news fetch completed with no results
+  useEffect(() => {
+    if (posts.length > 0 || !newsFeedFetched) {
+      setShowEmpty(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowEmpty(true), 500);
+    return () => clearTimeout(timer);
+  }, [posts.length, newsFeedFetched]);
   const scrollDirection = useScrollDirection();
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -107,7 +135,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     const fetchUserEvents = async () => {
       const { data } = await supabase
         .from('user_events')
-        .select('*')
+        .select('id, creator_id, title, type, event_date, event_time, location, description, attendees_count, image_url')
         .eq('creator_id', user.id)
         .gte('event_date', new Date().toISOString().split('T')[0])
         .order('event_date', { ascending: true });
@@ -199,6 +227,30 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
     prevContentLength.current = newsContent.length;
   }, [newsContent]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [dismissedUrls, setDismissedUrls] = useState<Set<string>>(new Set());
+
+  const detectedUrls = useMemo(() => {
+    return extractAllExternalUrls(newsContent, isExternalUrl);
+  }, [newsContent]);
+
+  // Si una URL desaparece del texto, la quitamos de dismissedUrls.
+  useEffect(() => {
+    setDismissedUrls(prev => {
+      const detectedSet = new Set(detectedUrls);
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach(u => { if (detectedSet.has(u)) next.add(u); else changed = true; });
+      return changed ? next : prev;
+    });
+  }, [detectedUrls]);
+
+  // Sólo UNA preview a la vez, mutuamente excluyente con imagen.
+  const activePreviewUrl = useMemo(() => {
+    if (selectedImage) return null;
+    return detectedUrls.find(u => !dismissedUrls.has(u)) || null;
+  }, [detectedUrls, dismissedUrls, selectedImage]);
+
+  const canShowLinkPreview = !!activePreviewUrl;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -241,7 +293,7 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
   }, [showHistory, currentUser.id]);
 
   const sortedNews = useMemo(() => {
-    let filtered = [...posts];
+    let filtered = posts.filter(p => p.type === 'news');
     const now = new Date();
 
     // Day bounds: 00:00:00.000 to 23:59:59.999
@@ -338,17 +390,17 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
         ${scrollDirection === 'down' ? '-translate-y-[calc(100%+64px)] md:translate-y-0' : 'translate-y-0'}
       `}>
         <div className="w-full h-full max-w-4xl mx-auto flex items-center justify-between px-2 md:px-0">
-          <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+          <button onClick={() => setActiveTab('latest')} className="flex-1 h-full text-xs font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'latest' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('latest_news')}</span>
             {activeTab === 'latest' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
           </button>
           <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-          <button onClick={() => setActiveTab('popular')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+          <button onClick={() => setActiveTab('popular')} className="flex-1 h-full text-xs font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'popular' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('most_relevant')}</span>
             {activeTab === 'popular' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
           </button>
           <div className="w-px h-6 bg-gray-100 dark:bg-zinc-800" />
-          <button onClick={() => setActiveTab('ranking')} className="flex-1 h-full text-[10px] sm:text-xs md:text-sm font-bold relative group transition-all focus:outline-none whitespace-nowrap">
+          <button onClick={() => setActiveTab('ranking')} className="flex-1 h-full text-xs font-bold relative group transition-all focus:outline-none whitespace-nowrap">
             <span className={activeTab === 'ranking' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}>{t('top_ranking')}</span>
             {activeTab === 'ranking' && <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 bg-orange-500 w-1/2 rounded-t-lg" />}
           </button>
@@ -406,11 +458,13 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                   if (!newsTitle.trim() || !newsContent.trim() || isSubmitting) return;
                   setIsSubmitting(true);
                   try {
-                    await onAddPost(newsContent, 'news', [], selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle);
+                    const tags = newsContent.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
+                    await onAddPost(newsContent, 'news', tags, selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle, canShowLinkPreview, activePreviewUrl);
                     setMentionQuery(null);
                     setNewsTitle('');
                     setNewsContent('');
                     setSelectedImage(null);
+                    setDismissedUrls(new Set());
                   } finally {
                     setIsSubmitting(false);
                   }
@@ -441,11 +495,13 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
                               if (!newsTitle.trim() || !newsContent.trim()) return;
-                              onAddPost(newsContent, 'news', [], selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle);
+                              const tags = newsContent.match(/#[\wáéíóúÁÉÍÓÚñÑ]+/g)?.map(t => t.slice(1)) || [];
+                              onAddPost(newsContent, 'news', tags, selectedImage ? [selectedImage] : [], undefined, undefined, undefined, newsTitle, canShowLinkPreview, activePreviewUrl);
                               setMentionQuery(null);
                               setNewsTitle('');
                               setNewsContent('');
                               setSelectedImage(null);
+                              setDismissedUrls(new Set());
                             }
                           }}
                           placeholder={`${t('share_your_news')}`}
@@ -507,10 +563,25 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                         </div>
                       )}
                     </div>
+
+                    {/* Link preview — sólo una a la vez, mutuamente excluyente con imagen */}
+                    {activePreviewUrl && (
+                      <div className="mt-3 max-w-lg relative group/linkprev">
+                        <LinkPreview url={activePreviewUrl} language={language} />
+                        <button
+                          type="button"
+                          onClick={() => setDismissedUrls(prev => new Set(prev).add(activePreviewUrl))}
+                          className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm text-gray-500 hover:text-red-500 rounded-full shadow-md transition-all opacity-0 group-hover/linkprev:opacity-100"
+                          title="Quitar previsualización"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-full transition-colors"><ImageIcon size={18} /></button>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={canShowLinkPreview} title={canShowLinkPreview ? 'Quita la previsualización del enlace para adjuntar una imagen' : ''} className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"><ImageIcon size={18} /></button>
                     </div>
  
                     <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => {
@@ -537,8 +608,8 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
             </div>
             <div className="space-y-3 md:space-y-4">
               {displayedNews.length > 0 ? (
-                displayedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} onOpenShare={setSharingPost} language={language} />)
-              ) : (
+                displayedNews.map(post => <NewsCard key={post.id} post={post} onVote={onVote} onRepost={onRepost} onAddComment={onAddComment} currentUser={currentUser} followedUserIds={followedUserIds} users={users} onNavigateToProfile={onNavigateToProfile} onNavigateToPost={onNavigateToPost} onSearchHashtag={onSearchHashtag} onOpenShare={setSharingPost} onNavigateToEvent={onNavigateToEvent} globalEvents={globalEvents} language={language} likedIds={likedIds} votedUpIds={votedUpIds} votedDownIds={votedDownIds} repostedIds={repostedIds} />)
+              ) : showEmpty ? (
                 <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
                   <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
                     <Clock className="text-orange-500" size={32} />
@@ -561,6 +632,13 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                     </button>
                   )}
                 </div>
+              ) : (
+                <div className="text-center py-20 bg-white dark:bg-[#111] rounded-[2.5rem] border border-dashed border-gray-200 dark:border-zinc-800 px-10">
+                  <div className="mx-auto w-16 h-16 bg-orange-50 dark:bg-orange-900/20 rounded-full flex items-center justify-center mb-4">
+                    <Loader2 className="text-orange-400 animate-spin" size={32} />
+                  </div>
+                  <h4 className="text-slate-900 dark:text-white font-black mb-2">Cargando noticias...</h4>
+                </div>
               )}
 
               {isLoadingMore && (
@@ -579,23 +657,6 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 </div>
               )}
 
-              {(hasMore || displayLimit < sortedNews.length) && !isLoadingMore && (
-                <div className="py-8 flex justify-center">
-                  <button 
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      if (displayLimit < sortedNews.length) {
-                        setDisplayLimit(p => p + 10); 
-                      } else {
-                        onLoadMore?.(); 
-                      }
-                    }}
-                    className="px-8 py-3 bg-orange-50 dark:bg-orange-900/20 text-orange-500 dark:text-orange-400 rounded-2xl font-black text-sm hover:bg-orange-100 transition-all active:scale-95 shadow-sm border border-orange-100 dark:border-orange-900/30"
-                  >
-                    Cargar más noticias
-                  </button>
-                </div>
-              )}
             </div>
           </>
         ) : (
@@ -620,9 +681,6 @@ export const NewsHubView: React.FC<NewsHubViewProps> = ({
                 <h4 className="text-slate-900 dark:text-white font-black mb-2">
                   {t('no_ranking_news')}
                 </h4>
-                <p className="text-slate-400 font-medium text-sm italic">
-                  {t('no_ranking_news_description')}
-                </p>
               </div>
             )}
           </div>

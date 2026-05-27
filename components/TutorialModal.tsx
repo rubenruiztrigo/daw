@@ -27,7 +27,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
   const steps: Step[] = [
     {
       targetId: null,
-      title: language === 'es' ? '¡Bienvenido/a a NovaGob!' : 'Welcome to NovaGob!',
+      title: language === 'es' ? '¡Te damos la bienvenida!' : 'Welcome to NovaGob!',
       description: language === 'es' 
         ? 'Estamos encantados de tenerte aquí. Explora las herramientas diseñadas para potenciar tu labor en el sector público.'
         : 'We are delighted to have you here. Explore the tools designed to enhance your work in the public sector.',
@@ -36,8 +36,8 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
       position: 'center'
     },
     {
-      targetId: 'tour-sidebar-info',
-      title: language === 'es' ? 'Panel de Control' : 'Control Panel',
+      targetId: 'tour-sidebar',
+      title: language === 'es' ? 'Barra Lateral' : 'Sidebar',
       description: language === 'es'
         ? 'Desde aquí puedes gestionar tu perfil y acceder rápidamente a todas las herramientas.'
         : 'From here you can manage your profile and quickly access all tools.',
@@ -69,7 +69,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
       targetId: isMobile ? 'tour-mobile-calendar' : 'tour-calendar',
       title: language === 'es' ? 'Calendario' : 'Calendar',
       description: language === 'es'
-        ? 'Consulta los próximos eventos, formaciones y encuentros de la comunidad.'
+        ? 'Consulta los próximos eventos publicados por la comunidad.'
         : 'Check upcoming events, training and community meetings.',
       icon: Calendar,
       color: 'text-amber-600 bg-amber-50',
@@ -89,7 +89,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
       targetId: isMobile ? 'tour-mobile-notifications' : 'tour-notifications',
       title: language === 'es' ? 'Notificaciones' : 'Notifications',
       description: language === 'es'
-        ? 'Mantente al tanto de quién interactúa contigo o de las menciones importantes.'
+        ? 'Recibe interacciones de otros usuarios y actualizaciones de tu cuenta.'
         : 'Keep track of who interacts with you or important mentions.',
       icon: Bell,
       color: 'text-blue-600 bg-blue-50',
@@ -162,7 +162,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
           height="100%" 
           fill="rgba(0, 0, 0, 0.7)" 
           mask="url(#spotlight-mask)" 
-          className="pointer-events-auto"
+          className="pointer-events-none"
         />
       </svg>
 
@@ -229,18 +229,16 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({ onClose, onStepCha
               )}
 
               <div className="flex items-center justify-between pt-4">
-                <button 
-                  onClick={handleBack}
-                  disabled={currentStep === 0}
-                  className={`flex items-center space-x-2 px-4 py-2 font-bold text-sm transition-all rounded-xl ${
-                    currentStep === 0 
-                      ? 'text-slate-300 dark:text-zinc-700 pointer-events-none' 
-                      : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
-                  }`}
-                >
-                  <ChevronLeft size={16} />
-                  <span>{language === 'es' ? 'Atrás' : 'Back'}</span>
-                </button>
+                {currentStep > 0 && (
+                  <button
+                    onClick={handleBack}
+                    className="flex items-center space-x-2 px-4 py-2 font-bold text-sm transition-all rounded-xl text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                  >
+                    <ChevronLeft size={16} />
+                    <span>{language === 'es' ? 'Atrás' : 'Back'}</span>
+                  </button>
+                )}
+                {currentStep === 0 && <div />}
 
                 <div className="flex items-center space-x-3">
                   {currentStep === 0 && (

@@ -24,8 +24,12 @@ interface SearchRouteProps {
     followedUserIds: Set<string>;
     followerUserIds: Set<string>;
     chats: Chat[];
-    onShareViaChat: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string, scheduledAt?: Date) => Promise<void>;
+    onShareViaChat: (recipientId: string, text: string, sharedPostId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
     language: Language;
+    likedIds?: Set<string>;
+    votedUpIds?: Set<string>;
+    votedDownIds?: Set<string>;
+    repostedIds?: Set<string>;
 }
 
 export const SearchRoute: React.FC<SearchRouteProps> = ({
@@ -49,11 +53,18 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
     followerUserIds,
     chats,
     onShareViaChat,
-    language
+    language,
+    likedIds = new Set(),
+    votedUpIds = new Set(),
+    votedDownIds = new Set(),
+    repostedIds = new Set()
 }) => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const query = searchParams.get('q') || '';
+    // Soporta ?=valor y ?=#hashtag (usando el hash del navegador para evitar encoding de #)
+    const emptyKeyQuery = searchParams.get('') || '';
+    const hashQuery = window.location.hash;
+    const query = hashQuery ? hashQuery : emptyKeyQuery;
 
     return (
         <SearchResultsView
@@ -83,6 +94,10 @@ export const SearchRoute: React.FC<SearchRouteProps> = ({
             language={language}
             onShareViaChat={onShareViaChat}
             chats={chats}
+            likedIds={likedIds}
+            votedUpIds={votedUpIds}
+            votedDownIds={votedDownIds}
+            repostedIds={repostedIds}
         />
     );
 };

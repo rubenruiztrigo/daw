@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProfileView } from './ProfileView';
 import { User, Post, Chat, CalendarEvent, Notification } from '../types';
@@ -20,9 +20,9 @@ interface ProfileRouteProps {
     onDeletePost: (id: string) => void;
     onNavigateToEvent: (userId: string, eventId: string) => void;
     onStartChat: (user: User) => void;
-    onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrl?: string, docUrl?: string, docName?: string, linkedEventId?: string) => void;
+    onAddPost: (content: string, type: 'post' | 'news', tags: string[], imageUrls?: string[], docUrl?: string, docName?: string, eventId?: string, title?: string) => Promise<void>;
     onPromoteEvent: (ev: CalendarEvent) => void;
-    onShareViaChat: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, scheduledAt?: Date) => Promise<void>;
+    onShareViaChat: (recipientId: string, text: string, postId?: string, sharedProfileId?: string, sharedEventId?: string, imageUrls?: string[], newsId?: string, scheduledAt?: Date) => Promise<void>;
     focusedEventId: string | null;
     onClearFocusedEvent: () => void;
     onSearchHashtag: (tag: string) => void;
@@ -40,9 +40,20 @@ interface ProfileRouteProps {
     language: Language;
     pinnedPosts?: Set<string>;
     onTogglePin?: (postId: string) => void;
-    onSupportEvent: (event: CalendarEvent) => void;
+    onSupportEvent?: (event: CalendarEvent) => void;
     targetEventId: string | null;
     onClearTargetEvent: () => void;
+    likedIds?: Set<string>;
+    votedUpIds?: Set<string>;
+    votedDownIds?: Set<string>;
+    repostedIds?: Set<string>;
+    onLoadMore?: (authorId: string) => void;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
+    hasMoreNews?: boolean;
+    isLoadingMoreNews?: boolean;
+    isLoadingProfileFeed?: boolean;
+    onFetchProfileContent?: (authorId: string) => void;
 }
 
 export const ProfileRoute: React.FC<ProfileRouteProps> = ({
@@ -76,52 +87,108 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
     onPreviewImage,
     globalEvents = [],
     language,
-    pinnedPosts,
+    pinnedPosts = new Set(),
     onTogglePin,
     onSupportEvent,
     targetEventId,
-    onClearTargetEvent
+    onClearTargetEvent,
+    likedIds = new Set(),
+    votedUpIds = new Set(),
+    votedDownIds = new Set(),
+    repostedIds = new Set(),
+    onFetchProfileContent,
+    onLoadMore,
+    hasMore = false,
+    isLoadingMore = false,
+    hasMoreNews = false,
+    isLoadingMoreNews = false,
+    isLoadingProfileFeed = false
 }) => {
     const { identifier, eventId } = useParams<{ identifier: string; eventId?: string }>();
     const navigate = useNavigate();
-    const [fetchedUser, setFetchedUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(false);
-
     // Sanitize identifier (remove @ if present)
     const cleanIdentifier = identifier?.startsWith('@') ? identifier.slice(1) : identifier;
 
-    // 1. Try to find in local state (case-insensitive username check or exact ID)
-    const localUser = users.find(u => u.username?.toLowerCase() === cleanIdentifier?.toLowerCase() || u.id === cleanIdentifier) ||
-        (currentUserData?.username?.toLowerCase() === cleanIdentifier?.toLowerCase() || currentUserData?.id === cleanIdentifier ? currentUserData : null) ||
-        (!cleanIdentifier && currentUserData ? currentUserData : null);
+    // 1. Try to find in local state: prioritize currentUserData, then the general users array
+    const localUser = useMemo(() => {
+        if (!cleanIdentifier) return currentUserData;
+        const lowId = cleanIdentifier.toLowerCase();
+        if (currentUserData?.username?.toLowerCase() === lowId || currentUserData?.id === cleanIdentifier) {
+            return currentUserData;
+        }
+        return users.find(u => u.username?.toLowerCase() === lowId || u.id === cleanIdentifier) || null;
+    }, [users, currentUserData, cleanIdentifier]);
+
+    const [fetchedUser, setFetchedUser] = useState<User | null>(() => {
+        if (!cleanIdentifier) return null;
+        try {
+            const key = `profile_cache_${cleanIdentifier.toLowerCase()}`;
+            const r = localStorage.getItem(key);
+            if (r) return JSON.parse(r);
+        } catch {}
+        return null;
+    });
+
+    const [loading, setLoading] = useState(() => {
+        const hasLocal = localUser && localUser.username?.toLowerCase() === cleanIdentifier?.toLowerCase();
+        return !hasLocal && !!cleanIdentifier;
+    });
+
+    // Reset loading state when identifier changes and we don't have a local match
+    const [lastIdentifier, setLastIdentifier] = useState(cleanIdentifier);
+    if (cleanIdentifier !== lastIdentifier) {
+        setLastIdentifier(cleanIdentifier);
+        const hasLocal = localUser && localUser.username?.toLowerCase() === cleanIdentifier?.toLowerCase();
+        if (!hasLocal) {
+            setLoading(true);
+        }
+    }
+
+    const targetUser = localUser || fetchedUser;
 
     useEffect(() => {
         const fetchUser = async () => {
-            // If already in local state or no identifier, don't fetch
-            if (localUser || !cleanIdentifier) {
+            // 1. If we have it locally and it matches, we are done.
+            if (localUser && localUser.username?.toLowerCase() === cleanIdentifier?.toLowerCase()) {
                 setFetchedUser(null);
+                setLoading(false);
+                return;
+            }
+            
+            if (!cleanIdentifier) {
+                setFetchedUser(null);
+                setLoading(false);
                 return;
             }
 
-            setLoading(true);
-            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanIdentifier || '');
+            // 2. Only show loader if we have absolutely no data for this user yet (no cache, no local match)
+            const hasCachedData = !!(targetUser && targetUser.username?.toLowerCase() === cleanIdentifier.toLowerCase());
+            if (!hasCachedData) {
+                setLoading(true);
+            }
+
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanIdentifier || '');
             try {
-                let query = supabase.from('profiles').select('*');
+                let query = supabase.from('profiles').select('id, name, last_name, username, position, institution, avatar, bio, interests, followers_count, following_count, country, region, created_at, updated_at, first_time, novas, is_admin, is_organization, administration_type, status, chat_settings, notification_settings, linked_organization_id, job_category, level_name, birth_date');
+                
                 if (isUUID) {
-                    query = query.or(`username.ilike.${cleanIdentifier},id.eq.${cleanIdentifier}`);
+                    query = query.or(`username.eq.${cleanIdentifier},id.eq.${cleanIdentifier}`);
                 } else {
-                    query = query.ilike('username', cleanIdentifier);
+                    query = query.eq('username', cleanIdentifier);
                 }
+                
                 const { data, error } = await query.maybeSingle();
 
-                if (data && !error) {
+                if (error) {
+                    console.error("Supabase error:", error.message);
+                } else if (data) {
                     const formattedUser: User = {
                         id: data.id,
                         name: data.name,
                         lastName: data.last_name,
                         username: data.username,
                         position: data.position,
-                        department: data.department,
+                        institution: data.institution,
                         avatar: getSafeAvatar(data.avatar),
                         bio: data.bio || '',
                         interests: data.interests || [],
@@ -138,22 +205,29 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
                         novas: data.novas,
                         birthDate: data.birth_date,
                         notificationSettings: data.notification_settings,
-                        linkedOrganizationId: data.linked_organization_id || data.linkedOrganizationId || null
+                        linkedOrganizationId: data.linked_organization_id || null
                     };
                     setFetchedUser(formattedUser);
-                } else {
-                    setFetchedUser(null);
+                    try {
+                        const key = `profile_cache_${data.username?.toLowerCase()}`;
+                        localStorage.setItem(key, JSON.stringify(formattedUser));
+                    } catch {}
                 }
             } catch (err) {
-                console.error("Error loading profile:", err);
-                setFetchedUser(null);
+                console.error("Unexpected fetch error:", err);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchUser();
-    }, [cleanIdentifier, localUser]);
+    }, [cleanIdentifier, localUser]); // NOW it reacts if the local cache (users list) updates! 
+
+    useEffect(() => {
+        if (targetUser?.id && onFetchProfileContent) {
+            onFetchProfileContent(targetUser.id);
+        }
+    }, [targetUser?.id, onFetchProfileContent]);
 
     // Redirection to username-based URL if common identifier is ID
     useEffect(() => {
@@ -165,14 +239,12 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
 
     if (loading) {
         return (
-            <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4 bg-white dark:bg-[#0a0a0a]">
-                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                <p className="text-slate-500 font-bold animate-pulse text-sm">Cargando perfil...</p>
+            <div className="mx-3 sm:mx-4 rounded-[2rem] overflow-hidden min-h-[60vh] flex flex-col items-center justify-center space-y-4 bg-white dark:bg-[#0a0a0a]">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin flex-shrink-0" />
+                <p className="text-slate-500 font-bold animate-pulse text-sm text-center px-4">Cargando perfil...</p>
             </div>
         );
     }
-
-    const targetUser = localUser || fetchedUser;
 
     if (!targetUser) {
         return (
@@ -220,6 +292,12 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             onNavigateToEvent={onNavigateToEvent}
             focusedEventId={focusedEventId || targetEventId || eventId}
             onClearFocusedEvent={() => {
+                // IMPORTANT: When clearing the focused event, we MUST remove it from the URL
+                // to prevent the infinite re-open loop in ProfileView's useEffect.
+                const user = localUser || fetchedUser;
+                if (user && user.username) {
+                    navigate(`/${user.username}`, { replace: true });
+                }
                 if (onClearFocusedEvent) onClearFocusedEvent();
                 if (onClearTargetEvent) onClearTargetEvent();
             }}
@@ -243,6 +321,16 @@ export const ProfileRoute: React.FC<ProfileRouteProps> = ({
             pinnedPosts={pinnedPosts}
             onTogglePin={onTogglePin}
             onSupportEvent={onSupportEvent}
+            likedIds={likedIds}
+            votedUpIds={votedUpIds}
+            votedDownIds={votedDownIds}
+            repostedIds={repostedIds}
+            onLoadMore={onLoadMore}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            hasMoreNews={hasMoreNews}
+            isLoadingMoreNews={isLoadingMoreNews}
+            isLoadingProfileFeed={isLoadingProfileFeed}
         />
     );
 };

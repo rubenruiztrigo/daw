@@ -100,7 +100,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
                         <ChevronRight size={48} strokeWidth={1} />
                     </button>
 
-                    <div className="absolute top-6 left-1/2 -translate-x-1/2 text-white/70 font-black tracking-widest text-sm bg-black/40 px-4 py-2 rounded-full backdrop-blur-md z-[210]">
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 text-white font-black tracking-widest text-sm bg-black/40 px-4 py-2 rounded-full backdrop-blur-md z-[210]">
                         {currentIndex + 1} / {images.length}
                     </div>
                 </>

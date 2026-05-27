@@ -73,7 +73,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                         badge_id,
                         created_at,
                         user_id,
-                        profiles:user_id (
+                        user:profiles!user_id (
                             id,
                             name,
                             last_name,
@@ -88,11 +88,11 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                 if (data) {
                     const processedWinners = data.map((item: any) => ({
                         user: {
-                            id: item.profiles.id,
-                            name: item.profiles.name,
-                            lastName: item.profiles.last_name,
-                            avatar: item.profiles.avatar,
-                            position: item.profiles.position
+                            id: item.user.id,
+                            name: item.user.name,
+                            lastName: item.user.last_name,
+                            avatar: item.user.avatar,
+                            position: item.user.position
                         },
                         badgeId: item.badge_id,
                         createdAt: item.created_at
@@ -105,7 +105,64 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                         const latestWinners = processedWinners.filter(w => new Date(w.createdAt).toDateString() === latestDate);
                         setWinners(latestWinners.sort((a, b) => rankOrder[a.badgeId] - rankOrder[b.badgeId]));
                     } else {
-                        setWinners([]);
+                        // Fallback: Compute dynamic winners from news table for last week (Monday to Sunday)
+                        const now = new Date();
+                        const dayOfWeek = now.getUTCDay();
+                        const daysSinceMonday = (dayOfWeek + 6) % 7;
+                        
+                        const thisMonday = new Date(now);
+                        thisMonday.setUTCDate(now.getUTCDate() - daysSinceMonday);
+                        thisMonday.setUTCHours(0, 0, 0, 0);
+                        
+                        const lastMonday = new Date(thisMonday);
+                        lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+                        
+                        const lastSunday = new Date(lastMonday);
+                        lastSunday.setUTCDate(lastMonday.getUTCDate() + 6);
+                        lastSunday.setUTCHours(23, 59, 59, 999);
+
+                        const { data: weekNews } = await supabase
+                            .from('news')
+                            .select('author_id, up_votes_count, profiles:author_id(id, name, last_name, avatar, position)')
+                            .gte('created_at', lastMonday.toISOString())
+                            .lte('created_at', lastSunday.toISOString())
+                            .gt('up_votes_count', 0);
+
+                        if (weekNews && weekNews.length > 0) {
+                            const scoreByAuthor = new Map<string, { score: number; user: any }>();
+                            for (const row of weekNews) {
+                                if (!row.profiles) continue;
+                                const authorId = row.author_id;
+                                const currentScore = row.up_votes_count ?? 0;
+                                const existing = scoreByAuthor.get(authorId);
+                                if (!existing || currentScore > existing.score) {
+                                    scoreByAuthor.set(authorId, {
+                                        score: currentScore,
+                                        user: {
+                                            id: (row.profiles as any).id,
+                                            name: (row.profiles as any).name,
+                                            lastName: (row.profiles as any).last_name,
+                                            avatar: (row.profiles as any).avatar,
+                                            position: (row.profiles as any).position
+                                        }
+                                    });
+                                }
+                            }
+
+                            const sorted = [...scoreByAuthor.values()]
+                                .sort((a, b) => b.score - a.score)
+                                .slice(0, 3);
+
+                            const rankBadges = ['ranking_top1', 'ranking_top2', 'ranking_top3'];
+                            const dynamicWinners = sorted.map((item, index) => ({
+                                user: item.user,
+                                badgeId: rankBadges[index],
+                                createdAt: lastSunday.toISOString()
+                            }));
+                            setWinners(dynamicWinners);
+                        } else {
+                            setWinners([]);
+                        }
                     }
                 }
             } catch (error) {
@@ -183,7 +240,7 @@ export const RankingHistoryModal: React.FC<RankingHistoryModalProps> = ({ badges
                 )}
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide min-h-[300px]">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 mb-2 scrollbar-hide min-h-[300px]">
                     {activeTab === 'global' ? (
                         isLoading ? (
                             <div className="flex flex-col items-center justify-center py-20 space-y-4 text-slate-400">

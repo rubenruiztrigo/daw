@@ -217,6 +217,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [availableInterests, setAvailableInterests] = useState<string[]>(PUBLIC_INTERESTS);
+
+  React.useEffect(() => {
+    supabase.from('platform_interests').select('name').order('name').then(({ data }) => {
+      if (data && data.length > 0) setAvailableInterests(data.map((d: any) => d.name));
+    });
+  }, []);
 
   // Image Cropping State
   const [showImageCropModal, setShowImageCropModal] = useState(false);
@@ -258,7 +265,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
     jobCategory: '',
     administrationType: '',
     position: '',
-    department: '',
+    institution: '',
     country: 'España',
     region: '',
     interests: [],
@@ -322,6 +329,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
         .from('profiles')
         .select('id, name')
         .eq('is_organization', true)
+        .eq('status', 'active')
         .ilike('name', `%${query}%`)
         .limit(5);
 
@@ -348,161 +356,201 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
     setLoading(true);
     setError(null);
 
-    const finalJobCategory = formData.jobCategory === 'Otro' ? customJobInput : formData.jobCategory;
-    const finalAdminType = formData.administrationType === 'Otra' ? customAdminInput : formData.administrationType;
+    try {
+      const finalJobCategory = formData.jobCategory === 'Otro' ? customJobInput : formData.jobCategory;
+      const finalAdminType = formData.administrationType === 'Otra' ? customAdminInput : formData.administrationType;
 
-    if (!formData.username || formData.username.includes('@') || formData.username.includes(' ')) {
-      setError("El nombre de usuario no puede contener espacios ni el símbolo @");
-      setLoading(false);
-      return;
-    }
-
-    // Ensure all data is snake_case for the database
-    const profileData = {
-      name: registrationType === 'organization' ? formData.organizationName : formData.name,
-      last_name: registrationType === 'organization' ? '' : formData.lastName,
-      username: formData.username,
-      avatar: formData.avatar,
-      position: formData.position,
-      department: formData.department,
-      job_category: finalJobCategory,
-      administration_type: finalAdminType,
-      country: formData.country,
-      region: formData.region,
-      interests: formData.interests,
-      birth_date: formData.birthDate || null, // Ensure empty string becomes null
-      is_organization: registrationType === 'organization',
-      linked_organization_id: selectedOrg?.id || null,
-      // Extra fields if needed for future
-      // Map Organization Objective to Bio column
-      bio: formData.bio || '',
-      // organization_objective: formData.organizationObjective || '' // Removed to use 'bio' column
-    };
-
-    // Attempt registration
-    let authResponse = await supabase.auth.signUp({
-      email: formData.email!,
-      password: formData.password!,
-      options: {
-        data: profileData
+      if (!formData.username || formData.username.includes('@') || formData.username.includes(' ')) {
+        setError("El nombre de usuario no puede contener espacios ni el símbolo @");
+        return;
       }
-    });
 
-    // Handle "User already registered" (Status 422) specifically for "Zombie" users (Auth exists, Profile missing)
-    if (authResponse.error?.status === 422 || authResponse.error?.message?.includes("already registered")) {
-      console.log("User already exists in Auth. Checking for Zombie state...");
-      // Try to sign in with the provided credentials
-      const signInResponse = await supabase.auth.signInWithPassword({
+      // Full profile data for the profiles table
+      const profileData = {
+        name: registrationType === 'organization' ? formData.organizationName : formData.name,
+        last_name: registrationType === 'organization' ? '' : formData.lastName,
+        username: formData.username,
+        avatar: formData.avatar,
+        position: registrationType === 'organization' ? null : formData.position,
+        institution: registrationType === 'organization' ? null : formData.institution,
+        job_category: finalJobCategory,
+        administration_type: finalAdminType,
+        country: formData.country,
+        region: formData.region,
+        interests: formData.interests,
+        birth_date: formData.birthDate || null,
+        is_organization: registrationType === 'organization',
+        linked_organization_id: selectedOrg?.id || null,
+        bio: formData.bio || '',
+      };
+
+      // Minimal auth metadata — never include avatar or large fields to avoid JWT/localStorage quota errors
+      const authMetadata = {
+        username: formData.username,
+        name: profileData.name,
+        last_name: profileData.last_name,
+        position: profileData.position,
+        institution: profileData.institution,
+        job_category: profileData.job_category,
+        administration_type: profileData.administration_type,
+        country: profileData.country,
+        region: profileData.region,
+        is_organization: profileData.is_organization,
+        birth_date: profileData.birth_date,
+        linked_organization_id: profileData.linked_organization_id,
+      };
+
+      // Attempt registration
+      let authResponse = await supabase.auth.signUp({
         email: formData.email!,
         password: formData.password!,
+        options: {
+          data: authMetadata
+        }
       });
 
-      if (!signInResponse.error && signInResponse.data.session) {
-        // Check if profile exists (use try/catch to handle 406 gracefully if needed, though Select should be fine)
-        const { data: existingProfile, error: fetchProfileError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', signInResponse.data.user.id)
-          .maybeSingle();
+      // Handle "User already registered" (Status 422) specifically for "Zombie" users (Auth exists, Profile missing)
+      if (authResponse.error?.status === 422 || authResponse.error?.message?.includes("already registered")) {
+        const signInResponse = await supabase.auth.signInWithPassword({
+          email: formData.email!,
+          password: formData.password!,
+        });
 
-        if (fetchProfileError) console.warn("Error checking profile existence:", JSON.stringify(fetchProfileError));
+        if (!signInResponse.error && signInResponse.data.session) {
+          const { data: existingProfile, error: fetchProfileError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', signInResponse.data.user.id)
+            .maybeSingle();
 
-        if (!existingProfile) {
-          console.log("Zombie user detected (Auth yes, Profile no). Proceeding to resurrect...");
-          // Verified: Usage of 'authResponse' as a mutable structure to mimic successful signup
-          authResponse = {
-            data: { user: signInResponse.data.user, session: signInResponse.data.session },
-            error: null
-          } as any;
+          if (fetchProfileError) console.warn("Error checking profile existence:", JSON.stringify(fetchProfileError));
+
+          if (!existingProfile) {
+            authResponse = {
+              data: { user: signInResponse.data.user, session: signInResponse.data.session },
+              error: null
+            } as any;
+          }
         }
       }
-    }
 
-    const { data, error: signUpError } = authResponse;
+      const { data, error: signUpError } = authResponse;
 
-    if (signUpError) {
-      console.error("SignUp Error:", signUpError);
-      if (signUpError.message.toLowerCase().includes('rate limit') || signUpError.status === 429) {
-        setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada o espera unos minutos.");
-      } else if (signUpError.message.includes("User already registered") || signUpError.status === 422) {
-        setStep(1); // Go back to input step to show error
-        setError("Error: El usuario o correo ya está registrado en el sistema. Si no recuerdas tu contraseña, intenta iniciar sesión o recuperarla.");
-      } else {
-        setError(`Error al crear la cuenta: ${signUpError.message}`);
+      if (signUpError) {
+        console.error("SignUp Error:", signUpError);
+        if (signUpError.message.toLowerCase().includes('rate limit') || signUpError.status === 429) {
+          setError("Límite de intentos excedido. Por favor, revisa tu bandeja de entrada o espera unos minutos.");
+        } else if (signUpError.message.includes("User already registered") || signUpError.status === 422) {
+          setStep(1);
+          setError("Error: El usuario o correo ya está registrado en el sistema. Si no recuerdas tu contraseña, intenta iniciar sesión o recuperarla.");
+        } else if (signUpError.status === 500 || signUpError.message.includes("Database error")) {
+          setError("Error de base de datos al guardar el usuario. Esto suele deberse a un fallo en los disparadores (triggers) de sincronización. Por favor, contacta con soporte.");
+        } else {
+          setError(`Error al crear la cuenta: ${signUpError.message}`);
+        }
+        return;
       }
-      setLoading(false);
-      return;
-    }
 
-    // Check if session exists (Auto-login)
-    if (data.session) {
-      try {
-        console.log("Session established. Proceeding to profile creation...");
-        // User is logged in, try to write profile to DB
+      if (data.user) {
+        // profiles: solo datos sociales. Los campos core viven en id.users (upsert más abajo)
+        // y el trigger sync_core_to_profiles se encarga de rellenarlos mientras las columnas
+        // sigan existiendo en profiles; tras el DROP COLUMN, este upsert ya es válido por sí solo.
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
-            id: data.user!.id,
-            ...profileData,
+            id: data.user.id,
+            name: profileData.name,
+            last_name: profileData.last_name,
+            username: profileData.username,
             email: formData.email,
-            avatar: formData.avatar,
-            status: 'pending'
+            avatar: profileData.avatar || null,
+            birth_date: profileData.birth_date || null,
+            position: profileData.position || null,
+            institution: profileData.institution || null,
+            job_category: profileData.job_category || null,
+            administration_type: profileData.administration_type || null,
+            country: profileData.country || 'España',
+            region: profileData.region || null,
+            is_organization: registrationType === 'organization',
+            interests: profileData.interests,
+            linked_organization_id: profileData.linked_organization_id,
+            bio: profileData.bio,
+            status: 'pending',
+            updated_at: new Date().toISOString()
           });
 
         if (profileError) {
           console.error("Error creating profile:", JSON.stringify(profileError));
+          // If we have no session, we can't save the profile via RLS usually, 
+          // but we try anyway as requested.
+          if (!data.session) {
+            console.warn("Profile save failed without session - this is expected if RLS is enabled.");
+          }
           setError("Cuenta creada, pero hubo un error guardando el perfil. Contacta con soporte.");
         } else {
-          console.log("Profile created. Sending notifications...");
-
-          // Fetch ALL admins
-          const { data: adminUsers, error: adminFetchError } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .eq('is_admin', true);
-
-          if (adminFetchError) console.error("Error fetching admins:", adminFetchError);
-
-          if (adminUsers && adminUsers.length > 0) {
-            console.log(`Found ${adminUsers.length} admins. Sending notifications...`);
-
-            // Send notifications to all admins in parallel
-            await Promise.all(adminUsers.map(async (admin) => {
-              // 1. Email Notification
-              if (admin.email) {
-                await notifyAdminNewUser(formData.username!, `${formData.name} ${formData.lastName}`, admin.email)
-                  .catch(err => console.error(`Email to ${admin.email} failed`, err));
-              }
-
-              // 2. In-App Notification
-              const { error: notifError } = await supabase.from('notifications').insert({
-                user_id: admin.id,
-                type: 'registration_request',
-                content: `El usuario ${formData.username} solicita registro.`,
-                sender_id: data.user!.id,
-                is_read: false
+          try {
+            // Sincronizar campos core con id.users
+            const { error: idUserError } = await supabase
+              .schema('id')
+              .from('users')
+              .upsert({
+                id: data.user.id,
+                name: profileData.name,
+                last_name: profileData.last_name,
+                username: formData.username,
+                email: formData.email,
+                avatar: formData.avatar || null,
+                birth_date: profileData.birth_date || null,
+                position: profileData.position || null,
+                institution: profileData.institution || null,
+                job_category: profileData.job_category || null,
+                administration_type: profileData.administration_type || null,
+                country: profileData.country || 'España',
+                region: profileData.region || null,
+                is_organization: registrationType === 'organization',
               });
-
-              if (notifError) console.error(`Error notifying admin ${admin.id}:`, notifError);
-            }));
-          } else {
-            console.warn("No admins found to notify.");
+            if (idUserError) {
+              console.error('Error syncing id.users on register:', idUserError);
+            }
+          } catch (syncErr) {
+            console.error('Exception during id.users sync:', syncErr);
           }
 
-          console.log("Notifications sent. Showing modal.");
-          // Show pending modal instead of completing immediately
+          // Fetch ALL admins and notify them (fire and forget — don't block UX)
+          supabase
+            .from('profiles')
+            .select('id, email')
+            .eq('is_admin', true)
+            .then(({ data: adminUsers, error: adminFetchError }) => {
+              if (adminFetchError) { console.error("Error fetching admins:", adminFetchError); return; }
+              if (!adminUsers || adminUsers.length === 0) { console.warn("No admins found to notify."); return; }
+
+              adminUsers.forEach(async (admin) => {
+                if (admin.email) {
+                  notifyAdminNewUser(formData.username!, `${formData.name} ${formData.lastName}`, admin.email)
+                    .catch(err => console.error(`Email to ${admin.email} failed`, err));
+                }
+                const { error: notifError } = await supabase.from('notifications').insert({
+                  user_id: admin.id,
+                  type: 'registration_request',
+                  content: `El usuario ${formData.username} solicita registro.`,
+                  sender_id: data.user!.id,
+                  is_read: false
+                });
+                if (notifError) console.error(`Error notifying admin ${admin.id}:`, notifError);
+              });
+            })
+            .catch(err => console.error("Admin notification error:", err));
+
           setShowPendingApprovalModal(true);
         }
-      } catch (err: any) {
-        console.error("Critical error in registration finalization:", err);
-        setError("Ocurrió un error inesperado al finalizar el registro: " + (err.message || String(err)));
       }
-    } else if (data.user) {
-      console.warn("User created but no session (Email verification?)");
-      alert("Registro completado. Por favor, verifica tu correo electrónico.");
+    } catch (err: any) {
+      console.error("Critical error in registration finalization:", err);
+      setError("Ocurrió un error inesperado al finalizar el registro: " + (err.message || String(err)));
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
 
@@ -526,8 +574,12 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
           !passwordError
         );
       } else if (step === 2) {
-        return (formData.interests?.length || 0) >= 1;
+        return formData.administrationType === 'Otra'
+          ? !!customAdminInput.trim()
+          : !!formData.administrationType;
       } else if (step === 3) {
+        return (formData.interests?.length || 0) >= 1;
+      } else if (step === 4) {
         return true; // Profile photo optional
       }
     }
@@ -557,7 +609,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
       }
       case 2: return formData.jobCategory === 'Otro' ? !!customJobInput.trim() : !!formData.jobCategory;
       case 3: return formData.administrationType === 'Otra' ? !!customAdminInput.trim() : !!formData.administrationType;
-      case 4: return !!(formData.position && formData.department);
+      case 4: return !!(formData.position && formData.institution);
       case 5: return !!(formData.country && formData.region);
       case 6: return (formData.interests?.length || 0) >= 1;
       case 7: return true; // Profile photo is optional (has default)
@@ -568,13 +620,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
 
 
   return (
-    <div className="min-h-screen bg-transparent flex items-center justify-center p-6">
-      <div className="max-w-3xl w-full bg-white dark:bg-[#0a0a0a] rounded-3xl px-10 py-8 relative overflow-hidden border border-slate-100 dark:border-zinc-900">
-        <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100">
+    <div className="min-h-screen bg-transparent flex items-center justify-center p-4">
+      <div className="max-w-3xl w-full bg-white dark:bg-[#0a0a0a] rounded-3xl px-9 py-6 relative border border-slate-100 dark:border-zinc-900">
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-slate-100 overflow-hidden rounded-t-3xl">
           <div
             className="h-full bg-blue-600 transition-all duration-700 ease-in-out"
             style={{
-              width: `${((step - 1) / (registrationType === 'organization' ? 3 : 7)) * 100}%`
+              width: `${((step - 1) / (registrationType === 'organization' ? 4 : 7)) * 100}%`
             }}
           />
         </div>
@@ -586,37 +638,41 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
           </div>
         )}
 
-        <div className="mb-6 min-h-[400px] flex flex-col justify-start pt-2">
+        <div className="mb-3 flex flex-col justify-start pt-2">
 
           {/* ACCOUNT SELECTION - NOW THE FIRST SCREEN */}
           {step === 0 && registrationType === null && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Selecciona el tipo de cuenta</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <button
                   onClick={() => { setRegistrationType('personal'); setStep(1); }}
-                  className="p-5 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-blue-500 hover:bg-blue-50/50 transition-all group text-left relative overflow-hidden"
+                  className="p-7 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-blue-500 hover:bg-blue-50/50 transition-all group text-left relative overflow-hidden"
                 >
-                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <UserIcon size={24} />
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/20 text-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                      <UserIcon size={26} />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-tight">Cuenta Personal</h3>
                   </div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">Cuenta Personal</h3>
-                  <p className="text-slate-500 dark:text-gray-400 text-xs font-medium leading-relaxed">
+                  <p className="text-slate-500 dark:text-gray-400 text-sm font-medium leading-relaxed">
                     Para profesionales del sector público que quieren conectar, aprender y compartir.
                   </p>
                 </button>
 
                 <button
                   onClick={() => { setRegistrationType('organization'); setStep(1); }}
-                  className="p-6 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-purple-500 hover:bg-purple-50/50 transition-all group text-left relative overflow-hidden"
+                  className="p-7 rounded-2xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-[#0a0a0a] hover:border-purple-500 hover:bg-purple-50/50 transition-all group text-left relative overflow-hidden"
                 >
-                  <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Building size={24} />
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="w-14 h-14 bg-purple-100 dark:bg-purple-900/20 text-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                      <Building size={26} />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-tight">Cuenta para organización</h3>
                   </div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">Cuenta Organización</h3>
-                  <p className="text-slate-500 dark:text-gray-400 text-xs font-medium leading-relaxed">
+                  <p className="text-slate-500 dark:text-gray-400 text-sm font-medium leading-relaxed">
                     Para instituciones y entidades que desean tener presencia oficial en la red.
                   </p>
                 </button>
@@ -636,19 +692,19 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
 
           {/* PERSONAL FLOW */}
           {registrationType === 'personal' && step === 1 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Crea tu cuenta</h2>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Crea tu cuenta</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre</label>
-                  <input type="text" value={formData.name} onChange={e => updateField('name', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. Ana" />
+                  <input type="text" value={formData.name} onChange={e => updateField('name', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. Ana" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Apellidos</label>
-                  <input type="text" value={formData.lastName} onChange={e => updateField('lastName', e.target.value)} className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. García López" />
+                  <input type="text" value={formData.lastName} onChange={e => updateField('lastName', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white" placeholder="Ej. García López" />
                 </div>
               </div>
 
@@ -662,7 +718,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       value={formData.username}
                       onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
                       onBlur={() => { if (formData.username) checkAvailability(); }}
-                      className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                      className={`w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="novo"
                     />
                   </div>
@@ -680,7 +736,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     value={formData.birthDate}
                     max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
                     onChange={e => updateField('birthDate', e.target.value)}
-                    className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                   />
                 </div>
               </div>
@@ -694,7 +750,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     value={formData.email}
                     onChange={e => updateField('email', e.target.value)}
                     onBlur={() => { if (formData.email) checkAvailability(); }}
-                    className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                    className={`w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                     placeholder="novo@novagob.org"
                   />
                 </div>
@@ -713,9 +769,10 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       value={formData.password}
                       onChange={e => updateField('password', e.target.value)}
-                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                      className={`w-full pl-12 pr-12 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="Mínimo 8 caracteres"
                     />
                     <button
@@ -723,7 +780,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                     >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                   {passwordError && (
@@ -739,9 +796,10 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                      className={`w-full pl-12 pr-12 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                       placeholder="Repite la contraseña"
                     />
                     <button
@@ -749,7 +807,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                     >
-                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                 </div>
@@ -758,17 +816,16 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
           )}
 
           {registrationType === 'personal' && step === 2 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight mb-2">Tipo de puesto que desempeñas</h2>
-                <p className="text-slate-500 dark:text-gray-400 font-medium text-sm">Indica tu nivel de responsabilidad actual</p>
+                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Tipo de puesto que desempeñas</h2>
               </div>
               <div className="grid grid-cols-1 gap-3">
                 {['Directivo', 'Técnico', 'Administrativo', 'Otro'].map(cat => (
                   <button
                     key={cat}
                     onClick={() => updateField('jobCategory', cat)}
-                    className={`w-full text-left px-6 py-5 rounded-[2rem] border-2 transition-all flex items-center justify-between group ${formData.jobCategory === cat ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
+                    className={`w-full text-left px-6 py-4 rounded-2xl border-2 transition-all flex items-center justify-between group ${formData.jobCategory === cat ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
                   >
                     <span className="font-black text-lg">{cat}</span>
                     {formData.jobCategory === cat && <Check size={24} />}
@@ -795,11 +852,11 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
           )}
 
           {registrationType === 'personal' && step === 3 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight mb-2">Tipo de organización</h2>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Tipo de organización</h2>
               </div>
-              <div className="grid grid-cols-1 gap-3 w-full">
+              <div className="grid grid-cols-1 gap-1.5 w-full">
                 {[
                   'Administración Pública central',
                   'Administración Pública regional',
@@ -811,10 +868,10 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   <button
                     key={type}
                     onClick={() => updateField('administrationType', type)}
-                    className={`w-full text-left px-6 py-5 rounded-[2rem] border-2 transition-all flex items-center justify-between group ${formData.administrationType === type ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
+                    className={`w-full text-left px-5 py-2.5 rounded-2xl border-2 transition-all flex items-center justify-between group ${formData.administrationType === type ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-100 text-slate-600 hover:border-blue-200'}`}
                   >
-                    <span className="font-black text-lg">{type}</span>
-                    {formData.administrationType === type && <Check size={24} />}
+                    <span className="font-black text-base">{type}</span>
+                    {formData.administrationType === type && <Check size={20} />}
                   </button>
                 ))}
               </div>
@@ -856,11 +913,39 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                     <input
                       type="text"
-                      value={formData.department}
+                      value={formData.institution}
                       onChange={e => {
-                        updateField('department', e.target.value);
+                        updateField('institution', e.target.value);
                         searchOrganizations(e.target.value);
                         if (selectedOrg) setSelectedOrg(null);
+                      }}
+                      onBlur={async () => {
+                        // Auto-link: if the user typed a name that exactly matches an existing org
+                        // and hasn't already selected one, search for an exact match and auto-select
+                        if (selectedOrg || !formData.institution || formData.institution.length < 2) return;
+                        const exactMatch = orgResults.find(
+                          o => o.name.toLowerCase() === formData.institution!.toLowerCase()
+                        );
+                        if (exactMatch) {
+                          setSelectedOrg(exactMatch);
+                          setOrgResults([]);
+                          return;
+                        }
+                        // Not in current results — query DB for exact match
+                        try {
+                          const { data } = await supabase
+                            .from('profiles')
+                            .select('id, name')
+                            .eq('is_organization', true)
+                            .eq('status', 'active')
+                            .ilike('name', formData.institution!)
+                            .limit(1)
+                            .maybeSingle();
+                          if (data) {
+                            setSelectedOrg({ id: data.id, name: data.name });
+                            setOrgResults([]);
+                          }
+                        } catch { /* non-critical */ }
                       }}
                       className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all dark:text-white text-sm"
                       placeholder="Ej. Ayuntamiento de Madrid"
@@ -878,9 +963,10 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                         <button
                           key={org.id}
                           type="button"
+                          onMouseDown={e => e.preventDefault()} // evita que onBlur se dispare antes del click
                           onClick={() => {
                             setSelectedOrg(org);
-                            updateField('department', org.name);
+                            updateField('institution', org.name);
                             setOrgResults([]);
                           }}
                           className="w-full text-left px-5 py-3 text-sm font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors flex items-center space-x-3"
@@ -896,13 +982,11 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                     <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 rounded-xl flex items-center justify-between animate-in zoom-in-95">
                       <div className="flex items-center space-x-2">
                         <CheckCircle2 size={16} className="text-blue-600" />
-                        <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Cuenta vinculada: {selectedOrg.name}</span>
+                        <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Tu perfil quedará vinculado a <span className="text-blue-900 dark:text-white">{selectedOrg.name}</span></span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedOrg(null);
-                        }}
+                        onClick={() => setSelectedOrg(null)}
                         className="text-blue-600 hover:text-blue-800 p-1"
                       >
                         <X size={14} />
@@ -915,11 +999,11 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
           )}
 
           {registrationType === 'personal' && step === 5 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tu ubicación</h2>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Tu ubicación</h2>
               </div>
-              <div className="space-y-6 relative">
+              <div className="space-y-4 relative">
                 <SelectDrop
                   label="País"
                   value={formData.country || ''}
@@ -952,7 +1036,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Tus intereses</h2>
               </div>
               <div className="flex flex-wrap gap-2.5 justify-center">
-                {PUBLIC_INTERESTS.map(topic => {
+                {availableInterests.map(topic => {
                   const isSelected = formData.interests?.includes(topic);
                   return (
                     <button
@@ -974,7 +1058,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
 
           {registrationType === 'personal' && step === 7 && (
             <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-500 text-center">
-              <div className="text-center">
+              <div className="text-center mb-8">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Foto de perfil</h2>
               </div>
 
@@ -1008,22 +1092,21 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
 
           {/* ORGANIZATION FLOW */}
           {registrationType === 'organization' && step === 1 && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Crea tu cuenta de Organización</h2>
-                <p className="text-slate-500 dark:text-gray-400 font-medium mt-2 text-sm">Registra tu entidad en NovaGob</p>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Crea tu Cuenta para una Organización</h2>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-2.5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de tu organización</label>
                   <div className="relative">
-                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                     <input
                       type="text"
                       value={formData.organizationName}
                       onChange={e => updateField('organizationName', e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                      className="w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                       placeholder="Ej. Ayuntamiento de..."
                     />
                   </div>
@@ -1037,7 +1120,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       maxLength={160}
                       value={formData.bio || ''}
                       onChange={e => updateField('bio', e.target.value)}
-                      className="w-full px-5 py-3 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
                       placeholder="Ej. Descripción de la entidad..."
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
@@ -1046,7 +1129,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative">
                   <SelectDrop
                     label="País"
                     value={formData.country || ''}
@@ -1073,17 +1156,17 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Nombre de usuario</label>
                     <div className="relative">
-                      <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <AtSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                       <input
                         type="text"
                         value={formData.username}
                         onChange={e => updateField('username', e.target.value.toLowerCase().replace(/\s/g, ''))}
                         onBlur={() => { if (formData.username) checkAvailability(); }}
-                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                        className={`w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${usernameError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="ayuntamientex"
                       />
                     </div>
@@ -1098,13 +1181,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Correo electrónico</label>
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                       <input
                         type="email"
                         value={formData.email}
                         onChange={e => updateField('email', e.target.value)}
                         onBlur={() => { if (formData.email) checkAvailability(); }}
-                        className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                        className={`w-full pl-11 pr-4 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${emailError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="contacto@organizacion.com"
                       />
                     </div>
@@ -1117,16 +1200,17 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Contraseña</label>
                     <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                       <input
                         type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
                         value={formData.password}
                         onChange={e => updateField('password', e.target.value)}
-                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                        className={`w-full pl-11 pr-11 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${passwordError ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="Mínimo 8 caracteres"
                       />
                       <button
@@ -1134,19 +1218,20 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
                     <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                       <input
                         type={showConfirmPassword ? "text" : "password"}
+                        autoComplete="new-password"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className={`w-full pl-12 pr-12 py-3 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-2xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
+                        className={`w-full pl-11 pr-11 py-2.5 bg-slate-50 dark:bg-zinc-900 border ${confirmPassword && formData.password !== confirmPassword ? 'border-red-300 focus:ring-red-200' : 'border-slate-100 dark:border-zinc-800 focus:ring-blue-500'} rounded-xl text-sm font-bold focus:ring-2 outline-none transition-all dark:text-white`}
                         placeholder="Repite la contraseña"
                       />
                       <button
@@ -1154,22 +1239,65 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
-                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
                 </div>
+
               </div>
             </div>
           )}
 
           {registrationType === 'organization' && step === 2 && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="text-center">
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">Tipo de organización</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {[
+                  'Administración Pública central',
+                  'Administración Pública regional',
+                  'Administración Pública local/municipal',
+                  'Empresa privada',
+                  'Organización del tercer sector',
+                  'Otra',
+                ].map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => { updateField('administrationType', type); if (type !== 'Otra') setCustomAdminInput(''); }}
+                    className={`w-full text-left px-5 py-2.5 rounded-2xl border-2 transition-all flex items-center justify-between font-black text-base ${formData.administrationType === type ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:border-purple-200'}`}
+                  >
+                    {type}
+                    {formData.administrationType === type && <Check size={20} />}
+                  </button>
+                ))}
+              </div>
+              {formData.administrationType === 'Otra' && (
+                <div className="animate-in slide-in-from-top-2 duration-200">
+                  <div className="relative">
+                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                    <input
+                      type="text"
+                      value={customAdminInput}
+                      onChange={e => setCustomAdminInput(e.target.value)}
+                      placeholder="Escribe el tipo de entidad aquí..."
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-[1.5rem] font-bold outline-none focus:ring-2 focus:ring-purple-500 transition-all dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {registrationType === 'organization' && step === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="text-center">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Intereses de la organización</h2>
               </div>
               <div className="flex flex-wrap gap-2.5 justify-center">
-                {PUBLIC_INTERESTS.map(topic => {
+                {availableInterests.map(topic => {
                   const isSelected = formData.interests?.includes(topic);
                   return (
                     <button
@@ -1188,13 +1316,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
             </div>
           )}
 
-          {registrationType === 'organization' && step === 3 && (
+          {registrationType === 'organization' && step === 4 && (
             <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-500 text-center">
-              <div className="text-center">
+              <div className="text-center mb-8">
                 <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Logo de la organización</h2>
               </div>
 
-              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6 pb-8">
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                   <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-slate-100 shadow-xl relative bg-slate-50">
                     <img
@@ -1225,10 +1353,13 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
 
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-3 mt-4">
           <button
             onClick={() => {
-              if (step === 0 && registrationType !== null) {
+              // Always go to login if on the first step (selection)
+              if (step === 0 && registrationType === null) {
+                navigate('/inicio-sesion');
+              } else if (step === 0 && registrationType !== null) {
                 setRegistrationType(null); // Go back to selection
               } else if (step === 1 && registrationType === 'organization') {
                 setRegistrationType(null); setStep(0); // Back from org form
@@ -1238,13 +1369,11 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 } else {
                   navigate('/inicio-sesion');
                 }
-              } else if (step === 0) {
-                navigate('/inicio-sesion');
               } else {
                 prevStep();
               }
             }}
-            className="flex-1 py-3.5 rounded-2xl bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
+            className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-500 font-black flex items-center justify-center space-x-2 hover:bg-slate-200 transition-all"
           >
             <ArrowLeft size={20} />
             <span>{(step === 0 && registrationType === null) ? 'Cancelar' : 'Atrás'}</span>
@@ -1287,12 +1416,19 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       setError("Por favor, selecciona al menos 1 interés.");
                     }
                   } else if (registrationType === 'organization') {
-                    if (!formData.organizationName) setError("Introduce el nombre de la organización.");
-                    else if (!formData.bio) setError("Introduce el objetivo principal.");
-                    else if (!formData.username) setError("Elige un nombre de usuario.");
-                    else if (!formData.email) setError("Introduce el correo electrónico.");
-                    else if (!formData.password) setError("Crea una contraseña.");
-                    else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
+                    if (step === 1) {
+                      if (!formData.organizationName) setError("Introduce el nombre de la organización.");
+                      else if (!formData.bio) setError("Introduce el objetivo principal.");
+                      else if (!formData.username) setError("Elige un nombre de usuario.");
+                      else if (!formData.email) setError("Introduce el correo electrónico.");
+                      else if (!formData.password) setError("Crea una contraseña.");
+                      else if (formData.password !== confirmPassword) setError("Las contraseñas no coinciden.");
+                    } else if (step === 2) {
+                      if (!formData.administrationType) setError("Selecciona el tipo de organización.");
+                      else if (formData.administrationType === 'Otra' && !customAdminInput.trim()) setError("Especifica el tipo de organización.");
+                    } else if (step === 3) {
+                      setError("Selecciona al menos 1 interés.");
+                    }
                   }
                   return;
                 }
@@ -1341,7 +1477,7 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                       const isAvailable = await checkAvailability();
                       if (isAvailable) nextStep();
                     } catch (err) { setError("Error al verificar disponibilidad."); }
-                  } else if (step < 3) {
+                  } else if (step < 4) {
                     nextStep();
                   } else {
                     handleFinalize();
@@ -1349,16 +1485,16 @@ export const Onboarding: React.FC<OnboardingProps> = () => {
                 }
               }}
               disabled={loading || isChecking}
-              className={`flex-[2] py-3.5 rounded-2xl font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : (registrationType === 'organization' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700') + ' text-white shadow-lg'}`}
+              className={`flex-[2] py-3 rounded-2xl font-black flex items-center justify-center space-x-2 transition-all transform active:scale-95 ${!isStepValid() || loading || isChecking ? 'bg-blue-400 cursor-not-allowed opacity-70' : (registrationType === 'organization' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700') + ' text-white shadow-lg'}`}
             >
               {loading || isChecking ? (
                 <Loader2 className="animate-spin text-white" size={24} />
               ) : (
                 <>
                   <span className="text-white">
-                    {registrationType === 'organization' ? (step === 3 ? 'Crear cuenta' : 'Siguiente') : (step === 7 ? 'Completar registro' : 'Siguiente')}
+                    {registrationType === 'organization' ? (step === 4 ? 'Crear cuenta' : 'Siguiente') : (step === 7 ? 'Completar registro' : 'Siguiente')}
                   </span>
-                  {!((registrationType === 'organization' && step === 3) || (registrationType === 'personal' && step === 7)) && <ArrowRight size={20} className="text-white" />}
+                  {!((registrationType === 'organization' && step === 4) || (registrationType === 'personal' && step === 7)) && <ArrowRight size={20} className="text-white" />}
                 </>
               )}
             </button>

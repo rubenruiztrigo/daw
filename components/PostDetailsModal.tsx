@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { X, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Calendar, Clock, MapPin } from 'lucide-react';
+import { X, Send, MessageCircle, Heart, ChevronUp, ChevronDown, Reply, Calendar, Clock, MapPin, Repeat, Share2 } from 'lucide-react';
 import { Post, Comment, User, CommentReply } from '../types';
 import { timeAgo } from '../utils/stringUtils';
 import { RENDER_REGEX, getMentionSuggestions, getUserByMention } from '../utils/mentionUtils';
@@ -42,7 +42,9 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(10);
-  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(post.commentsList.filter(c => c.replies && c.replies.length > 0).map(c => [c.id, true]))
+  );
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionTarget, setMentionTarget] = useState<'main' | 'reply' | null>(null);
@@ -95,9 +97,12 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
 
   const handleReplySubmit = (e: React.FormEvent, commentId: string) => {
     e.preventDefault();
-    console.log("📤 Submitting reply from Modal:", { commentId, replyText, parentReplyId: replyingToParentReplyId });
     if (!replyText.trim() || !onAddReply) {
       console.warn("🚫 Cannot submit reply from Modal:", { textEmpty: !replyText.trim(), onAddReplyMissing: !onAddReply });
+      return;
+    }
+    if (commentId.startsWith('temp-') || replyingToParentReplyId?.startsWith('temp-')) {
+      alert('Espera a que el comentario o respuesta anterior se guarde antes de responder.');
       return;
     }
     onAddReply(commentId, replyText, replyingToParentReplyId);
@@ -357,14 +362,14 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
           <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-zinc-900 rounded-full text-slate-300 transition-all"><X size={24} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 overflow-y-auto mb-2 scrollbar-hide">
           <div className="p-4 md:p-8 pb-2 md:pb-4">
             <div className="flex items-center space-x-4 mb-6">
               <img src={getSafeAvatar(post.authorAvatar)} className="w-14 h-14 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" alt="" onClick={() => { onNavigateToProfile?.(post.authorId); onClose(); }} />
               <div className="flex-1 min-w-0 flex items-start justify-between">
                 <div className="cursor-pointer group" onClick={() => { onNavigateToProfile?.(post.authorId); onClose(); }}>
                   <h4 className="font-black text-slate-900 dark:text-white text-lg group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
-                  <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>
+                  {!post.authorIsOrganization && !users.find(u => u.id === post.authorId)?.isOrganization && <p className={`text-xs font-bold uppercase tracking-wider ${post.type === 'news' ? 'text-orange-500' : 'text-blue-500'}`}>{post.authorPosition}</p>}
                   {post.type !== 'news' && (
                     <p className="text-[10px] text-gray-400 font-bold mt-1">Publicado {timeAgo(post.timestamp, language as 'es' | 'en')}</p>
                   )}
@@ -398,27 +403,60 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
 
             {post.type !== 'news' && renderImages()}
 
-            <div className="flex items-center justify-between py-4 border-y border-slate-50 dark:border-zinc-900">
-              <div className="flex items-center space-x-6">
+            <div className="flex items-center justify-between py-4 border-y border-slate-50 dark:border-zinc-900 text-slate-500">
                 {post.type === 'post' ? (
-                  <button onClick={() => onLike?.(post.id)} className={`flex items-center space-x-2 ${post.userLiked ? 'text-red-500' : 'text-slate-400'}`}>
-                    <Heart size={24} fill={post.userLiked ? "currentColor" : "none"} /><span className="font-black dark:text-white">{post.likes}</span>
+                  <button onClick={() => onLike?.(post.id)} className={`flex items-center space-x-3 transition-all ${post.userLiked ? 'text-pink-500' : 'text-slate-500'}`}>
+                    <Heart 
+                      size={24} 
+                      className={post.userLiked ? 'text-pink-500' : 'text-slate-500'} 
+                      fill={post.userLiked ? "currentColor" : "none"} 
+                    />
+                    <span className="font-black text-xl">{post.likes}</span>
                   </button>
                 ) : (
-                  <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1 rounded-2xl border border-slate-100 dark:border-zinc-800">
-                    <button onClick={() => onVote?.(post.id, 'up')} className={post.userLiked ? 'text-emerald-500' : 'text-slate-400'}><ChevronUp size={24} /></button>
-                    <span className="px-3 font-black text-lg min-w-[2.5rem] text-center dark:text-white">{post.likes}</span>
-                    <button onClick={() => onVote?.(post.id, 'down')} className={post.userDownvoted ? 'text-orange-500' : 'text-slate-400'}><ChevronDown size={24} /></button>
+                  <div className="flex items-center bg-slate-50 dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-100 dark:border-zinc-800">
+                    <button 
+                      onClick={() => onVote?.(post.id, 'up')} 
+                      className={`p-2 rounded-xl transition-all ${post.userLiked ? 'bg-emerald-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-emerald-500'}`}
+                    >
+                      <ChevronUp size={24} strokeWidth={3} />
+                    </button>
+                    <span className={`px-4 font-black text-xl min-w-[3rem] text-center ${post.userLiked ? 'text-emerald-500' : post.userDownvoted ? 'text-red-500' : 'text-slate-500'}`}>
+                      {post.upvotes !== undefined ? post.upvotes : post.likes}
+                    </span>
+                    <button 
+                      onClick={() => onVote?.(post.id, 'down')} 
+                      className={`p-2 rounded-xl transition-all ${post.userDownvoted ? 'bg-red-500 text-white' : 'hover:bg-slate-100 dark:hover:bg-zinc-800 text-red-500'}`}
+                    >
+                      <ChevronDown size={24} strokeWidth={3} />
+                    </button>
                   </div>
                 )}
-                <div className="flex items-center space-x-2 text-slate-400"><MessageCircle size={24} /><span className="font-black dark:text-white">{post.comments}</span></div>
-              </div>
+                <div className="flex items-center space-x-3 text-slate-500">
+                    <MessageCircle size={24} />
+                    <span className="font-black text-xl">{post.comments}</span>
+                </div>
+                {post.type !== 'news' && (
+                    <button onClick={() => onRepost?.(post.id)} className={`flex items-center space-x-3 transition-all ${post.userReposted ? 'text-emerald-500' : 'text-slate-500'}`}>
+                        <Repeat size={24} className={post.userReposted ? 'text-emerald-500' : 'text-slate-500'} />
+                        <span className="font-black text-xl">{post.reposts || 0}</span>
+                    </button>
+                )}
+                <button 
+                  className="p-1.5 text-slate-500 hover:text-blue-500 transition-all" 
+                  onClick={() => {
+                    const postUrl = `${window.location.origin}/post/${post.id}`;
+                    navigator.clipboard.writeText(postUrl);
+                  }}
+                >
+                  <Share2 size={24} />
+                </button>
             </div>
           </div>
 
           <div className="px-4 md:px-8 pb-4 md:pb-6">
             <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 pb-6 border-b border-slate-100 dark:border-zinc-800 px-1">Comentarios ({post.commentsList.length})</h5>
-            <div className="space-y-6 max-h-[550px] overflow-y-auto pr-2">
+            <div className="space-y-6 max-h-[550px] overflow-y-auto pr-2 scrollbar-modal">
               {sortComments(post.commentsList).slice(0, visibleCommentsCount).map((comment) => (
                 <div key={comment.id} className="animate-in fade-in slide-in-from-bottom-2">
                   <div className="flex space-x-4">
@@ -456,7 +494,7 @@ export const PostDetailsModal: React.FC<PostDetailsModalProps> = ({
                             onClick={() => toggleReplies(comment.id)}
                             className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 hover:underline flex items-center space-x-1"
                           >
-                            {expandedReplies[comment.id] ? 'Ocultar respuestas' : `Ver ${comment.replies.length} respuestas`}
+                            {expandedReplies[comment.id] ? 'Ocultar respuestas' : 'Ver respuestas'}
                           </button>
                         )}
                       </div>

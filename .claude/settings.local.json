@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__list_projects",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__get_organization",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__get_project",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__get_logs",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__list_tables",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__execute_sql",
+      "mcp__ba572125-160a-4726-8ac5-92f66c3e28d6__get_advisors"
+    ]
+  }
+}

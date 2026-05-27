@@ -51,14 +51,15 @@ export const EventPreview: React.FC<EventPreviewProps> = ({
             }
           }}
         >
-          {/* Image Section */}
-          <div className="relative w-32 self-stretch overflow-hidden shrink-0">
-            <img 
-              src={event.image_url || generateDefaultEventImage()} 
-              className="absolute inset-0 w-full h-full object-cover" 
-              alt={event.title} 
+          {/* Image Section - SQUARED & CLEAN */}
+          <div className="relative w-24 h-24 m-3 overflow-hidden rounded-2xl flex-shrink-0">
+            <img
+              src={event.image_url || generateDefaultEventImage()}
+              className="w-full h-full object-cover transition-opacity duration-300"
+              alt={event.title}
+              loading="lazy"
+              decoding="async"
             />
-            <div className="absolute inset-y-0 -right-px w-10 bg-gradient-to-r from-transparent to-gray-50 dark:to-zinc-900/30 pointer-events-none z-10"></div>
           </div>
 
           {/* Content Section */}
@@ -100,56 +101,49 @@ export const EventPreview: React.FC<EventPreviewProps> = ({
 
   return (
     <div
-      className={`event-preview-container bg-white dark:bg-[#111] rounded-[2rem] border transition-all duration-300 group overflow-hidden relative cursor-pointer min-h-[7rem] md:min-h-[10rem] h-auto mb-3 ${
+      className={`event-preview-container bg-white dark:bg-[#111] rounded-[2rem] border transition-all duration-300 group overflow-hidden relative cursor-pointer min-h-[7rem] md:min-h-[10rem] mb-3 flex flex-row items-stretch ${
         isFocused
           ? 'border-purple-500 ring-2 ring-purple-500 ring-offset-2 dark:ring-offset-black shadow-2xl'
           : 'border-gray-100 dark:border-zinc-800 hover:border-blue-200 dark:hover:border-zinc-700'
       }`}
       onClick={(e) => {
         e.stopPropagation();
-        if (onNavigateToProfile) {
-          onNavigateToProfile(event.creator_id);
+        if (onNavigateToEvent) {
+          onNavigateToEvent(event.creator_id, event.id);
+        } else {
+          onViewCalendar?.();
         }
       }}
     >
       {onRemove && (
-        <button 
-          type="button" 
+        <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
-          }} 
+          }}
           className="absolute top-4 right-4 p-2 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm text-slate-400 hover:text-red-500 rounded-full shadow-lg transition-all z-[20] opacity-0 group-hover:opacity-100"
         >
           <X size={16} strokeWidth={3} />
         </button>
       )}
 
-      <div className="flex flex-row h-full">
-        {/* Image Section */}
-        <div className="relative w-28 md:w-36 lg:w-40 self-stretch shrink-0 overflow-hidden">
+      <div className="contents">
+        {/* Image Section - flush left/top/bottom with right fade */}
+        <div className="relative w-32 md:w-40 flex-shrink-0 overflow-hidden rounded-l-[2rem] self-stretch">
           <img
             src={event.image_url || generateDefaultEventImage()}
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 transform-gpu will-change-transform"
+            className="absolute inset-0 w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
             alt={event.title}
+            loading="eager"
           />
-          {/* Gradient Overlays */}
-          <div className="absolute inset-y-0 -right-px w-10 bg-gradient-to-r from-transparent to-white dark:to-[#111] pointer-events-none z-10"></div>
         </div>
 
         {/* Content Section */}
-        <div className="flex-1 p-3 md:p-5 flex flex-col justify-between min-w-0 bg-white dark:bg-[#111] -ml-px relative z-10 border-l border-white dark:border-[#111]">
+        <div className="flex-1 p-3 md:p-5 flex flex-col justify-between min-w-0 bg-white dark:bg-[#111] relative z-10">
           <div className="space-y-1.5">
-            <h4 
+            <h4
               className="text-gray-900 dark:text-white font-black text-sm md:text-lg leading-tight hover:text-blue-600 transition-colors cursor-pointer truncate pr-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onNavigateToEvent) {
-                  onNavigateToEvent(event.creator_id, event.id);
-                } else {
-                  onViewCalendar?.();
-                }
-              }}
             >
               {event.title}
             </h4>
@@ -166,21 +160,11 @@ export const EventPreview: React.FC<EventPreviewProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 mt-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-2 mt-4">
             {renderActions ? (
               renderActions()
             ) : (
-              <div 
-                className="w-full pt-2 cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onNavigateToEvent) {
-                    onNavigateToEvent(event.creator_id, event.id);
-                  } else {
-                    onViewCalendar?.();
-                  }
-                }}
-              >
+              <div className="w-full pt-2">
                 <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 hover:underline flex items-center">
                   {t('view_event_details')}
                   <ChevronRight size={12} className="ml-1 transform hover:translate-x-0.5 transition-transform" />

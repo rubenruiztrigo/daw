@@ -108,7 +108,7 @@ export const HelpChatBot: React.FC<HelpChatBotProps> = ({ onClose, userName }) =
                 </div>
 
                 {/* Message Area */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide bg-slate-50 dark:bg-black/20">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 mb-2 scrollbar-hide bg-slate-50 dark:bg-black/20">
                     {messages.map((m) => (
                         <div
                             key={m.id}

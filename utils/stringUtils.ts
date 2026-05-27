@@ -49,6 +49,18 @@ export const extractFirstUrl = (text: string): string | null => {
   return match ? match[0] : null;
 };
 
+export const extractAllExternalUrls = (text: string, isExternalUrlFn: (url: string) => boolean): string[] => {
+  if (!text) return [];
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const matches = text.match(urlRegex) || [];
+  const seen = new Set<string>();
+  return matches.filter(url => {
+    if (seen.has(url) || !isExternalUrlFn(url)) return false;
+    seen.add(url);
+    return true;
+  });
+};
+
 export const isExternalUrl = (url: string): boolean => {
   if (!url) return false;
   const internalDomains = [
@@ -58,9 +70,40 @@ export const isExternalUrl = (url: string): boolean => {
     '127.0.0.1'
   ];
   try {
-    const domain = new URL(url).hostname.toLowerCase();
-    return !internalDomains.some(d => domain.includes(d));
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (internalDomains.some(d => hostname.includes(d))) return false;
+    // Treat private/LAN IP ranges as internal
+    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(hostname)) return false;
+    return true;
   } catch {
     return false;
+  }
+};
+
+const RESERVED_ROUTES = new Set([
+  'inicio', 'noticias', 'mensajes', 'calendario', 'notificaciones',
+  'configuracion', 'recompensas', 'buscar', 'admin', 'img', 'api'
+]);
+
+/** Parses an internal app URL and returns { type, identifier } or null */
+export const parseInternalAppUrl = (url: string): { type: 'profile' | 'news' | 'post'; identifier: string } | null => {
+  try {
+    const { pathname } = new URL(url);
+    const segments = pathname.replace(/^\//, '').split('/').filter(Boolean);
+    if (segments.length === 0) return null;
+
+    const first = segments[0];
+    if (RESERVED_ROUTES.has(first)) return null;
+
+    if (first === 'noticias' && segments[1]) return { type: 'news', identifier: segments[1] };
+    if ((first === 'post' || first === 'posts') && segments[1]) return { type: 'post', identifier: segments[1] };
+
+    // Single segment that is not a reserved route → profile username or ID
+    if (segments.length === 1 || (segments.length === 2 && /^[0-9a-f-]{36}$/.test(segments[1]))) {
+      return { type: 'profile', identifier: first };
+    }
+    return null;
+  } catch {
+    return null;
   }
 };

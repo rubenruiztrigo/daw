@@ -13,18 +13,62 @@ interface CalendarViewProps {
   onShareEvent?: (event: CalendarEvent) => void;
   initialDate?: Date | null;
   language: Language;
+  globalEvents?: CalendarEvent[];
+  onRefreshEvents?: () => void;
 }
 
 interface EventDisplay extends CalendarEvent {
   time: string;
+  username?: string;
 }
 
-export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, onPromoteEvent, onSupportEvent, onShareEvent, initialDate, language }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({ 
+  onNavigateToEvent, onPromoteEvent, onSupportEvent, onShareEvent, 
+  initialDate, language, globalEvents = [], onRefreshEvents 
+}) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const location = useLocation();
   const navigate = useNavigate();
-  const [events, setEvents] = useState<EventDisplay[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use globalEvents as initial data for instant feel
+  const [events, setEvents] = useState<EventDisplay[]>(() => {
+    if (globalEvents.length > 0) {
+      return globalEvents.map(ev => ({
+        ...ev,
+        time: (ev.event_time || '00:00').substring(0, 5),
+        username: ev.creator_id
+      }));
+    }
+    try {
+      const cache = localStorage.getItem('calendar_actual_events');
+      return cache ? JSON.parse(cache) : [];
+    } catch { return []; }
+  });
+
+  const [loading, setLoading] = useState(() => {
+    // IMMEDIATE PERFORMANCE: Never show a full-screen blocker if we have any data (props or cache)
+    if (globalEvents && globalEvents.length > 0) return false;
+    try {
+      const cache = localStorage.getItem('calendar_actual_events');
+      return !cache;
+    } catch { return true; }
+  });
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Keep internal events in sync with globalEvents if they change
+  useEffect(() => {
+    if (globalEvents && globalEvents.length > 0) {
+      const mapped = globalEvents.map(ev => ({
+        ...ev,
+        time: (ev.event_time || '00:00').substring(0, 5),
+        username: ev.creator_id
+      }));
+      setEvents(mapped);
+      setLoading(false);
+    }
+  }, [globalEvents]);
+
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [viewingSupportersEventId, setViewingSupportersEventId] = useState<string | null>(null);
@@ -61,8 +105,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
     if (initialDate) {
       setCurrentDate(initialDate);
     }
+    // Only fetch if we don't have enough events or want a full refresh
     fetchEvents();
-  }, [initialDate]);
+  }, [initialDate, currentDate.getMonth(), currentDate.getFullYear()]); // Refetch when month changes
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -91,35 +136,75 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   }, []);
 
   const fetchEvents = async () => {
-    setLoading(true);
+    // If we have events, we just show a subtle refresh indicator, not a full blocker
+    if (events.length === 0) setLoading(true);
+    setIsRefreshing(true);
+    
+    // RANGE OPTIMIZATION: Only fetch events for the current month +/- 1 month
+    const rangeStart = new Date(currentYear, currentMonth - 1, 1).toISOString().split('T')[0];
+    const rangeEnd = new Date(currentYear, currentMonth + 2, 0).toISOString().split('T')[0];
+
     const { data, error } = await supabase
       .from('user_events')
-      .select('*, profiles:creator_id(username)')
-      .gte('attendees_count', 50)
+      .select('*, creator:profiles(username)')
+      .gte('event_date', rangeStart)
+      .lte('event_date', rangeEnd)
       .order('event_date', { ascending: true });
 
-    if (!error && data) {
-      const mapped = data.map(ev => ({
-        id: ev.id,
-        creator_id: ev.creator_id,
-        title: ev.title,
-        type: (ev.type === 'online_course' || ev.type === 'meeting') ? 'online' : ev.type,
-        event_date: ev.event_date,
-        event_time: ev.event_time,
-        location: ev.location,
-        description: ev.description,
-        attendees: ev.attendees_count,
-        time: ev.event_time.substring(0, 5),
-        username: ev.profiles?.username || ev.creator_id
-      }));
-      setEvents(mapped);
-    }
+      if (!error && data) {
+        const mapped = data.map(ev => ({
+          id: ev.id,
+          creator_id: ev.creator_id,
+          title: ev.title,
+          type: (ev.type === 'online_course' || ev.type === 'meeting') ? 'online' : ev.type,
+          event_date: ev.event_date,
+          event_time: ev.event_time,
+          location: ev.location,
+          description: ev.description,
+          attendees: ev.attendees_count,
+          time: (ev.event_time || '00:00').substring(0, 5),
+          username: ev.creator?.username || ev.creator_id,
+          image_url: ev.image_url
+        }));
+        
+        setEvents(prev => {
+          // Merge logic: Keep events outside the current range if we already had them
+          const newIds = new Set(mapped.map(e => e.id));
+          const filteredPrev = prev.filter(e => {
+            // Remove events that are IN the range we just fetched but NOT in the new results
+            const inRange = e.event_date >= rangeStart && e.event_date <= rangeEnd;
+            return !inRange;
+          });
+          return [...filteredPrev, ...mapped].sort((a, b) => a.event_date.localeCompare(b.event_date));
+        });
+        
+        try {
+          localStorage.setItem('calendar_actual_events', JSON.stringify(mapped));
+        } catch(e) {}
+
+        // WARM THE CACHE: Store processed events in the manifest (lightweight, capped at 30)
+        try {
+          const manifest = JSON.parse(localStorage.getItem('event_manifest') || '{}');
+          mapped.forEach(e => {
+            manifest[e.id] = {
+              id: e.id, title: e.title, event_date: e.event_date,
+              event_time: e.event_time, type: e.type, location: e.location
+            };
+          });
+          const entries = Object.entries(manifest);
+          const trimmed = entries.length > 30 ? Object.fromEntries(entries.slice(-30)) : manifest;
+          localStorage.setItem('event_manifest', JSON.stringify(trimmed));
+        } catch (e) {
+          // quota exceeded — skip manifest cache
+        }
+      }
     setLoading(false);
+    setIsRefreshing(false);
   };
 
   const mappedEventsByDate = useMemo(() => {
     const record: Record<string, EventDisplay[]> = {};
-    events.forEach(ev => {
+    events.filter(ev => (ev.attendees ?? 0) >= 50).forEach(ev => {
       const parts = ev.event_date.split('-');
       if (parts.length === 3) {
         const year = parseInt(parts[0], 10);
@@ -176,11 +261,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
   };
 
   const dateKey = `${currentYear}-${currentMonth}-${selectedDay}`;
-  const todaysEvents = mappedEventsByDate[dateKey] || [];
+  const todaysEvents = (mappedEventsByDate[dateKey] || [])
+    .slice()
+    .sort((a, b) => (b.attendees ?? 0) - (a.attendees ?? 0));
 
   return (
     <div
-      className="w-full max-w-[1400px] mx-auto px-3 lg:px-8 min-h-0 lg:min-h-[75vh] flex flex-col lg:flex-row gap-2 lg:gap-8 pb-1 lg:pb-8 animate-in fade-in duration-500 relative touch-none select-none"
+      className="w-full max-w-[1400px] mx-auto px-4 lg:px-8 min-h-0 lg:min-h-[75vh] flex flex-col lg:flex-row gap-2 lg:gap-8 pb-4 lg:pb-8 animate-in fade-in duration-500 relative touch-none select-none"
       onClick={() => {
         setIsSelectorOpen(false);
         setShowInfoTooltip(false);
@@ -188,7 +275,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
       style={{ touchAction: 'none' }}
     >
       {/* Mobile Title */}
-      <div className="md:hidden pt-[88px] pb-2 px-2 leading-none">
+      <div className="md:hidden pt-[88px] pb-2 leading-none">
         <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
           {t('nav_calendar') || 'Calendario'}
         </h1>
@@ -205,6 +292,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                 <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight flex items-center">
                   {MONTHS[currentMonth]} {currentYear}
                   <ChevronDown size={18} className={`ml-2 text-blue-600 transition-transform duration-300 ${isSelectorOpen ? 'rotate-180' : ''}`} />
+                  {isRefreshing && (
+                    <Loader2 size={14} className="ml-3 animate-spin text-blue-500 opacity-60" />
+                  )}
                 </h2>
               </div>
             </button>
@@ -259,7 +349,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
               {showInfoTooltip && (
                 <div className="absolute top-full right-0 mt-2 w-64 p-4 bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-lg z-[60] animate-in zoom-in-95 duration-200">
                   <p className="text-[11px] font-bold text-slate-600 dark:text-gray-300 leading-relaxed">
-                    En el calendario aparecerán aquellos eventos que hayan alcanzado los <span className="text-blue-600">50 apoyos</span>.
+                    En el <span className="text-blue-600">Calendario</span> solo aparecerán los eventos que reciban un mínimo de 50 apoyos.
                   </p>
                   <div className="absolute bottom-full right-4 -mb-1 w-2 h-2 bg-white dark:bg-zinc-900 border-l border-t border-gray-100 dark:border-zinc-800 rotate-45" />
                 </div>
@@ -275,7 +365,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
           </div>
         </div>
 
-        {loading ? (
+        {loading && events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
             <p className="text-gray-400 font-bold">{t('loading_agenda')}</p>
@@ -326,11 +416,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
       <div className="w-full lg:w-96 space-y-4 lg:flex-none flex flex-col">
 
-        <div className="space-y-3 overflow-y-auto max-h-[calc(70vh-140px)] scrollbar-hide flex flex-col">
+        <div className="overflow-y-auto max-h-[calc(100vh-200px)] scrollbar-hide flex flex-col space-y-3">
           {todaysEvents.length > 0 ? (
-            todaysEvents.map(event => (
-              <div key={event.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-900 hover:border-gray-200 dark:hover:border-zinc-800 transition-all group relative">
-                <h4 className="text-gray-900 dark:text-white font-black text-base leading-tight mb-4 group-hover:text-blue-600 transition-colors pl-1 pr-10">
+            todaysEvents.map(event => {
+              const isMulti = todaysEvents.length > 1;
+              return (
+              <div key={event.id} className="bg-white dark:bg-[#111] p-6 rounded-[2rem] border border-gray-100 dark:border-zinc-900 hover:border-gray-200 dark:hover:border-zinc-800 transition-all group relative flex flex-col">
+                <h4 className="text-gray-900 dark:text-white font-black leading-tight group-hover:text-blue-600 transition-colors text-base mb-4 pl-1 pr-10">
                   {event.title}
                 </h4>
 
@@ -349,13 +441,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
 
                   <div className="flex items-center text-xs text-gray-500 font-bold">
                     <Users size={14} className="mr-2 opacity-70" />
-                    <span>
-                      {t('supports', { count: event.attendees })}
-                    </span>
+                    <span>{t('supports', { count: event.attendees })}</span>
                   </div>
                 </div>
 
-                <div className="mb-1">
+                <div>
                   <button
                     onClick={() => {
                       const identifier = event.username || event.creator_id;
@@ -367,7 +457,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateToEvent, o
                   </button>
                 </div>
               </div>
-            ))
+            )})
           ) : (
             <div className="bg-white dark:bg-[#111] px-6 py-7 rounded-[2rem] border border-dashed border-gray-200 dark:border-zinc-800 text-center flex flex-col items-center justify-center">
               <CalendarIcon className="mx-auto text-gray-100 dark:text-zinc-900 mb-4" size={40} />

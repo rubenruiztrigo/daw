@@ -12,7 +12,8 @@ interface LevelsListModalProps {
     onClose: () => void;
 }
 
-export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, language, onClose }) => {
+export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas: rawNovas, language, onClose }) => {
+    const currentNovas = Math.max(0, rawNovas ?? 0);
     const navigate = useNavigate();
     const t = useTranslation(language);
     const [showAllLevels, setShowAllLevels] = React.useState(false);
@@ -41,7 +42,7 @@ export const LevelsListModal: React.FC<LevelsListModalProps> = ({ currentNovas, 
                 </div>
 
                 {/* Content */}
-                <div className="overflow-y-auto p-6 space-y-8 flex-1">
+                <div className="overflow-y-auto p-6 space-y-8 flex-1 mb-2 scrollbar-modal">
                     {/* Progress Section */}
                     <div className="rounded-3xl p-6 border dark:border-zinc-800" style={{ backgroundColor: `${currentStatus.currentLevelInfo.bannerColor}15`, borderColor: `${currentStatus.currentLevelInfo.bannerColor}40` }}>
                         <div className="flex justify-between items-center mb-6 px-1">

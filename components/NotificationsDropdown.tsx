@@ -83,7 +83,8 @@ export const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ no
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-gray-800 leading-snug">
-                    <span className="font-black text-gray-900">{n.senderName}</span> {n.content}
+                    {n.type !== 'system' && <span className="font-black text-gray-900">{n.senderName} </span>}
+                    {n.content}
                   </p>
                   <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
                     {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
